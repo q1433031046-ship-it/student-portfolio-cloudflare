@@ -17,12 +17,14 @@
     {
       "binding": "DB",
       "database_name": "student-portfolio-db",
-      "migrations_dir": "./drizzle"
+      "migrations_dir": "./drizzle",
+      "database_id": "f899f7ea-715d-406d-9485-0272871f1976"
     }
   ],
   "kv_namespaces": [
     {
-      "binding": "MEDIA_KV"
+      "binding": "MEDIA_KV",
+      "id": "fc57be8f0fa54b1da0f161ce76afa69e"
     }
   ],
   "observability": {
