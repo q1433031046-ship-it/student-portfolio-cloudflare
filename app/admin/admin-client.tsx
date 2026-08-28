@@ -1252,7 +1252,15 @@ function MediaUpload({ projectId, slot, title, asset, cropAspect = 16 / 9, freeC
         <input type="file" disabled={uploading} accept={accept} onChange={onInput} />
         <i>{asset.key ? "拖入替换或点击选择" : "拖入上传或点击选择"}</i>
       </label>
-      {asset.kind === "image" && onCropChange && <MediaCropEditor key={`${asset.key ?? asset.id}:${asset.sourceAspectRatio ?? "unknown"}`} asset={asset} previewSrc={previewSrc} fixedAspect={freeCrop ? undefined : cropAspect} onConfirm={onCropChange} />}
+      {asset.kind === "image" && onCropChange && <MediaCropEditor key={[
+        asset.key ?? asset.id,
+        asset.sourceAspectRatio ?? "unknown",
+        freeCrop ? "free" : cropAspect,
+        asset.crop?.x ?? "x",
+        asset.crop?.y ?? "y",
+        asset.crop?.width ?? "w",
+        asset.crop?.height ?? "h",
+      ].join(":")} asset={asset} previewSrc={previewSrc} fixedAspect={freeCrop ? undefined : cropAspect} onConfirm={onCropChange} />}
     </div>
   );
 }
