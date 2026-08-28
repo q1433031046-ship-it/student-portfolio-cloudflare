@@ -35,7 +35,7 @@ test("renders the published single-column portfolio homepage without private med
     response.headers.get("content-type") ?? "",
     /^text\/html\b/i,
   );
-  assert.match(html, /<title>中科云领学生作品展示<\/title>/i);
+  assert.match(html, /<title>学生作品展示<\/title>/i);
   assert.match(html, /作品不是结果/);
   assert.match(html, /点击展开作品/);
   assert.match(html, /播放视频/);
