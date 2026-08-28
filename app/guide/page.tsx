@@ -1,5 +1,3 @@
-import type { CSSProperties } from "react";
-
 export const dynamic = "force-static";
 
 const deployUrl = "https://deploy.workers.cloudflare.com/?url=https://github.com/q1433031046-ship-it/student-portfolio-cloudflare";
@@ -32,7 +30,6 @@ function SectionHeader({ eyebrow, title }: { eyebrow: string; title: string }) {
 }
 
 export default function GuidePage() {
-  const safe: CSSProperties = { fontWeight: 700 };
   return <main className="guidePage">
     <style>{styles}</style>
     <header className="guideTop">
