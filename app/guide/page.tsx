@@ -37,7 +37,7 @@ export default function GuidePage() {
       <nav>
         <a href="/">查看网站</a>
         <a href="/admin">进入后台</a>
-        <a className="primary" href={deployUrl} target="_blank" rel="noreferrer">一键部署</a>
+        <a className="primary" href="#gpt">开始部署</a>
       </nav>
     </header>
 
@@ -46,7 +46,7 @@ export default function GuidePage() {
       <h1>这一页，<br/>从部署教到发布。</h1>
       <p className="lead">不需要看 GitHub 里的多份说明。部署账号怎么准备、GPT 怎么说、Cloudflare 怎么部署、后台每一栏怎么用、图片应该做多大、视频怎么压、密码怎么找回、一个账号怎么放多个网站、以后怎么升级，都在这一页。</p>
       <div className="quickStart">
-        <a className="primary" href="#deploy">我是第一次部署</a>
+        <a className="primary" href="#gpt">第一步：先打开 GPT</a>
         <a className="secondary" href="#admin">我已经部署，学后台</a>
         <a className="secondary" href="#sizes">直接看图片尺寸</a>
       </div>
