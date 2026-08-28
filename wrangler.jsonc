@@ -3,17 +3,12 @@
   "name": "student-portfolio",
   "main": "./cloudflare/worker-entry.js",
   "compatibility_date": "2026-08-28",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
   "vars": {
     "AUTH_PLATFORM": "password"
   },
-  "no_bundle": true,
-  "rules": [
-    {
-      "type": "ESModule",
-      "globs": ["**/*.js", "**/*.mjs"]
-    }
-  ],
   "assets": {
     "directory": "./dist/client",
     "binding": "ASSETS"

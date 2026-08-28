@@ -22,14 +22,13 @@ test("ships a machine-readable agent deployment contract", async () => {
   assert.ok(manifest.liveTests.length >= 10);
 });
 
-test("exposes a public Deploy to Cloudflare template with auto-provisioned storage", async () => {
+test("exposes a public Deploy to Cloudflare template with storage bindings", async () => {
   const wrangler = JSON.parse(await readFile("wrangler.jsonc", "utf8"));
   const readme = await readFile("README.md", "utf8");
   assert.equal(wrangler.main, "./cloudflare/worker-entry.js");
+  assert.equal("no_bundle" in wrangler, false);
   assert.equal(wrangler.d1_databases[0].binding, "DB");
-  assert.equal("database_id" in wrangler.d1_databases[0], false);
   assert.equal(wrangler.kv_namespaces[0].binding, "MEDIA_KV");
-  assert.equal("id" in wrangler.kv_namespaces[0], false);
   assert.match(readme, /deploy\.workers\.cloudflare\.com\/\?url=https:\/\/github\.com\//);
   assert.match(readme, /student-portfolio-cloudflare/);
 });
