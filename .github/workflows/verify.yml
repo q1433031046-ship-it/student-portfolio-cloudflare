@@ -3,9 +3,11 @@ name: Verify
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   verify:
@@ -14,28 +16,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Normalize empty video duration
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('app/admin/admin-client.tsx')
-          text = path.read_text()
-          old = 'duration: "00:30"'
-          new = 'duration: "00:00"'
-          if old in text:
-              path.write_text(text.replace(old, new, 1))
-          PY
-          if ! git diff --quiet -- app/admin/admin-client.tsx; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add app/admin/admin-client.tsx
-            git commit -m "Set empty project video duration to zero"
-            git push origin HEAD:main
-          fi
 
       - name: Setup Node
         uses: actions/setup-node@v4
