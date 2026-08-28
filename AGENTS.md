@@ -40,7 +40,7 @@ Ask the owner only to:
 2. Enter an `INITIAL_ADMIN_CODE` of at least 16 characters containing ASCII letters and digits on an official secret-input surface.
 3. Choose the administrator password inside `/admin` and save the generated recovery-code file.
 
-Never request a GitHub password, Cloudflare password, browser cookie, long-lived API token, administrator password, deployment code, or recovery code in chat. Do not write secrets into source files, commits, logs, screenshots, or public repositories.
+Never request a Cloudflare password. Never request a GitHub password, browser cookie, long-lived API token, administrator password, deployment code, or recovery code in chat. Do not write secrets into source files, commits, logs, screenshots, or public repositories.
 
 ## Deployment workflow
 
