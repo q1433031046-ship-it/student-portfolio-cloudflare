@@ -60,3 +60,5 @@ https://deploy.workers.cloudflare.com/?url=https://github.com/q1433031046-ship-i
 - 程序升级规则：`UPGRADE-GUIDE.md`
 
 本交付在发布前会运行独立的完整验证流程：全量测试、生产构建、Lint 和 TypeScript 检查全部通过后才视为最终版本。
+
+本次最终验证已同步到“学生作品展示”的新默认名称和最新安全规则后重新执行。
