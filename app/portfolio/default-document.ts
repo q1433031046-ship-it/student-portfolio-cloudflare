@@ -16,7 +16,7 @@ export function createDefaultPortfolioDocument(): PortfolioDocument {
   return {
     schemaVersion: 4,
     settings: {
-      siteTitle: "中科云领学生作品展示",
+      siteTitle: "学生作品展示",
       activeTheme: "graphite",
       expansionMode: "single",
       coverOverlayMode: "hover",
