@@ -1,4 +1,4 @@
-import { validatePortfolioDocument } from "../../../portfolio/model";
+import { validatePortfolioDocument, type PortfolioDocument } from "../../../portfolio/model";
 import { writeAuditLog } from "../../_lib/audit";
 import { savePortfolioDraft } from "../../_lib/portfolio-store";
 import { isRequestBodyError, readJsonBody } from "../../_lib/request-body";
@@ -11,7 +11,7 @@ export async function GET(request: Request) {
     const { identity, record } = access;
     return Response.json({
       identity: { email: identity.kind === "password" ? "网站管理员" : identity.user, provider: identity.kind },
-      portfolio: record.draft,
+      portfolio: normalizeMissingVideoDurations(record.draft),
       revision: record.revision,
       updatedAt: record.updatedAt,
       publishedAt: record.publishedAt,
@@ -33,8 +33,9 @@ export async function PUT(request: Request) {
     }
     const validation = validatePortfolioDocument(body.portfolio);
     if (!validation.ok) return Response.json({ error: "作品集数据校验失败", details: validation.errors }, { status: 400 });
+    const portfolio = normalizeMissingVideoDurations(validation.value);
 
-    const saved = await savePortfolioDraft(validation.value, Number(body.revision));
+    const saved = await savePortfolioDraft(portfolio, Number(body.revision));
     if (!saved) return Response.json({ error: "草稿已在其他页面更新，请刷新后再保存" }, { status: 409 });
 
     await writeAuditLog({
@@ -50,6 +51,15 @@ export async function PUT(request: Request) {
     console.error(JSON.stringify({ message: "admin portfolio save failed", error: errorMessage(error) }));
     return Response.json({ error: "保存失败，请稍后重试" }, { status: 500 });
   }
+}
+
+function normalizeMissingVideoDurations(portfolio: PortfolioDocument): PortfolioDocument {
+  return {
+    ...portfolio,
+    projects: portfolio.projects.map((project) => project.finalVideo.key
+      ? project
+      : { ...project, duration: "00:00" }),
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
