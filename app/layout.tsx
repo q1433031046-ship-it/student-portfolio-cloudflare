@@ -6,18 +6,18 @@ import "./globals.css";
 export async function generateMetadata(): Promise<Metadata> {
   return {
     metadataBase: await resolveMetadataBase(),
-    title: "中科云领学生作品展示",
-    description: "中科云领学生原创影像、动画与视觉设计作品集。让学习有作品，让作品被看见。",
+    title: "学生作品展示",
+    description: "学生原创影像、动画与视觉设计作品集。让学习有作品，让作品被看见。",
     openGraph: {
-      title: "中科云领学生作品展示",
+      title: "学生作品展示",
       description: "让每一个创意，被看见。",
       type: "website",
       locale: "zh_CN",
-      images: [{ url: "/og.png", width: 1731, height: 909, alt: "中科云领学生作品展示" }],
+      images: [{ url: "/og.png", width: 1731, height: 909, alt: "学生作品展示" }],
     },
     twitter: {
       card: "summary_large_image",
-      title: "中科云领学生作品展示",
+      title: "学生作品展示",
       description: "让每一个创意，被看见。",
       images: ["/og.png"],
     },
