@@ -30,6 +30,16 @@ select {
   font: inherit;
 }
 
+@media (max-width: 720px) {
+  [data-orientation="portrait"] > figure {
+    aspect-ratio: 3 / 4 !important;
+  }
+
+  [data-orientation="landscape"] > figure {
+    aspect-ratio: 4 / 3 !important;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
 }
