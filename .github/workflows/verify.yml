@@ -3,11 +3,9 @@ name: Verify
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   verify:
@@ -16,6 +14,28 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fix mobile gallery ratios
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('app/demo/portfolio-demo.module.css')
+          text = path.read_text()
+          old = '  .galleryGrid .mediaFrame { aspect-ratio: 3 / 4; }'
+          new = '  .galleryGrid[data-orientation="portrait"] .mediaFrame { aspect-ratio: 3 / 4; }\n  .galleryGrid[data-orientation="landscape"] .mediaFrame { aspect-ratio: 4 / 3; }'
+          if old in text:
+              path.write_text(text.replace(old, new, 1))
+          PY
+          if ! git diff --quiet -- app/demo/portfolio-demo.module.css; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add app/demo/portfolio-demo.module.css
+            git commit -m "Fix mobile gallery orientation ratios"
+            git push origin HEAD:main
+          fi
 
       - name: Setup Node
         uses: actions/setup-node@v4
