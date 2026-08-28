@@ -1295,7 +1295,8 @@
   .galleryBlock header { grid-template-columns: 1fr; gap: 22px; margin-bottom: 36px; padding: 0 12px; }
   .galleryGrid,
   .galleryGrid[data-count="4"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .galleryGrid .mediaFrame { aspect-ratio: 3 / 4; }
+  .galleryGrid[data-orientation="portrait"] .mediaFrame { aspect-ratio: 3 / 4; }
+  .galleryGrid[data-orientation="landscape"] .mediaFrame { aspect-ratio: 4 / 3; }
   .fullMediaBlock { padding: 10px; }
   .fullMediaBlock .mediaFrame { aspect-ratio: 4 / 5; }
 
