@@ -38,7 +38,7 @@ export function AdminUpgradeCenter() {
   }
 
   return (
-    <section ref={ref} data-native-upgrade-center>
+    <section ref={ref} data-native-upgrade-center data-program-upgrade-center>
       <style>{`
         [data-native-upgrade-center]{margin:22px 0 0;padding:clamp(24px,4vw,42px);border:1px solid var(--line,#d9d9d6);background:#fff;color:var(--ink,#101114)}
         [data-native-upgrade-center] header{display:flex;justify-content:space-between;gap:24px;align-items:flex-end}
