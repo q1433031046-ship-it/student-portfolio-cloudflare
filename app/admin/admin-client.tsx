@@ -26,10 +26,8 @@ type View = "overview" | "identity" | "categories" | "projects" | "contact" | "p
 type Operation = "idle" | "saving" | "previewing" | "publishing";
 type OperationError = { title: string; reason: string; solution: string };
 type SetupPayload = {
-  state: "unbound" | "email_pending" | "ready";
-  email: string;
-  boundAt: string | null;
-  onboardingEmailSentAt: string | null;
+  state: "initial_setup" | "ready";
+  identity: string | null;
 };
 type AdminPayload = {
   identity: { email: string; provider: string };
@@ -69,6 +67,17 @@ type AuditItem = {
   targetType: string;
   targetId: string;
 };
+type StoragePayload = {
+  usedBytes: number;
+  limitBytes: number;
+  remainingBytes: number;
+  percentage: number;
+  status: "normal" | "warning" | "full";
+  fileCount: number;
+  videoCount: number;
+  otherCount: number;
+  fullSizeVideosRemaining: number;
+};
 
 const views: Array<{ id: View; label: string; index: string }> = [
   { id: "overview", label: "概览", index: "01" },
@@ -80,15 +89,20 @@ const views: Array<{ id: View; label: string; index: string }> = [
   { id: "records", label: "记录", index: "07" },
 ];
 
-export function AdminClient({ initialEmail, signInHref, signOutHref }: { initialEmail: string | null; signInHref: string | null; signOutHref: string }) {
+export function AdminClient({ initialEmail, signInHref, signOutHref }: { initialEmail: string | null; signInHref: string | null; signOutHref: string | null }) {
   const [view, setView] = useState<View>("overview");
-  const [setup, setSetup] = useState<SetupPayload | null>(null);
   const [setupBusy, setSetupBusy] = useState(false);
   const [data, setData] = useState<AdminPayload | null>(null);
   const [portfolio, setPortfolio] = useState<PortfolioDocument | null>(null);
   const [access, setAccess] = useState<AccessPayload | null>(null);
+  const [storage, setStorage] = useState<StoragePayload | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
-  const [state, setState] = useState<"loading" | "setup" | "ready" | "unauthenticated" | "error">("loading");
+  const [state, setState] = useState<"loading" | "initial_setup" | "recovery_code" | "ready" | "unauthenticated" | "recover" | "error">("loading");
+  const [initialCode, setInitialCode] = useState("");
+  const [password, setPassword] = useState("");
+  const [passwordAgain, setPasswordAgain] = useState("");
+  const [recoveryInput, setRecoveryInput] = useState("");
+  const [issuedRecoveryCode, setIssuedRecoveryCode] = useState<string | null>(null);
   const [message, setMessage] = useState("正在读取管理数据…");
   const [dirty, setDirty] = useState(false);
   const [operation, setOperation] = useState<Operation>("idle");
@@ -109,21 +123,21 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
       const setupResponse = await fetch("/api/admin/setup", { credentials: "same-origin", cache: "no-store" });
       if (setupResponse.status === 401) {
         setState("unauthenticated");
-        setMessage("请先使用管理员邮箱完成验证码验证");
+        setMessage("请输入管理员密码");
         return;
       }
       const setupBody = await setupResponse.json() as SetupPayload & { error?: string };
       if (!setupResponse.ok) throw new Error(setupBody.error || "管理员绑定状态读取失败");
-      setSetup(setupBody);
-      if (setupBody.state !== "ready") {
-        setState("setup");
-        setMessage(setupBody.state === "unbound" ? "请确认绑定当前验证邮箱" : "请完成后台入口邮件发送");
+      if (setupBody.state === "initial_setup") {
+        setState("initial_setup");
+        setMessage("使用部署时填写的一次性口令初始化管理员");
         return;
       }
 
-      const [response, accessResponse] = await Promise.all([
+      const [response, accessResponse, storageResponse] = await Promise.all([
         fetch("/api/admin/portfolio", { credentials: "same-origin", cache: "no-store" }),
         fetch("/api/admin/access", { credentials: "same-origin", cache: "no-store" }),
+        fetch("/api/admin/storage", { credentials: "same-origin", cache: "no-store" }),
       ]);
       if (response.status === 401) {
         setState("unauthenticated");
@@ -132,11 +146,14 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
       }
       const body = await response.json() as AdminPayload & { error?: string };
       const accessBody = await accessResponse.json() as AccessPayload & { error?: string };
+      const storageBody = await storageResponse.json() as StoragePayload & { error?: string };
       if (!response.ok) throw new Error(body.error || "管理数据读取失败");
       if (!accessResponse.ok) throw new Error(accessBody.error || "二维码访问设置读取失败");
+      if (!storageResponse.ok) throw new Error(storageBody.error || "网站空间读取失败");
       setData(body);
       setPortfolio(body.portfolio);
       setAccess(accessBody);
+      setStorage(storageBody);
       setSelectedProjectId(body.portfolio.projects[0]?.id ?? null);
       setDirty(false);
       setState("ready");
@@ -149,22 +166,109 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
 
   async function completeSetup() {
     if (setupBusy) return;
+    if (password !== passwordAgain) {
+      notify("两次输入的密码不一致");
+      return;
+    }
     setSetupBusy(true);
-    setMessage(setup?.state === "email_pending" ? "正在重新发送后台入口邮件…" : "正在绑定邮箱并发送后台入口…");
+    setMessage("正在创建管理员和系统恢复码…");
     try {
-      const response = await fetch("/api/admin/setup", { method: "POST", credentials: "same-origin", cache: "no-store" });
-      const body = await response.json() as SetupPayload & { error?: string };
-      if (body.email) setSetup(body);
-      if (!response.ok) throw new Error(body.error || "管理员邮箱绑定暂时无法完成");
-      if (body.state !== "ready") throw new Error("后台入口邮件尚未发送成功");
-      setMessage("管理员邮箱已绑定，后台入口已发送至邮箱");
-      await load();
+      const response = await fetch("/api/admin/setup", {
+        method: "POST",
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ initialCode, password }),
+      });
+      const body = await response.json() as { state?: string; recoveryCode?: string; error?: string };
+      if (!response.ok || !body.recoveryCode) throw new Error(body.error || "管理员初始化暂时无法完成");
+      setIssuedRecoveryCode(body.recoveryCode);
+      setInitialCode("");
+      setPassword("");
+      setPasswordAgain("");
+      setState("recovery_code");
+      setMessage("请立即保存系统恢复码");
     } catch (error) {
-      setState("setup");
+      setState("initial_setup");
       notify(errorMessage(error));
     } finally {
       setSetupBusy(false);
     }
+  }
+
+  async function login() {
+    if (setupBusy) return;
+    setSetupBusy(true);
+    setMessage("正在验证管理员密码…");
+    try {
+      await api<{ ok: boolean }>("/api/admin/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
+      });
+      setPassword("");
+      await load();
+    } catch (error) {
+      setState("unauthenticated");
+      notify(errorMessage(error));
+    } finally {
+      setSetupBusy(false);
+    }
+  }
+
+  async function recoverPassword() {
+    if (setupBusy) return;
+    if (password !== passwordAgain) {
+      notify("两次输入的新密码不一致");
+      return;
+    }
+    setSetupBusy(true);
+    setMessage("正在校验恢复码并重置密码…");
+    try {
+      const result = await api<{ ok: boolean; recoveryCode: string }>("/api/admin/recover", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recoveryCode: recoveryInput, password }),
+      });
+      setIssuedRecoveryCode(result.recoveryCode);
+      setRecoveryInput("");
+      setPassword("");
+      setPasswordAgain("");
+      setState("recovery_code");
+      setMessage("旧恢复码已作废，请保存新的系统恢复码");
+    } catch (error) {
+      setState("recover");
+      notify(errorMessage(error));
+    } finally {
+      setSetupBusy(false);
+    }
+  }
+
+  async function logout() {
+    setSetupBusy(true);
+    try {
+      await api<{ ok: boolean }>("/api/admin/logout", { method: "POST" });
+      setState("unauthenticated");
+      setData(null);
+      setPortfolio(null);
+      setPassword("");
+      setMessage("已安全退出");
+    } finally {
+      setSetupBusy(false);
+    }
+  }
+
+  function saveRecoveryCode() {
+    if (!issuedRecoveryCode) return;
+    const blob = new Blob([
+      `网站管理员系统恢复码\n\n${issuedRecoveryCode}\n\n此恢复码只能使用一次。使用后系统会生成新恢复码。\n`,
+    ], { type: "text/plain;charset=utf-8" });
+    const href = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = href;
+    link.download = "网站管理员恢复码.txt";
+    link.click();
+    URL.revokeObjectURL(href);
   }
 
   useEffect(() => {
@@ -178,6 +282,11 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
       api<{ events: EventItem[] }>("/api/admin/events?limit=100").then((value) => setEvents(value.events)),
       api<{ logs: AuditItem[] }>("/api/admin/audit?limit=60").then((value) => setAudits(value.logs)),
     ]).catch((error) => notify(errorMessage(error)));
+  }, [view, state, notify]);
+
+  useEffect(() => {
+    if (view !== "overview" || state !== "ready") return;
+    void api<StoragePayload>("/api/admin/storage").then(setStorage).catch((error) => notify(errorMessage(error)));
   }, [view, state, notify]);
 
   useEffect(() => {
@@ -274,34 +383,58 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
 
   if (state === "loading") return <StatePanel label="LOADING" title="正在打开控制台" detail={message} />;
   if (state === "unauthenticated") {
+    if (!signInHref) return (
+      <StatePanel label="ADMIN ACCESS" title="输入管理员密码" detail="密码只用于这个网站，不需要邮箱，也不会发送验证码。">
+        <form className={styles.authForm} onSubmit={(event) => { event.preventDefault(); void login(); }}>
+          <label><span>管理员密码</span><input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+          <button className={styles.primaryAction} type="submit" disabled={setupBusy}>{setupBusy ? "正在验证…" : "进入后台 →"}</button>
+          <button className={styles.textAction} type="button" onClick={() => { setPassword(""); setState("recover"); }}>忘记密码，使用系统恢复码</button>
+        </form>
+      </StatePanel>
+    );
     return (
-      <StatePanel label="ADMIN ACCESS" title="使用邮箱验证码进入后台" detail="只有通过验证的管理员邮箱才能读取或修改网站内容。">
-        {signInHref
-          ? <a className={styles.primaryAction} href={signInHref} target="_top">验证邮箱并继续 →</a>
-          : <button className={styles.primaryAction} type="button" onClick={() => window.location.reload()}>重新验证 →</button>}
+      <StatePanel label="ADMIN ACCESS" title="登录后进入后台" detail="完成当前平台身份验证后，才可以读取或修改网站内容。">
+        <a className={styles.primaryAction} href={signInHref} target="_top">登录并继续 →</a>
       </StatePanel>
     );
   }
-  if (state === "setup" && setup) {
-    const pending = setup.state === "email_pending";
+  if (state === "initial_setup") {
     return (
       <StatePanel
         label="FIRST SETUP"
-        title={pending ? "发送后台入口" : "绑定管理员邮箱"}
-        detail={pending ? "邮箱已经锁定。入口邮件发送成功后，网站编辑、上传和发布功能才会开放。" : "以下邮箱来自刚刚完成的身份验证。确认后将永久绑定为这个网站的唯一管理员，之后不能在后台更改。"}
+        title="创建网站管理员"
+        detail="输入部署页面里填写的一次性口令，再设置以后登录后台使用的密码。一次性口令成功使用后不能再直接登录。"
       >
-        <div className={styles.setupEmailCard}>
-          <span>{pending ? "已绑定管理员" : "当前验证邮箱"}</span>
-          <strong>{setup.email}</strong>
-          <small>{pending ? "等待发送后台入口邮件" : "绑定后不可更改"}</small>
-        </div>
-        <button className={styles.primaryAction} type="button" disabled={setupBusy} onClick={() => void completeSetup()}>
-          {setupBusy ? "正在处理…" : pending ? "重新发送并完成绑定" : "绑定当前邮箱"}
-        </button>
+        <form className={styles.authForm} onSubmit={(event) => { event.preventDefault(); void completeSetup(); }}>
+          <label><span>一次性部署口令</span><input type="password" autoComplete="one-time-code" value={initialCode} onChange={(event) => setInitialCode(event.target.value)} /><small>部署时设置的至少16位英文字母和数字组合</small></label>
+          <label><span>管理员密码</span><input type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} /><small>10至128位，至少包含文字和数字</small></label>
+          <label><span>再次输入密码</span><input type="password" autoComplete="new-password" value={passwordAgain} onChange={(event) => setPasswordAgain(event.target.value)} /></label>
+          <button className={styles.primaryAction} type="submit" disabled={setupBusy}>{setupBusy ? "正在创建…" : "创建管理员 →"}</button>
+        </form>
       </StatePanel>
     );
   }
-  if (state === "error" || !portfolio || !data || !access) {
+  if (state === "recover") return (
+    <StatePanel label="PASSWORD RECOVERY" title="使用系统恢复码" detail="恢复成功后，旧恢复码会立即作废，系统会再生成一份新的恢复码。">
+      <form className={styles.authForm} onSubmit={(event) => { event.preventDefault(); void recoverPassword(); }}>
+        <label><span>系统恢复码</span><input type="text" autoCapitalize="characters" autoComplete="off" value={recoveryInput} onChange={(event) => setRecoveryInput(event.target.value)} /></label>
+        <label><span>新管理员密码</span><input type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+        <label><span>再次输入新密码</span><input type="password" autoComplete="new-password" value={passwordAgain} onChange={(event) => setPasswordAgain(event.target.value)} /></label>
+        <button className={styles.primaryAction} type="submit" disabled={setupBusy}>{setupBusy ? "正在重置…" : "重置密码 →"}</button>
+        <button className={styles.textAction} type="button" onClick={() => { setPassword(""); setPasswordAgain(""); setState("unauthenticated"); }}>返回密码登录</button>
+      </form>
+    </StatePanel>
+  );
+  if (state === "recovery_code" && issuedRecoveryCode) return (
+    <StatePanel label="RECOVERY CODE" title="立即保存恢复码" detail="系统以后不会再次显示这份恢复码。密码和恢复码同时丢失时，网站无法自行找回。">
+      <div className={styles.recoveryCard}><span>系统恢复码</span><strong>{issuedRecoveryCode}</strong><small>一次性使用 · 请离线保存</small></div>
+      <div className={styles.recoveryActions}>
+        <button className={styles.primaryAction} type="button" onClick={saveRecoveryCode}>下载恢复码</button>
+        <button className={styles.textAction} type="button" onClick={() => void load()}>我已妥善保存，进入后台 →</button>
+      </div>
+    </StatePanel>
+  );
+  if (state === "error" || !portfolio || !data || !access || !storage) {
     return <StatePanel label="SERVICE STATUS" title="管理台暂时没有连上" detail={message}><button className={styles.primaryAction} onClick={() => void load()}>重新连接</button></StatePanel>;
   }
 
@@ -311,7 +444,7 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
         <button type="button" className={styles.headerPreview} disabled={busy} onClick={() => void openQuickPreview()}>
           <span aria-hidden="true">↗</span><strong>快速预览</strong><small>保存草稿后打开</small>
         </button>
-        <div><span className={styles.systemState}><i /> ONLINE</span><a href="/" target="_blank" rel="noreferrer">打开已发布前台 ↗</a><a href={signOutHref} target="_top">安全退出</a></div>
+        <div><span className={styles.systemState}><i /> ONLINE</span><a href="/" target="_blank" rel="noreferrer">打开已发布前台 ↗</a>{signOutHref ? <a href={signOutHref} target="_top">安全退出</a> : <button className={styles.headerLogout} type="button" onClick={() => void logout()}>安全退出</button>}</div>
       </header>
       <div className={styles.workspace}>
       {portfolio.settings.customFont.src?.startsWith("/api/media/") && <style>{`@font-face{font-family:PortfolioCustom;src:url("${portfolio.settings.customFont.src}");font-display:swap;}`}</style>}
@@ -338,7 +471,7 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
       </aside>
 
       <section className={styles.content}>
-        {view === "overview" && <Overview data={data} portfolio={portfolio} access={access} setAccess={setAccess} change={change} onNavigate={setView} setMessage={notify} />}
+        {view === "overview" && <Overview data={data} portfolio={portfolio} access={access} storage={storage} setAccess={setAccess} change={change} onNavigate={setView} setMessage={notify} />}
         {view === "identity" && <IdentityEditor portfolio={portfolio} change={change} setMessage={notify} />}
         {view === "categories" && <CategoryEditor portfolio={portfolio} change={change} setMessage={notify} />}
         {view === "projects" && (
@@ -361,7 +494,7 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
   );
 }
 
-function Overview({ data, portfolio, access, setAccess, change, onNavigate, setMessage }: { data: AdminPayload; portfolio: PortfolioDocument; access: AccessPayload; setAccess: (next: AccessPayload) => void; change: (mutator: (document: PortfolioDocument) => PortfolioDocument) => void; onNavigate: (view: View) => void; setMessage: (message: string) => void }) {
+function Overview({ data, portfolio, access, storage, setAccess, change, onNavigate, setMessage }: { data: AdminPayload; portfolio: PortfolioDocument; access: AccessPayload; storage: StoragePayload; setAccess: (next: AccessPayload) => void; change: (mutator: (document: PortfolioDocument) => PortfolioDocument) => void; onNavigate: (view: View) => void; setMessage: (message: string) => void }) {
   const mediaCount = portfolio.hero.slides.length
     + (portfolio.settings.customFont.key ? 1 : 0)
     + (portfolio.settings.contact.image.key ? 1 : 0)
@@ -394,6 +527,20 @@ function Overview({ data, portfolio, access, setAccess, change, onNavigate, setM
           <p>姓名、求职方向与一句定位决定访客看到的第一印象。</p>
           <button type="button" onClick={() => onNavigate("identity")}>编辑首图 →</button>
         </div>
+      </section>
+      <section className={styles.storagePanel} data-status={storage.status}>
+        <header>
+          <div><p className={styles.sectionLabel}>WEBSITE STORAGE</p><h2>网站空间</h2></div>
+          <strong>{formatStorage(storage.remainingBytes)} <small>可用</small></strong>
+        </header>
+        <div className={styles.storageTrack} aria-label={`网站空间已使用${storage.percentage}%`}><i style={{ width: `${storage.percentage}%` }} /></div>
+        <div className={styles.storageStats}>
+          <span><b>{formatStorage(storage.usedBytes)}</b><small>已经使用</small></span>
+          <span><b>{formatStorage(storage.limitBytes)}</b><small>网站总空间</small></span>
+          <span><b>{storage.fileCount}</b><small>媒体文件</small></span>
+          <span><b>约 {storage.fullSizeVideosRemaining} 个</b><small>还能放50 MB视频</small></span>
+        </div>
+        <p>{storage.status === "full" ? "网站空间已经用满，请删除或替换不再使用的媒体。" : storage.status === "warning" ? "网站空间即将用满，建议优先压缩视频和清理旧媒体。" : "图片和视频统一计算空间；视频最大50 MB，达到800 MB后停止继续上传。"}</p>
       </section>
     </>
   );
@@ -1007,17 +1154,55 @@ function MediaUpload({ projectId, slot, title, asset, cropAspect = 16 / 9, freeC
       const durationSeconds = asset.kind === "video" ? await readVideoDuration(uploadFile) : undefined;
       const sourceAspectRatio = asset.kind === "image" ? await readImageAspectRatio(uploadFile) : undefined;
       if (asset.kind === "video" && durationSeconds === undefined) {
-        throw new Error("无法读取视频时长，请改用可播放的 MP4、WebM 或 MOV 文件");
+        throw new Error("无法读取视频时长，请改用 H.264 / AAC 编码的 MP4 文件");
       }
-      const limit = asset.kind === "video" ? 90 * 1024 * 1024 : asset.kind === "font" ? 10 * 1024 * 1024 : 8 * 1024 * 1024;
+      const limit = asset.kind === "video" ? 50 * 1024 * 1024 : asset.kind === "font" ? 10 * 1024 * 1024 : 8 * 1024 * 1024;
       if (uploadFile.size > limit) {
-        throw new Error(asset.kind === "video" ? "视频不能超过 90 MiB" : asset.kind === "font" ? "字体不能超过 10 MiB" : "优化后的图片不能超过 8 MiB");
+        throw new Error(asset.kind === "video" ? "视频不能超过 50 MB" : asset.kind === "font" ? "字体不能超过 10 MiB" : "优化后的图片不能超过 8 MiB");
       }
-      const result = await api<{ asset: MediaAsset }>(`/api/admin/media/${projectId}/${slot}?assetId=${encodeURIComponent(asset.id)}`, {
-        method: "PUT",
-        headers: { "Content-Type": uploadFile.type, "X-File-Name": encodeURIComponent(uploadFile.name) },
-        body: uploadFile,
+      const uploadPath = `/api/admin/media/${projectId}/${slot}`;
+      const initialized = await api<{
+        mode: "single" | "chunked";
+        assetId: string;
+        uploadId?: string;
+        chunkSize?: number;
+        chunkCount?: number;
+      }>(uploadPath, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          assetId: asset.id,
+          filename: uploadFile.name,
+          contentType: uploadFile.type,
+          byteSize: uploadFile.size,
+          replacingKey: asset.key ?? null,
+        }),
       });
+      let result: { asset: MediaAsset };
+      if (initialized.mode === "single") {
+        const query = new URLSearchParams({ assetId: initialized.assetId });
+        if (asset.key) query.set("replacingKey", asset.key);
+        result = await api<{ asset: MediaAsset }>(`${uploadPath}?${query.toString()}`, {
+          method: "PUT",
+          headers: { "Content-Type": uploadFile.type, "X-File-Name": encodeURIComponent(uploadFile.name) },
+          body: uploadFile,
+        });
+      } else {
+        if (!initialized.uploadId || !initialized.chunkSize || !initialized.chunkCount) {
+          throw new Error("服务器没有返回完整的分片上传信息");
+        }
+        for (let index = 0; index < initialized.chunkCount; index += 1) {
+          const start = index * initialized.chunkSize;
+          const chunk = uploadFile.slice(start, Math.min(uploadFile.size, start + initialized.chunkSize));
+          await uploadChunkWithRetry(`${uploadPath}?uploadId=${encodeURIComponent(initialized.uploadId)}&chunk=${index}`, chunk);
+          setMessage(`正在上传 ${file.name} · ${Math.round(((index + 1) / initialized.chunkCount) * 100)}%`);
+        }
+        result = await api<{ asset: MediaAsset }>(`${uploadPath}?uploadId=${encodeURIComponent(initialized.uploadId)}&complete=1`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        });
+      }
       if (asset.kind === "image") setPreviewSrc(URL.createObjectURL(uploadFile));
       const nextCrop = sourceAspectRatio
         ? freeCrop ? fullMediaCrop() : fitCropToAspect(sourceAspectRatio, cropAspect)
@@ -1043,12 +1228,12 @@ function MediaUpload({ projectId, slot, title, asset, cropAspect = 16 / 9, freeC
     if (file) void upload(file);
   }
   const accept = asset.kind === "video"
-    ? "video/mp4,video/webm,video/quicktime"
+    ? "video/mp4"
     : asset.kind === "font"
       ? ".woff,.woff2,.ttf,.otf,font/woff,font/woff2,font/ttf,font/otf"
       : "image/jpeg,image/png,image/webp,image/avif";
   const formatHint = asset.kind === "video"
-    ? "MP4 / WebM / MOV · 90 MiB"
+    ? "MP4 · H.264 / AAC · 50 MB"
     : asset.kind === "font"
       ? "WOFF / WOFF2 / TTF / OTF · 10 MiB"
       : "JPG / PNG / WebP / AVIF · 自动优化";
@@ -1176,11 +1361,12 @@ function blockLabel(type: ProjectBlock["type"]) { return ({ text: "文字", "med
 function eventLabel(type: string) { return ({ page_view: "访问页面", project_open: "展开作品", play_request: "申请播放", play_error: "播放失败" } as Record<string, string>)[type] ?? type; }
 function auditLabel(action: string) { return ({ "portfolio.draft.saved": "保存草稿", "portfolio.published": "发布作品集", "media.uploaded": "上传媒体" } as Record<string, string>)[action] ?? action; }
 function formatDate(value: string) { return new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(value)); }
+function formatStorage(value: number) { return value >= 1024 * 1024 * 1024 ? `${(value / (1024 * 1024 * 1024)).toFixed(1)} GB` : `${Math.max(0, value / (1024 * 1024)).toFixed(value < 10 * 1024 * 1024 ? 1 : 0)} MB`; }
 function errorMessage(error: unknown) { return error instanceof Error ? error.message : "操作失败"; }
 function isFailureMessage(message: string) { return /失败|不能|无法|无效|超过|不存在|请先|至少需要|暂时|中断|冲突|权限/u.test(message); }
 function failureGuidance(message: string): OperationError {
-  if (/超过|过大|90 MiB|10 MiB|8 MiB/u.test(message)) return { title: "文件没有上传", reason: message, solution: "压缩文件或重新选择更小的文件，再拖入上传框。" };
-  if (/登录|身份|权限/u.test(message)) return { title: "当前操作没有完成", reason: message, solution: "重新登录后台，确认使用已授权邮箱后再试。" };
+  if (/超过|过大|50 MB|10 MiB|8 MiB|空间不足/u.test(message)) return { title: "文件没有上传", reason: message, solution: "压缩文件、删除不再使用的媒体，或重新选择更小的文件后再上传。" };
+  if (/登录|身份|权限/u.test(message)) return { title: "当前操作没有完成", reason: message, solution: "重新输入管理员密码后再试。" };
   if (/草稿已|冲突|修订/u.test(message)) return { title: "版本已经变化", reason: message, solution: "刷新后台读取最新草稿，再重新应用并保存本次修改。" };
   if (/格式|JPG|MP4|WOFF|字体|视频|图片/u.test(message)) return { title: "文件格式不符合要求", reason: message, solution: "按上传框标注的格式重新导出文件，然后再次拖入。" };
   return { title: "操作没有完成", reason: message, solution: "检查网络后重试；如果仍失败，返回对应编辑项并重新提交。" };
@@ -1211,5 +1397,22 @@ async function prepareUploadFile(file: File, kind: MediaAsset["kind"]) {
   } finally {
     bitmap.close();
   }
+}
+async function uploadChunkWithRetry(path: string, chunk: Blob) {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await api<{ ok: boolean }>(path, {
+        method: "PUT",
+        headers: { "Content-Type": "application/octet-stream" },
+        body: chunk,
+      });
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt < 2) await new Promise((resolve) => window.setTimeout(resolve, 1200 * (attempt + 1)));
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("上传分片失败");
 }
 async function api<T>(input: string, init?: RequestInit): Promise<T> { const response = await fetch(input, { ...init, credentials: "same-origin", cache: "no-store" }); const body = await response.json().catch(() => ({})) as T & { error?: string; details?: string[] }; if (!response.ok) throw new Error(body.details?.[0] || body.error || `请求失败（${response.status}）`); return body; }

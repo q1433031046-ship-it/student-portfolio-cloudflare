@@ -12,7 +12,7 @@ export default async function AdminPage() {
     <AdminClient
       initialEmail={user?.email ?? null}
       signInHref={sitesPlatform ? chatGPTSignInPath("/admin") : null}
-      signOutHref={sitesPlatform ? chatGPTSignOutPath("/admin") : "/cdn-cgi/access/logout"}
+      signOutHref={sitesPlatform ? chatGPTSignOutPath("/admin") : null}
     />
   </main>;
 }

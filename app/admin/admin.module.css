@@ -37,6 +37,7 @@
 .headerPreview:disabled { cursor: wait; opacity: .62; }
 .adminHeader > div { display: flex; align-items: center; gap: 22px; }
 .adminHeader a { color: inherit; font-size: 12px; text-decoration: none; }
+.headerLogout { padding: 0; border: 0; color: inherit; background: transparent; cursor: pointer; font-size: 12px; }
 .systemState { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 10px; letter-spacing: .12em; }
 .systemState i { width: 7px; height: 7px; border-radius: 50%; background: #3dbf71; box-shadow: 0 0 0 4px #3dbf7118; }
 
@@ -76,6 +77,22 @@
 .overviewSplit h2 { margin: 0; font-size: 27px; letter-spacing: -.045em; }
 .overviewSplit p:not(.sectionLabel) { max-width: 460px; color: var(--muted); line-height: 1.7; }
 .overviewSplit button { margin-top: auto; padding: 0; border: 0; background: transparent; font-weight: 700; cursor: pointer; }
+.storagePanel { margin-top: 22px; padding: clamp(24px, 4vw, 42px); border: 1px solid var(--line); background: #fff; }
+.storagePanel header { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; }
+.storagePanel h2 { margin: 0; font-size: clamp(30px, 4vw, 48px); letter-spacing: -.055em; }
+.storagePanel header > strong { font-size: clamp(30px, 4vw, 52px); letter-spacing: -.06em; white-space: nowrap; }
+.storagePanel header > strong small { color: var(--muted); font-size: 11px; font-weight: 500; letter-spacing: 0; }
+.storageTrack { height: 12px; margin: 32px 0 24px; overflow: hidden; border-radius: 999px; background: #e8e8e4; }
+.storageTrack i { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width 320ms ease; }
+.storagePanel[data-status="warning"] .storageTrack i { background: #e68a2e; }
+.storagePanel[data-status="full"] .storageTrack i { background: #c94f47; }
+.storageStats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.storageStats > span { min-height: 92px; padding: 20px 18px; display: grid; align-content: center; gap: 6px; border-right: 1px solid var(--line); }
+.storageStats > span:first-child { padding-left: 0; }
+.storageStats > span:last-child { border-right: 0; }
+.storageStats b { font-size: 20px; letter-spacing: -.035em; }
+.storageStats small { color: var(--muted); font-size: 9px; }
+.storagePanel > p { margin: 20px 0 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
 
 .accessManager { margin: 22px 0 30px; padding: clamp(22px, 3vw, 36px); border: 1px solid var(--line); border-radius: 14px; background: #fff; box-shadow: 0 14px 50px #10111408; }
 .accessHeading { display: flex; align-items: flex-start; justify-content: space-between; gap: 30px; }
@@ -343,10 +360,17 @@
 .statePanel h1 { max-width: 780px; margin: 18px 0; font-size: clamp(45px, 8vw, 105px); line-height: .9; letter-spacing: -.075em; }
 .statePanel > span { max-width: 600px; margin-bottom: 28px; color: var(--muted); line-height: 1.7; }
 .statePanel button { font: inherit; }
-.setupEmailCard { width: min(620px, 100%); margin: 0 0 20px; padding: 22px 24px; display: grid; gap: 8px; border: 1px solid var(--line); border-radius: 12px; background: #fff; box-shadow: 0 16px 50px #1011140a; }
-.setupEmailCard span { color: var(--accent); font-size: 9px; font-weight: 800; letter-spacing: .15em; }
-.setupEmailCard strong { overflow-wrap: anywhere; font-size: clamp(22px, 4vw, 38px); letter-spacing: -.045em; }
-.setupEmailCard small { color: var(--muted); font-size: 10px; }
+.authForm { width: min(620px, 100%); display: grid; gap: 14px; }
+.authForm label { display: grid; gap: 7px; }
+.authForm label > span { color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: .06em; }
+.authForm label > small { color: var(--muted); font-size: 9px; }
+.authForm input { width: 100%; min-height: 52px; padding: 0 15px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+.textAction { width: fit-content; padding: 8px 0; border: 0; color: var(--accent); background: transparent; cursor: pointer; font-weight: 700; }
+.recoveryCard { width: min(760px, 100%); margin: 0 0 20px; padding: 24px; display: grid; gap: 10px; border: 1px solid #abb9ff; border-radius: 12px; background: #f4f6ff; box-shadow: 0 16px 50px #1011140a; }
+.recoveryCard span { color: var(--accent); font-size: 9px; font-weight: 800; letter-spacing: .15em; }
+.recoveryCard strong { overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: clamp(19px, 3.3vw, 34px); letter-spacing: .03em; }
+.recoveryCard small { color: var(--muted); font-size: 10px; }
+.recoveryActions { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
 .emptyState { padding: 60px 20px; color: var(--muted); border: 1px dashed var(--line); text-align: center; }
 
 .operationDialog { position: fixed; z-index: 100; inset: 0; display: grid; place-items: center; padding: 18px; background: #0b0d12b8; backdrop-filter: blur(14px); }
@@ -410,6 +434,10 @@
   .metric { min-height: 125px; }
   .metric:nth-child(odd) { border-right: 1px solid var(--line); }
   .overviewSplit > div { min-height: 220px; }
+  .storagePanel header { align-items: flex-start; flex-direction: column; }
+  .storageStats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .storageStats > span:nth-child(2) { border-right: 0; }
+  .storageStats > span:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
   .accessManager { padding: 18px; border-radius: 10px; }
   .accessHeading { gap: 18px; }
   .policySwitch { width: 100%; justify-content: flex-start; }

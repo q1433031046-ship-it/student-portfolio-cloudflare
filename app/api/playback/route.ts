@@ -22,7 +22,7 @@ export async function POST(request: Request) {
     if (!mediaKey) return Response.json({ error: project ? "这个版本尚未上传" : "作品不存在" }, { status: 404 });
 
     const requestContext = await deriveRequestContext(request);
-    if (requestContext.networkHash && await safeRecentPlaybackCount(requestContext.networkHash) >= 20) {
+    if (requestContext.networkHash && await safeRecentPlaybackCount(requestContext.networkHash) >= 60) {
       await safeRecordEvent({
         request, eventType: "play_request", path: new URL(request.url).pathname,
         projectId: body.projectId, mediaVersion: body.version, action: "block", context: requestContext,
@@ -32,7 +32,7 @@ export async function POST(request: Request) {
       return Response.json({ error: "播放请求过于频繁，请稍后再试" }, { status: 429, headers: { "Retry-After": "300" } });
     }
 
-    const expiresAt = Math.floor(Date.now() / 1000) + 900;
+    const expiresAt = Math.floor(Date.now() / 1000) + 3600;
     const signature = await signPlaybackGrant(mediaKey, expiresAt, getMediaSigningKey());
     await safeRecordEvent({
       request, eventType: "play_request", path: new URL(request.url).pathname,

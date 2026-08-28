@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "project": {
     "name": "student-portfolio",
     "target": "cloudflare-workers",
@@ -13,48 +13,53 @@
     "entrypoint": "cloudflare/worker-entry.js"
   },
   "resources": [
-    { "binding": "DB", "type": "d1", "purpose": "portfolio, ownership, access passes and events" },
-    { "binding": "BUCKET", "type": "r2", "purpose": "private images, fonts and video" },
-    { "binding": "EMAIL", "type": "send_email", "purpose": "permanent admin-link delivery" }
+    { "binding": "DB", "type": "d1", "purpose": "portfolio, password verifier, recovery verifier, sessions, access passes and events" },
+    { "binding": "MEDIA_KV", "type": "kv_namespace", "purpose": "4 MiB chunks for private images, fonts and MP4 video" }
   ],
   "authentication": {
-    "provider": "cloudflare-access",
-    "loginMethod": "one-time-pin",
-    "sessionMinutes": 15,
+    "provider": "local-password",
+    "loginMethod": "password",
+    "initializationMethod": "one-time-deployment-code",
+    "recoveryMethod": "single-use-rotating-system-code",
+    "sessionHours": 12,
     "protectedPaths": ["/admin*", "/api/admin*", "/preview*"],
-    "administratorAllowlist": "owner-confirmed-email",
-    "ownerBinding": "first-verified-email-immutable"
+    "failureLimit": 5,
+    "lockMinutes": 15
   },
-  "requiredSecrets": [
-    "CF_ACCESS_TEAM_DOMAIN",
-    "CF_ACCESS_AUD",
-    "ADMIN_EMAILS",
-    "ADMIN_EMAIL_FROM",
-    "MEDIA_SIGNING_KEY",
-    "ACCESS_SIGNING_KEY",
-    "ANALYTICS_HASH_KEY"
-  ],
+  "media": {
+    "videoType": "video/mp4",
+    "videoMaxBytes": 52428800,
+    "chunkBytes": 4194304,
+    "rangePlayback": true,
+    "storageLimitBytes": 838860800,
+    "storageWarningBytes": 734003200
+  },
+  "requiredSecrets": ["INITIAL_ADMIN_CODE"],
   "commands": {
-    "verify": ["npm ci", "npm test", "npm run lint", "npx tsc --noEmit"],
+    "verify": ["npm ci", "npm test", "npm run lint", "./node_modules/.bin/tsc --noEmit"],
     "cloudBuildDeploy": "npm run deploy",
-    "firstDeploy": "npm run cloudflare:setup",
+    "firstDirectDeploy": "npm run cloudflare:setup",
     "update": "npm run cloudflare:deploy"
   },
   "humanActions": [
     "approve official Cloudflare authorization",
-    "confirm the administrator email",
-    "verify or select a Cloudflare Email Service sender",
-    "read received one-time codes and confirm mail delivery"
+    "enter the one-time deployment code on a secret input surface",
+    "choose the administrator password inside the website",
+    "download and store the generated system recovery code"
   ],
   "liveTests": [
-    "unauthenticated admin request triggers an email OTP challenge",
-    "first verified email binds as the immutable owner",
-    "permanent admin-link email arrives and points to same-origin /admin",
-    "secure logout requires a new OTP on re-entry",
-    "a different email cannot open admin pages or admin APIs",
+    "first admin visit requires the configured one-time deployment code",
+    "successful initialization creates a password session and displays one recovery code",
+    "the deployment code cannot be used as a normal login after initialization",
+    "five failed password attempts activate a fifteen-minute lock",
+    "password recovery revokes prior sessions and rotates the recovery code",
     "draft save and preview do not change the public portfolio",
+    "the overview footer reports used and remaining website space",
     "image upload renders successfully",
-    "video upload supports range playback and seeking",
+    "a 50 MB MP4 uploads in 4 MiB chunks",
+    "video range requests support playback and seeking",
+    "ten complete video viewers receive the full media stream",
+    "the 800 MiB application limit rejects additional uploads",
     "publishing changes the public portfolio",
     "QR public, unrestricted, restricted, exhausted and expired states work"
   ]

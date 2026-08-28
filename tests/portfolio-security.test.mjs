@@ -10,19 +10,21 @@ const { buildEventDedupeKey, hmacIdentifier, sanitizeReferrer } = await import("
 const { authorizeAdmin } = await import("../app/api/_lib/auth.ts");
 const { readJsonBody } = await import("../app/api/_lib/request-body.ts");
 const { uploadPolicy } = await import("../app/api/admin/media/[projectId]/[slot]/route.ts");
+const mediaRoute = await import("../app/api/media/[...path]/route.ts");
+const { createDefaultPortfolioDocument } = await import("../app/portfolio/default-document.ts");
 const { env } = await import("cloudflare:workers");
 
 test("accepts a valid short-lived playback grant", async () => {
   const key = "portfolio/project-one/final-file.mp4";
   const expiresAt = Math.floor(Date.now() / 1000) + 300;
-  const secret = "test-only-secret-with-at-least-thirty-two-characters";
+  const secret = randomTestSecret();
   const signature = await signPlaybackGrant(key, expiresAt, secret);
   assert.equal(await verifyPlaybackGrant(key, expiresAt, signature, secret), true);
 });
 
 test("rejects expired or key-swapped playback grants", async () => {
   const key = "portfolio/project-one/final-file.mp4";
-  const secret = "test-only-secret-with-at-least-thirty-two-characters";
+  const secret = randomTestSecret();
   const activeExpiry = Math.floor(Date.now() / 1000) + 300;
   const signature = await signPlaybackGrant(key, activeExpiry, secret);
   assert.equal(await verifyPlaybackGrant("portfolio/project-two/final-file.mp4", activeExpiry, signature, secret), false);
@@ -33,8 +35,8 @@ test("rejects expired or key-swapped playback grants", async () => {
 });
 
 test("network identifiers are keyed and referrers lose query strings", async () => {
-  const first = await hmacIdentifier("203.0.113.9", "first-secret-first-secret-first-secret");
-  const second = await hmacIdentifier("203.0.113.9", "second-secret-second-secret-second");
+  const first = await hmacIdentifier("203.0.113.9", randomTestSecret());
+  const second = await hmacIdentifier("203.0.113.9", randomTestSecret());
   assert.notEqual(first, "203.0.113.9");
   assert.notEqual(first, second);
   assert.equal(sanitizeReferrer("https://example.com/path?token=secret#section"), "https://example.com/path");
@@ -48,7 +50,7 @@ test("Sites identity headers are trusted only on the Sites platform", async () =
   delete env.AUTH_PLATFORM;
   assert.equal(await authorizeAdmin(request), null);
 
-  env.AUTH_PLATFORM = "cloudflare";
+  env.AUTH_PLATFORM = "password";
   assert.equal(await authorizeAdmin(request), null);
 
   env.AUTH_PLATFORM = "sites";
@@ -60,7 +62,7 @@ test("Sites identity headers are trusted only on the Sites platform", async () =
 });
 
 test("event aggregation keys are stable inside a time bucket", async () => {
-  const secret = "analytics-secret-with-at-least-thirty-two-characters";
+  const secret = randomTestSecret();
   const first = await buildEventDedupeKey({
     sessionId: "e0c64b6f-c721-46dc-943c-2e987305856a",
     eventType: "project_open",
@@ -99,7 +101,7 @@ test("media upload policy accepts bounded web fonts without weakening image and 
   assert.deepEqual(uploadPolicy("font", "font/ttf"), { kind: "font", maxBytes: 10 * 1024 * 1024 });
   assert.equal(uploadPolicy("font", "video/mp4"), null);
   assert.equal(uploadPolicy("final", "font/woff2"), null);
-  assert.deepEqual(uploadPolicy("final", "video/mp4"), { kind: "video", maxBytes: 90 * 1024 * 1024 });
+  assert.deepEqual(uploadPolicy("final", "video/mp4"), { kind: "video", maxBytes: 50 * 1024 * 1024 });
   assert.deepEqual(uploadPolicy("cover", "image/webp"), { kind: "image", maxBytes: 8 * 1024 * 1024 });
   assert.deepEqual(uploadPolicy("contact", "image/png"), { kind: "image", maxBytes: 8 * 1024 * 1024 });
 });
@@ -134,3 +136,91 @@ test("bounds streamed JSON bodies even when content length is missing", async ()
     (error) => error?.status === 413,
   );
 });
+
+test("streams chunked MP4 ranges and serves ten complete viewers", async () => {
+  const objectKey = "portfolio/project-one/final-test.mp4";
+  const document = createDefaultPortfolioDocument();
+  document.projects[0].finalVideo = {
+    ...document.projects[0].finalVideo,
+    key: objectKey,
+    src: undefined,
+  };
+  const serialized = JSON.stringify(document);
+  const chunks = new Map([
+    [`${objectKey}::chunk:0000`, new TextEncoder().encode("ABCD").buffer],
+    [`${objectKey}::chunk:0001`, new TextEncoder().encode("EFGH").buffer],
+    [`${objectKey}::chunk:0002`, new TextEncoder().encode("IJ").buffer],
+  ]);
+  let kvReads = 0;
+  env.AUTH_PLATFORM = "password";
+  env.INITIAL_ADMIN_CODE = randomTestSecret();
+  env.MEDIA_KV = {
+    async get(key) {
+      kvReads += 1;
+      return chunks.get(key) ?? null;
+    },
+  };
+  env.DB = mediaD1({
+    portfolio: {
+      id: "default",
+      owner_email: "site-owner",
+      revision: 1,
+      draft_json: serialized,
+      published_json: serialized,
+      updated_at: "2026-08-28T00:00:00.000Z",
+      published_at: "2026-08-28T00:00:00.000Z",
+    },
+    media: {
+      id: "media-test",
+      object_key: objectKey,
+      content_type: "video/mp4",
+      byte_size: 10,
+      storage_backend: "kv",
+      chunk_size: 4,
+      chunk_count: 3,
+    },
+  });
+  const expiresAt = Math.floor(Date.now() / 1000) + 300;
+  const signature = await signPlaybackGrant(objectKey, expiresAt, env.INITIAL_ADMIN_CODE);
+  const url = `https://portfolio.example/api/media/${objectKey}?exp=${expiresAt}&sig=${signature}`;
+
+  const range = await mediaRoute.GET(new Request(url, { headers: { Range: "bytes=2-7" } }), {
+    params: Promise.resolve({ path: objectKey.split("/") }),
+  });
+  assert.equal(range.status, 206);
+  assert.equal(range.headers.get("content-range"), "bytes 2-3/10");
+  assert.equal(await range.text(), "CD");
+
+  const responses = await Promise.all(Array.from({ length: 10 }, () => mediaRoute.GET(new Request(url), {
+    params: Promise.resolve({ path: objectKey.split("/") }),
+  })));
+  const bodies = await Promise.all(responses.map((response) => response.text()));
+  assert.equal(responses.every((response) => response.status === 200), true);
+  assert.deepEqual(new Set(bodies), new Set(["ABCDEFGHIJ"]));
+  assert.equal(kvReads, 31);
+
+  delete env.DB;
+  delete env.MEDIA_KV;
+  delete env.AUTH_PLATFORM;
+  delete env.INITIAL_ADMIN_CODE;
+});
+
+function mediaD1(rows) {
+  return {
+    prepare(sql) {
+      return {
+        bind() { return this; },
+        async first() {
+          if (sql.includes("portfolio_access_settings")) return null;
+          if (sql.includes("FROM portfolio_documents")) return rows.portfolio;
+          if (sql.includes("FROM portfolio_media")) return rows.media;
+          throw new Error(`Unexpected media query: ${sql}`);
+        },
+      };
+    },
+  };
+}
+
+function randomTestSecret() {
+  return `T${crypto.randomUUID().replaceAll("-", "")}9`;
+}

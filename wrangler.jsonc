@@ -5,7 +5,7 @@
   "compatibility_date": "2026-08-28",
   "compatibility_flags": ["nodejs_compat"],
   "vars": {
-    "AUTH_PLATFORM": "cloudflare"
+    "AUTH_PLATFORM": "password"
   },
   "no_bundle": true,
   "rules": [
@@ -25,15 +25,9 @@
       "migrations_dir": "./drizzle"
     }
   ],
-  "r2_buckets": [
+  "kv_namespaces": [
     {
-      "binding": "BUCKET",
-      "bucket_name": "student-portfolio-media"
-    }
-  ],
-  "send_email": [
-    {
-      "name": "EMAIL"
+      "binding": "MEDIA_KV"
     }
   ],
   "observability": {

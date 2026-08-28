@@ -1,4 +1,4 @@
-import { env } from "cloudflare:workers";
+import { getPurposeSecret } from "./app-secret";
 import { authorizeAdmin, canManagePortfolio } from "./auth";
 import { getPortfolioDb } from "./portfolio-store";
 import {
@@ -14,7 +14,6 @@ import {
 const SETTINGS_ID = "default";
 const MAX_SESSION_SECONDS = 30 * 24 * 60 * 60;
 
-type AccessBindings = { ACCESS_SIGNING_KEY?: string; MEDIA_SIGNING_KEY?: string };
 type AccessPolicyRow = { restriction_enabled: number; updated_at: string | null; updated_by: string | null };
 type AccessPassRow = {
   id: string;
@@ -258,10 +257,7 @@ function unavailableReason(pass: AccessPass | null) {
 }
 
 function getAccessSigningKey() {
-  const bindings = env as unknown as AccessBindings;
-  const key = bindings.ACCESS_SIGNING_KEY?.trim() || bindings.MEDIA_SIGNING_KEY?.trim();
-  if (!key || key.length < 32) throw new Error("二维码访问签名尚未配置");
-  return key;
+  return getPurposeSecret("access");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

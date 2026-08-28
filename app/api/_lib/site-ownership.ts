@@ -9,7 +9,7 @@ type OwnershipRow = {
   id: string;
   owner_email: string;
   auth_subject: string | null;
-  auth_provider: "sites" | "cloudflare-access";
+  auth_provider: "sites" | "cloudflare-access" | "password";
   bound_at: string;
   onboarding_email_sent_at: string | null;
   onboarding_email_id: string | null;
@@ -19,7 +19,7 @@ export type SiteOwnership = {
   id: string;
   ownerEmail: string;
   authSubject: string | null;
-  authProvider: "sites" | "cloudflare-access";
+  authProvider: "sites" | "cloudflare-access" | "password";
   boundAt: string;
   onboardingEmailSentAt: string | null;
   onboardingEmailId: string | null;
@@ -49,11 +49,11 @@ export async function getSiteOwnership(): Promise<SiteOwnership | null> {
 }
 
 export async function bindSiteOwner(identity: AdminIdentity) {
-  if (identity.kind === "token") throw new Error("服务令牌不能绑定管理员邮箱");
+  if (identity.kind === "token") throw new Error("服务令牌不能绑定管理员");
   const email = identity.user.trim().toLowerCase();
   const existing = await getSiteOwnership();
   if (existing) {
-    if (existing.ownerEmail !== email) throw new Error("网站已经绑定其他管理员邮箱");
+    if (existing.ownerEmail !== email) throw new Error("网站已经绑定其他管理员");
     return existing;
   }
 
@@ -69,8 +69,8 @@ export async function bindSiteOwner(identity: AdminIdentity) {
   ]);
 
   const bound = await readOwnership();
-  if (!bound) throw new Error("管理员邮箱绑定失败");
-  if (bound.owner_email !== email) throw new Error("网站已经绑定其他管理员邮箱");
+  if (!bound) throw new Error("管理员账号绑定失败");
+  if (bound.owner_email !== email) throw new Error("网站已经绑定其他管理员");
   const record = await getPortfolioRecord();
   if (!record || record.ownerEmail.toLowerCase() !== bound.owner_email) {
     throw new Error("管理员绑定数据不一致");
@@ -78,33 +78,16 @@ export async function bindSiteOwner(identity: AdminIdentity) {
   return mapOwnership(bound);
 }
 
-export async function markOnboardingEmailSent(ownerEmail: string, messageId: string) {
-  const now = new Date().toISOString();
-  const result = await getPortfolioDb()
-    .prepare("UPDATE site_ownership SET onboarding_email_sent_at = ?, onboarding_email_id = ? WHERE id = ? AND owner_email = ? AND onboarding_email_sent_at IS NULL")
-    .bind(now, messageId.slice(0, 240), OWNER_ID, ownerEmail.trim().toLowerCase())
-    .run();
-  if (Number(result.meta.changes ?? 0) !== 1) {
-    const current = await getSiteOwnership();
-    if (!current?.ready || current.ownerEmail !== ownerEmail.trim().toLowerCase()) {
-      throw new Error("后台入口邮件状态无法保存");
-    }
-  }
-  const updated = await getSiteOwnership();
-  if (!updated) throw new Error("管理员绑定状态无法读取");
-  return updated;
-}
-
 export async function requirePortfolioManager(request: Request): Promise<PortfolioManager | Response> {
   const identity = await authorizeAdmin(request);
   if (!identity) return setupError("请先完成管理员登录", 401);
 
   const ownership = await getSiteOwnership();
-  if (!ownership) return setupError("请先绑定管理员邮箱", 428);
+  if (!ownership) return setupError("请先初始化管理员", 428);
   if (!canManagePortfolio(identity, ownership.ownerEmail)) {
-    return setupError("当前邮箱没有这个网站的管理权限", 403);
+    return setupError("当前账号没有这个网站的管理权限", 403);
   }
-  if (!ownership.ready) return setupError("请先完成后台入口邮件发送", 428);
+  if (!ownership.ready) return setupError("请先完成管理员初始化", 428);
 
   const record = await getPortfolioRecord();
   if (!record || record.ownerEmail.toLowerCase() !== ownership.ownerEmail) {
@@ -136,6 +119,6 @@ function mapOwnership(row: OwnershipRow): SiteOwnership {
     boundAt: row.bound_at,
     onboardingEmailSentAt: row.onboarding_email_sent_at,
     onboardingEmailId: row.onboarding_email_id,
-    ready: Boolean(row.onboarding_email_sent_at),
+    ready: row.auth_provider !== "cloudflare-access" || Boolean(row.onboarding_email_sent_at),
   };
 }

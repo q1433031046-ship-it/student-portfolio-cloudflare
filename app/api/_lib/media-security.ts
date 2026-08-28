@@ -1,11 +1,7 @@
-import { env } from "cloudflare:workers";
-
-type MediaBindings = { MEDIA_SIGNING_KEY?: string };
+import { getPurposeSecret } from "./app-secret";
 
 export function getMediaSigningKey() {
-  const key = (env as unknown as MediaBindings).MEDIA_SIGNING_KEY?.trim();
-  if (!key || key.length < 32) throw new Error("媒体播放密钥尚未配置");
-  return key;
+  return getPurposeSecret("media");
 }
 
 export async function signPlaybackGrant(key: string, expiresAt: number, secret: string) {
@@ -15,7 +11,7 @@ export async function signPlaybackGrant(key: string, expiresAt: number, secret: 
 }
 
 export async function verifyPlaybackGrant(key: string, expiresAt: number, signature: string, secret: string) {
-  if (!Number.isInteger(expiresAt) || expiresAt < Math.floor(Date.now() / 1000) || expiresAt > Math.floor(Date.now() / 1000) + 900) {
+  if (!Number.isInteger(expiresAt) || expiresAt < Math.floor(Date.now() / 1000) || expiresAt > Math.floor(Date.now() / 1000) + 3600) {
     return false;
   }
   let decoded: Uint8Array;

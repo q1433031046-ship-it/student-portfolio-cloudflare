@@ -10,7 +10,7 @@ export async function GET(request: Request) {
     if (access instanceof Response) return access;
     const { identity, record } = access;
     return Response.json({
-      identity: { email: identity.user, provider: identity.kind },
+      identity: { email: identity.kind === "password" ? "网站管理员" : identity.user, provider: identity.kind },
       portfolio: record.draft,
       revision: record.revision,
       updatedAt: record.updatedAt,

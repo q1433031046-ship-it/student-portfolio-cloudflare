@@ -1,16 +1,20 @@
-# 把这个压缩包交给 ChatGPT
+# 把项目交给 ChatGPT 部署
 
-这个项目面向没有代码经验的网站所有者。优先打开 [Deploy to Cloudflare](https://deploy.workers.cloudflare.com/?url=https://github.com/q1433031046-ship-it/student-portfolio-cloudflare)；Cloudflare会自动创建Worker、D1数据库和R2存储桶并运行部署。完成后把网站地址发给支持文件操作和Cloudflare部署的ChatGPT/Codex，然后发送下面这句话：
+先打开 [Deploy to Cloudflare](https://deploy.workers.cloudflare.com/?url=https://github.com/q1433031046-ship-it/student-portfolio-cloudflare)。Cloudflare 会创建网站程序、D1 数据库和媒体空间，并运行部署。
 
-> 请读取项目里的 AGENTS.md 和 deployment/agent-manifest.json，继续完成我的 Cloudflare 网站配置。默认使用 workers.dev 地址和空白正式数据；需要我授权、确认邮箱或查收验证码时再叫我，其他步骤请你完成，并在部署后执行全部在线测试。
+部署页面需要填写 `INITIAL_ADMIN_CODE`：请自己设置一段至少16位、同时包含英文字母和数字的一次性部署口令，只在Cloudflare官方页面填写，不要发到聊天里。
 
-接下来你只需要配合四件事：
+完成后，把网站地址发给支持代码工作区和 Cloudflare 部署的 ChatGPT/Codex，并发送：
+
+> 请读取项目里的 AGENTS.md 和 deployment/agent-manifest.json，帮我完成 Cloudflare 部署、数据库迁移和在线测试。需要账号授权时再叫我；管理员密码、一次性部署口令和系统恢复码由我自己在官方页面或网站后台输入，请不要向我索取。
+
+你只需要完成四件事：
 
 1. 在 Cloudflare 官方页面确认账号授权。
-2. 告诉 AI 哪个邮箱作为唯一管理员。
-3. 在 Cloudflare 验证一个用于发送后台链接的发件地址。
-4. 查收登录验证码，并确认首次绑定邮件已收到。
+2. 在部署页面填写一次性部署口令。
+3. 首次打开 `/admin`，再次输入这段口令并设置管理员密码。
+4. 下载系统生成的恢复码，离线保存。
 
-不要把 Cloudflare 密码、邮箱密码、API Token 或浏览器 Cookie 发给 AI。如果当前 ChatGPT 只能聊天、不能操作文件或连接 Cloudflare，它无法完成部署；请改用具备代码工作区和 Cloudflare 连接能力的 ChatGPT/Codex。
+以后登录后台只用管理员密码。忘记密码时使用系统恢复码；恢复成功后旧码立即失效，并生成一份新码。
 
-首次部署完成后，作品、图片、视频、二维码和发布都在网站后台操作，不需要再次处理代码。以后只有升级网站程序时，才把新版部署包继续交给 AI。
+作品、图片、50 MB以内的MP4视频、二维码和发布都在网站后台操作。后台“概览”的最下方会显示网站空间的已用、剩余、文件数和大约还能放多少个50 MB视频。

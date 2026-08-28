@@ -25,23 +25,11 @@
       "DB": {
         "description": "网站作品、唯一管理员绑定、二维码凭证和访问记录。"
       },
-      "BUCKET": {
-        "description": "网站后台上传的图片、字体和视频。"
+      "MEDIA_KV": {
+        "description": "网站后台上传的图片和视频，视频会自动按 4 MiB 分块保存。"
       },
-      "EMAIL": {
-        "description": "首次绑定后发送永久后台入口，需要先在 Cloudflare Email Service 验证发件地址。"
-      },
-      "CF_ACCESS_TEAM_DOMAIN": {
-        "description": "部署完成后，从 Cloudflare Zero Trust Access 复制 Team Domain。"
-      },
-      "CF_ACCESS_AUD": {
-        "description": "部署完成后，从后台 Access 应用复制 Audience Tag。"
-      },
-      "ADMIN_EMAILS": {
-        "description": "唯一允许进入和绑定后台的管理员邮箱。"
-      },
-      "ADMIN_EMAIL_FROM": {
-        "description": "Cloudflare Email Service 中已经验证的完整发件地址。"
+      "INITIAL_ADMIN_CODE": {
+        "description": "首次进入后台使用的一次性部署口令，至少16位并包含英文字母和数字；初始化完成后改用管理员密码。"
       }
     }
   },

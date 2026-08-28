@@ -42,7 +42,7 @@ export const siteOwnership = sqliteTable(
     id: text("id").primaryKey(),
     ownerEmail: text("owner_email").notNull(),
     authSubject: text("auth_subject"),
-    authProvider: text("auth_provider", { enum: ["sites", "cloudflare-access"] }).notNull(),
+    authProvider: text("auth_provider", { enum: ["sites", "cloudflare-access", "password"] }).notNull(),
     boundAt: text("bound_at").notNull().default(sql`CURRENT_TIMESTAMP`),
     onboardingEmailSentAt: text("onboarding_email_sent_at"),
     onboardingEmailId: text("onboarding_email_id"),
@@ -50,16 +50,45 @@ export const siteOwnership = sqliteTable(
   (table) => [uniqueIndex("site_ownership_owner_email_idx").on(table.ownerEmail)],
 );
 
+export const adminCredentials = sqliteTable("admin_credentials", {
+  id: text("id").primaryKey(),
+  passwordHash: text("password_hash").notNull(),
+  passwordSalt: text("password_salt").notNull(),
+  recoveryHash: text("recovery_hash").notNull(),
+  recoverySalt: text("recovery_salt").notNull(),
+  failedAttempts: integer("failed_attempts").notNull().default(0),
+  lockedUntil: text("locked_until"),
+  initializedAt: text("initialized_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  passwordChangedAt: text("password_changed_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  recoveryCodeCreatedAt: text("recovery_code_created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const adminSessions = sqliteTable(
+  "admin_sessions",
+  {
+    tokenHash: text("token_hash").primaryKey(),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+    expiresAt: text("expires_at").notNull(),
+    userAgentHash: text("user_agent_hash"),
+  },
+  (table) => [index("admin_sessions_expiry_idx").on(table.expiresAt)],
+);
+
 export const portfolioMedia = sqliteTable(
   "portfolio_media",
   {
     id: text("id").primaryKey(),
     objectKey: text("object_key").notNull(),
+    replacedObjectKey: text("replaced_object_key"),
     projectId: text("project_id").notNull(),
     slot: text("slot", { enum: ["cover", "final", "draft", "detail"] }).notNull(),
     filename: text("filename").notNull(),
     contentType: text("content_type").notNull(),
     byteSize: integer("byte_size").notNull(),
+    storageBackend: text("storage_backend", { enum: ["r2", "kv"] }).notNull().default("r2"),
+    chunkSize: integer("chunk_size"),
+    chunkCount: integer("chunk_count").notNull().default(1),
     uploadedBy: text("uploaded_by").notNull(),
     status: text("status", { enum: ["uploaded", "deleted"] }).notNull().default("uploaded"),
     createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
@@ -67,6 +96,32 @@ export const portfolioMedia = sqliteTable(
   (table) => [
     uniqueIndex("portfolio_media_object_key_idx").on(table.objectKey),
     index("portfolio_media_project_idx").on(table.projectId, table.createdAt),
+  ],
+);
+
+export const mediaUploadSessions = sqliteTable(
+  "media_upload_sessions",
+  {
+    id: text("id").primaryKey(),
+    assetId: text("asset_id").notNull(),
+    objectKey: text("object_key").notNull(),
+    replacedObjectKey: text("replaced_object_key"),
+    projectId: text("project_id").notNull(),
+    slot: text("slot").notNull(),
+    filename: text("filename").notNull(),
+    contentType: text("content_type").notNull(),
+    byteSize: integer("byte_size").notNull(),
+    chunkSize: integer("chunk_size").notNull(),
+    chunkCount: integer("chunk_count").notNull(),
+    uploadedChunksJson: text("uploaded_chunks_json").notNull().default("[]"),
+    uploadedBy: text("uploaded_by").notNull(),
+    status: text("status", { enum: ["uploading", "completed", "expired"] }).notNull().default("uploading"),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+    expiresAt: text("expires_at").notNull(),
+  },
+  (table) => [
+    index("media_upload_sessions_expiry_idx").on(table.status, table.expiresAt),
+    uniqueIndex("media_upload_sessions_object_key_idx").on(table.objectKey),
   ],
 );
 

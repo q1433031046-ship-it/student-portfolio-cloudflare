@@ -108,7 +108,7 @@ function MediaFrame({
   if (media.src) {
     return (
       <figure className={`${styles.mediaFrame} ${className}`} style={aspectRatio ? { aspectRatio } : undefined}>
-        {/* Media is already resized and compressed before the private R2 upload. */}
+        {/* Media is resized and compressed before private object storage upload. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={media.src}

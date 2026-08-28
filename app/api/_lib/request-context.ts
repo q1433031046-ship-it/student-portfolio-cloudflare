@@ -1,10 +1,8 @@
-import { env } from "cloudflare:workers";
-
-type AnalyticsBindings = { ANALYTICS_HASH_KEY?: string };
+import { getPurposeSecret } from "./app-secret";
 
 export function getAnalyticsHashKey() {
-  const key = (env as unknown as AnalyticsBindings).ANALYTICS_HASH_KEY?.trim();
-  return key && key.length >= 32 ? key : null;
+  try { return getPurposeSecret("analytics"); }
+  catch { return null; }
 }
 
 type RequestCf = {

@@ -8,83 +8,127 @@ register(new URL("./cloudflare-workers-loader.mjs", import.meta.url));
 
 const { env } = await import("cloudflare:workers");
 
-test("requires an explicit administrator allowlist on Cloudflare", async () => {
-  const { isAllowedAdmin } = await import("../app/api/_lib/auth.ts");
-  assert.equal(isAllowedAdmin({ kind: "cloudflare-access", user: "owner@example.com" }), false);
-  assert.equal(isAllowedAdmin({ kind: "cloudflare-access", user: "owner@example.com" }, "owner@example.com"), true);
-  assert.equal(isAllowedAdmin({ kind: "cloudflare-access", user: "other@example.com" }, "owner@example.com"), false);
-  assert.equal(isAllowedAdmin({ kind: "sites", user: "owner@example.com" }), true);
+test("initializes password access once and keeps management APIs locked", async () => {
+  const deploymentCode = randomTestValue("D");
+  const password = randomTestValue("P");
+  const database = await createDatabase();
+  env.DB = d1Adapter(database);
+  env.AUTH_PLATFORM = "password";
+  env.INITIAL_ADMIN_CODE = deploymentCode;
+
+  const setupRoute = await import("../app/api/admin/setup/route.ts");
+  const loginRoute = await import("../app/api/admin/login/route.ts");
+  const portfolioRoute = await import("../app/api/admin/portfolio/route.ts");
+  const initial = await setupRoute.GET(new Request("https://portfolio.example/api/admin/setup"));
+  assert.equal(initial.status, 200);
+  assert.equal((await initial.json()).state, "initial_setup");
+
+  const locked = await portfolioRoute.GET(new Request("https://portfolio.example/api/admin/portfolio"));
+  assert.equal(locked.status, 401);
+
+  const wrongCode = await setupRoute.POST(jsonRequest("https://portfolio.example/api/admin/setup", {
+    initialCode: randomTestValue("W"),
+    password,
+  }));
+  assert.equal(wrongCode.status, 401);
+
+  const completed = await setupRoute.POST(jsonRequest("https://portfolio.example/api/admin/setup", {
+    initialCode: env.INITIAL_ADMIN_CODE,
+    password,
+  }));
+  assert.equal(completed.status, 201);
+  const completedBody = await completed.json();
+  assert.equal(completedBody.state, "recovery_code");
+  assert.match(completedBody.recoveryCode, /^REC-(?:[A-Z2-9]{4}-){5}[A-Z2-9]{4}$/u);
+  const cookie = completed.headers.get("set-cookie");
+  assert.match(cookie, /HttpOnly/u);
+  assert.match(cookie, /SameSite=Strict/u);
+
+  const unlocked = await portfolioRoute.GET(new Request("https://portfolio.example/api/admin/portfolio", {
+    headers: { Cookie: cookie },
+  }));
+  assert.equal(unlocked.status, 200);
+  assert.equal((await unlocked.json()).identity.provider, "password");
+
+  const deploymentCodeLogin = await loginRoute.POST(jsonRequest("https://portfolio.example/api/admin/login", {
+    password: deploymentCode,
+  }));
+  assert.equal(deploymentCodeLogin.status, 401);
+
+  const duplicate = await setupRoute.POST(jsonRequest("https://portfolio.example/api/admin/setup", {
+    initialCode: env.INITIAL_ADMIN_CODE,
+    password: randomTestValue("A"),
+  }));
+  assert.equal(duplicate.status, 409);
+  resetEnv();
 });
 
-test("creates one immutable site owner and records onboarding mail delivery", async () => {
-  const migration = await readFile(new URL("../drizzle/0004_owner_email_onboarding.sql", import.meta.url), "utf8");
-  const db = new DatabaseSync(":memory:");
-  db.exec(migration.replaceAll("--> statement-breakpoint", ""));
+test("recovers a password once, rotates the recovery code and revokes old sessions", async () => {
+  const deploymentCode = randomTestValue("D");
+  const oldPasswordValue = randomTestValue("P");
+  const newPasswordValue = randomTestValue("N");
+  const database = await createDatabase();
+  env.DB = d1Adapter(database);
+  env.AUTH_PLATFORM = "password";
+  env.INITIAL_ADMIN_CODE = deploymentCode;
 
-  db.prepare("INSERT INTO site_ownership (id, owner_email, auth_provider, bound_at) VALUES (?, ?, ?, ?)")
-    .run("default", "owner@example.com", "cloudflare-access", "2026-08-28T00:00:00.000Z");
-  assert.throws(
-    () => db.prepare("UPDATE site_ownership SET owner_email = ? WHERE id = ?").run("other@example.com", "default"),
-    /owner email is immutable/u,
-  );
-  db.prepare("UPDATE site_ownership SET onboarding_email_sent_at = ?, onboarding_email_id = ? WHERE id = ?")
-    .run("2026-08-28T00:01:00.000Z", "mail_123", "default");
-  assert.deepEqual(
-    { ...db.prepare("SELECT owner_email, onboarding_email_sent_at, onboarding_email_id FROM site_ownership WHERE id = ?").get("default") },
-    {
-      owner_email: "owner@example.com",
-      onboarding_email_sent_at: "2026-08-28T00:01:00.000Z",
-      onboarding_email_id: "mail_123",
-    },
-  );
+  const setupRoute = await import("../app/api/admin/setup/route.ts");
+  const loginRoute = await import("../app/api/admin/login/route.ts");
+  const recoverRoute = await import("../app/api/admin/recover/route.ts");
+  const portfolioRoute = await import("../app/api/admin/portfolio/route.ts");
+
+  const setup = await setupRoute.POST(jsonRequest("https://portfolio.example/api/admin/setup", {
+    initialCode: env.INITIAL_ADMIN_CODE,
+    password: oldPasswordValue,
+  }));
+  const firstCookie = setup.headers.get("set-cookie");
+  const firstRecoveryCode = (await setup.json()).recoveryCode;
+
+  const recovered = await recoverRoute.POST(jsonRequest("https://portfolio.example/api/admin/recover", {
+    recoveryCode: firstRecoveryCode,
+    password: newPasswordValue,
+  }));
+  assert.equal(recovered.status, 200);
+  const nextRecoveryCode = (await recovered.json()).recoveryCode;
+  assert.notEqual(nextRecoveryCode, firstRecoveryCode);
+
+  const revoked = await portfolioRoute.GET(new Request("https://portfolio.example/api/admin/portfolio", {
+    headers: { Cookie: firstCookie },
+  }));
+  assert.equal(revoked.status, 401);
+
+  const oldPassword = await loginRoute.POST(jsonRequest("https://portfolio.example/api/admin/login", { password: oldPasswordValue }));
+  assert.equal(oldPassword.status, 401);
+  const newPassword = await loginRoute.POST(jsonRequest("https://portfolio.example/api/admin/login", { password: newPasswordValue }));
+  assert.equal(newPassword.status, 200);
+
+  const reusedRecovery = await recoverRoute.POST(jsonRequest("https://portfolio.example/api/admin/recover", {
+    recoveryCode: firstRecoveryCode,
+    password: randomTestValue("T"),
+  }));
+  assert.equal(reusedRecovery.status, 401);
+  resetEnv();
 });
 
-test("builds a permanent same-origin admin link email and escapes display content", async () => {
-  const { buildAdminLinkEmail } = await import("../app/api/_lib/onboarding-email.ts");
-  const message = buildAdminLinkEmail({
-    to: "owner@example.com",
-    origin: "https://portfolio.example/path?ignored=1",
-    siteTitle: "作品 <站点>",
-    from: "后台通知 <admin@example.com>",
-  });
-
-  assert.equal(message.to, "owner@example.com");
-  assert.equal(message.from, "后台通知 <admin@example.com>");
-  assert.equal(message.subject, "你的作品网站后台入口");
-  assert.match(message.text, /https:\/\/portfolio\.example\/admin/u);
-  assert.match(message.html, /href="https:\/\/portfolio\.example\/admin"/u);
-  assert.match(message.html, /作品 &lt;站点&gt;/u);
-  assert.doesNotMatch(message.html, /作品 <站点>/u);
+test("admin UI exposes deployment-code setup, recovery and website-space status", async () => {
+  const [adminClient, setupRoute, portfolioRoute, accessRoute, mediaRoute] = await Promise.all([
+    readFile(new URL("../app/admin/admin-client.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/admin/setup/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/admin/portfolio/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/admin/access/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/admin/media/[projectId]/[slot]/route.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(adminClient, /一次性部署口令/u);
+  assert.match(adminClient, /管理员密码/u);
+  assert.match(adminClient, /系统恢复码/u);
+  assert.match(adminClient, /网站空间/u);
+  assert.match(setupRoute, /createLocalAdministrator/u);
+  assert.match(portfolioRoute, /requirePortfolioManager/u);
+  assert.match(accessRoute, /requirePortfolioManager/u);
+  assert.match(mediaRoute, /requirePortfolioManager/u);
 });
 
-test("sends onboarding mail only through configured Cloudflare bindings", async () => {
-  const { sendAdminLinkEmail } = await import("../app/api/_lib/onboarding-email.ts");
-  delete env.EMAIL;
-  delete env.ADMIN_EMAIL_FROM;
-  await assert.rejects(
-    sendAdminLinkEmail({ to: "owner@example.com", origin: "https://portfolio.example", siteTitle: "作品站" }),
-    /邮件发送尚未配置/u,
-  );
-
-  let sent;
-  env.ADMIN_EMAIL_FROM = "admin@example.com";
-  env.EMAIL = {
-    async send(message) {
-      sent = message;
-      return { messageId: "mail_123" };
-    },
-  };
-  assert.deepEqual(
-    await sendAdminLinkEmail({ to: "owner@example.com", origin: "https://portfolio.example", siteTitle: "作品站" }),
-    { messageId: "mail_123" },
-  );
-  assert.equal(sent.to, "owner@example.com");
-  assert.equal(sent.from, "admin@example.com");
-  delete env.EMAIL;
-  delete env.ADMIN_EMAIL_FROM;
-});
-
-test("keeps every management API locked until verified binding and email delivery finish", async () => {
+async function createDatabase() {
   const database = new DatabaseSync(":memory:");
   for (const name of [
     "0000_bumpy_ultimo.sql",
@@ -92,70 +136,31 @@ test("keeps every management API locked until verified binding and email deliver
     "0002_nosy_silhouette.sql",
     "0003_careful_justice.sql",
     "0004_owner_email_onboarding.sql",
+    "0005_password_auth_kv_media.sql",
   ]) {
     const sql = await readFile(new URL(`../drizzle/${name}`, import.meta.url), "utf8");
     database.exec(sql.replaceAll("--> statement-breakpoint", ""));
   }
-  env.DB = d1Adapter(database);
-  env.AUTH_PLATFORM = "sites";
-  env.ADMIN_EMAIL_FROM = "admin@example.com";
-  env.EMAIL = { async send() { return { messageId: "mail_setup_1" }; } };
+  return database;
+}
 
-  const setupRoute = await import("../app/api/admin/setup/route.ts");
-  const portfolioRoute = await import("../app/api/admin/portfolio/route.ts");
-  const headers = { "oai-authenticated-user-email": "owner@example.com" };
+function jsonRequest(url, body) {
+  return new Request(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
 
-  const initial = await setupRoute.GET(new Request("https://portfolio.example/api/admin/setup", { headers }));
-  assert.equal(initial.status, 200);
-  assert.equal((await initial.json()).state, "unbound");
+function randomTestValue(prefix) {
+  return `${prefix}${crypto.randomUUID().replaceAll("-", "")}9`;
+}
 
-  const locked = await portfolioRoute.GET(new Request("https://portfolio.example/api/admin/portfolio", { headers }));
-  assert.equal(locked.status, 428);
-
-  const completed = await setupRoute.POST(new Request("https://portfolio.example/api/admin/setup", { method: "POST", headers }));
-  assert.equal(completed.status, 200);
-  const completedBody = await completed.json();
-  assert.equal(completedBody.state, "ready");
-  assert.equal(completedBody.email, "owner@example.com");
-  assert.match(completedBody.boundAt, /^2026-|^20\d{2}-/u);
-  assert.match(completedBody.onboardingEmailSentAt, /^2026-|^20\d{2}-/u);
-
-  const unlocked = await portfolioRoute.GET(new Request("https://portfolio.example/api/admin/portfolio", { headers }));
-  assert.equal(unlocked.status, 200);
-  assert.equal((await unlocked.json()).identity.email, "owner@example.com");
-
-  const differentOwner = await setupRoute.GET(new Request("https://portfolio.example/api/admin/setup", {
-    headers: { "oai-authenticated-user-email": "other@example.com" },
-  }));
-  assert.equal(differentOwner.status, 403);
-
+function resetEnv() {
   delete env.DB;
   delete env.AUTH_PLATFORM;
-  delete env.EMAIL;
-  delete env.ADMIN_EMAIL_FROM;
-});
-
-test("admin clients and APIs enforce setup before management", async () => {
-  const [adminClient, setupRoute, portfolioRoute, accessRoute, mediaRoute, homepage, previewPage] = await Promise.all([
-    readFile(new URL("../app/admin/admin-client.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/api/admin/setup/route.ts", import.meta.url), "utf8"),
-    readFile(new URL("../app/api/admin/portfolio/route.ts", import.meta.url), "utf8"),
-    readFile(new URL("../app/api/admin/access/route.ts", import.meta.url), "utf8"),
-    readFile(new URL("../app/api/admin/media/[projectId]/[slot]/route.ts", import.meta.url), "utf8"),
-    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/preview/page.tsx", import.meta.url), "utf8"),
-  ]);
-
-  assert.match(adminClient, /\/api\/admin\/setup/u);
-  assert.match(adminClient, /绑定当前邮箱/u);
-  assert.doesNotMatch(adminClient, /<input[^>]+setup\.email/u);
-  assert.match(setupRoute, /bindSiteOwner/u);
-  assert.match(portfolioRoute, /requirePortfolioManager/u);
-  assert.match(accessRoute, /requirePortfolioManager/u);
-  assert.match(mediaRoute, /requirePortfolioManager/u);
-  assert.match(homepage, /getSiteOwnership/u);
-  assert.doesNotMatch(previewPage, /requireChatGPTUser/u);
-});
+  delete env.INITIAL_ADMIN_CODE;
+}
 
 function d1Adapter(database) {
   return {
@@ -183,20 +188,16 @@ class SqliteD1Statement {
     this.sql = sql;
     this.values = values;
   }
-
   bind(...values) {
     return new SqliteD1Statement(this.database, this.sql, values);
   }
-
   async first() {
     return this.database.prepare(this.sql).get(...this.values) ?? null;
   }
-
   async run() {
     const result = this.database.prepare(this.sql).run(...this.values);
     return { success: true, results: [], meta: { changes: Number(result.changes) } };
   }
-
   async all() {
     return { success: true, results: this.database.prepare(this.sql).all(...this.values), meta: { changes: 0 } };
   }
