@@ -1312,7 +1312,7 @@ function OperationErrorDialog({ error, onClose }: { error: OperationError; onClo
 }
 
 function createProject(categoryId: string, order: number): Project {
-  return { id: `project-${createClientId()}`, order, categoryId, title: "未命名作品", year: String(new Date().getFullYear()), duration: "00:30", synopsis: "填写作品简介。", challenge: "", solution: "", cover: emptyMedia("image"), finalVideo: emptyMedia("video"), coverPresentation: createDefaultCoverPresentation(), detailBlocks: [] };
+  return { id: `project-${createClientId()}`, order, categoryId, title: "未命名作品", year: String(new Date().getFullYear()), duration: "00:00", synopsis: "填写作品简介。", challenge: "", solution: "", cover: emptyMedia("image"), finalVideo: emptyMedia("video"), coverPresentation: createDefaultCoverPresentation(), detailBlocks: [] };
 }
 function emptyMedia(kind: "image" | "video" | "font"): MediaAsset { return { id: `media-${createClientId()}`, label: "", alt: "", kind, visualKey: "frame" }; }
 
