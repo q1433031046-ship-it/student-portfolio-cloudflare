@@ -34,7 +34,7 @@ export function AdminInteractionEnhancements() {
 
     const handleModeChange = (event: Event) => {
       const select = event.target instanceof Element && event.target.tagName === "SELECT"
-        ? event.target as SelectLike
+        ? event.target as unknown as SelectLike
         : null;
       if (!select) return;
       const field = select.closest("label");
@@ -45,7 +45,7 @@ export function AdminInteractionEnhancements() {
     const enhance = () => {
       document.querySelectorAll("select").forEach((node) => {
         if (!(node instanceof Element)) return;
-        const select = node as SelectLike;
+        const select = node as unknown as SelectLike;
         const field = select.closest("label");
         if (field && fieldText(field).includes("显示模式")) applyHeroMode(select, false);
       });
