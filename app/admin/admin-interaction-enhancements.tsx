@@ -127,7 +127,7 @@ function locateValidationProblem(reason: string): HTMLElement | null {
     navButton?.click();
   }
 
-  const projectIndexMatch = reason.match(/projects\[(\d+)]/u);
+  const projectIndexMatch = reason.match(/projects\[(\d+)\]/u);
   if (projectIndexMatch) {
     const index = Number(projectIndexMatch[1]);
     window.requestAnimationFrame(() => {
