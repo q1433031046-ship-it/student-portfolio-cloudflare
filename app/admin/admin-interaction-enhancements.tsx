@@ -2,6 +2,9 @@
 
 import { useEffect } from "react";
 
+const PROGRAM_VERSION = "1.0.0";
+const UPGRADE_PROMPT = "请把我的学生作品集网站升级到模板最新版本。先读取 AGENTS.md、deployment/agent-manifest.json、deployment/template-version.json 和 UPGRADE-GUIDE.md。升级只允许更新程序代码和增量数据库迁移，必须保留当前 Worker、workers.dev 地址、D1 DB、MEDIA_KV、管理员账号、Secrets、图片、视频、草稿、已发布内容、二维码和访问记录。不要创建新的 D1、KV 或 Worker，也不要把模板仓库中的资源 ID 覆盖到我的站点。先检查并确认目标站点和现有资源，再执行升级；需要账号官方授权时再叫我，任何密码、一次性部署口令和系统恢复码都由我本人在官方页面输入，不要向我索取。升级完成后请验证后台登录、图片、视频、草稿预览、正式发布和网站空间统计。";
+
 const fieldLabels: Array<[RegExp, string]> = [
   [/hero\.name/u, "姓名"],
   [/hero\.role/u, "职业标题"],
@@ -43,6 +46,8 @@ export function AdminInteractionEnhancements() {
     };
 
     const enhance = () => {
+      ensureUpgradeCenter();
+
       document.querySelectorAll("select").forEach((node) => {
         if (!(node instanceof Element)) return;
         const select = node as unknown as SelectLike;
@@ -107,7 +112,157 @@ export function AdminInteractionEnhancements() {
       outline-offset: 5px;
       border-radius: 8px;
     }
+    [data-program-upgrade-center] {
+      margin-top: 22px;
+      padding: 26px;
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 18px;
+      background: linear-gradient(135deg, rgba(255,255,255,.055), rgba(255,255,255,.018));
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+    }
+    [data-program-upgrade-center] .upgrade-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 24px;
+      margin-bottom: 22px;
+    }
+    [data-program-upgrade-center] .upgrade-kicker {
+      margin: 0 0 7px;
+      color: #8891a5;
+      font: 600 11px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+      letter-spacing: .14em;
+    }
+    [data-program-upgrade-center] h2 {
+      margin: 0;
+      font-size: clamp(22px, 2vw, 32px);
+      line-height: 1.08;
+      letter-spacing: -.03em;
+    }
+    [data-program-upgrade-center] .upgrade-version {
+      display: grid;
+      gap: 4px;
+      min-width: 132px;
+      text-align: right;
+    }
+    [data-program-upgrade-center] .upgrade-version span {
+      color: #8a93a6;
+      font-size: 12px;
+    }
+    [data-program-upgrade-center] .upgrade-version strong {
+      font-size: 24px;
+      letter-spacing: -.03em;
+    }
+    [data-program-upgrade-center] .upgrade-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 18px;
+    }
+    [data-program-upgrade-center] .upgrade-grid > div {
+      padding: 14px 16px;
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 12px;
+      background: rgba(0,0,0,.16);
+    }
+    [data-program-upgrade-center] .upgrade-grid strong,
+    [data-program-upgrade-center] .upgrade-grid small { display: block; }
+    [data-program-upgrade-center] .upgrade-grid strong { margin-bottom: 4px; font-size: 14px; }
+    [data-program-upgrade-center] .upgrade-grid small { color: #929aad; line-height: 1.45; }
+    [data-program-upgrade-center] .upgrade-note {
+      margin: 0 0 18px;
+      color: #b7bdca;
+      line-height: 1.7;
+    }
+    [data-program-upgrade-center] .upgrade-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+    [data-program-upgrade-center] button,
+    [data-program-upgrade-center] summary {
+      border: 1px solid rgba(255,255,255,.14);
+      border-radius: 10px;
+      background: rgba(255,255,255,.055);
+      color: inherit;
+      padding: 10px 14px;
+      font: inherit;
+      cursor: pointer;
+    }
+    [data-program-upgrade-center] button:hover,
+    [data-program-upgrade-center] summary:hover { background: rgba(255,255,255,.09); }
+    [data-program-upgrade-center] details { width: 100%; }
+    [data-program-upgrade-center] details[open] summary { margin-bottom: 12px; }
+    [data-program-upgrade-center] .upgrade-detail {
+      padding: 14px 16px;
+      border-radius: 12px;
+      background: rgba(0,0,0,.18);
+      color: #aab1c0;
+      line-height: 1.65;
+    }
+    [data-program-upgrade-center] .upgrade-detail p { margin: 0 0 10px; }
+    [data-program-upgrade-center] .upgrade-detail p:last-child { margin-bottom: 0; }
+    @media (max-width: 760px) {
+      [data-program-upgrade-center] { padding: 20px; }
+      [data-program-upgrade-center] .upgrade-head { display: grid; }
+      [data-program-upgrade-center] .upgrade-version { text-align: left; }
+      [data-program-upgrade-center] .upgrade-grid { grid-template-columns: 1fr; }
+    }
   `}</style>;
+}
+
+function ensureUpgradeCenter() {
+  if (document.querySelector("[data-program-upgrade-center]")) return;
+  const storagePanel = Array.from(document.querySelectorAll("section"))
+    .find((section) => section.textContent?.includes("WEBSITE STORAGE") && section.textContent?.includes("网站空间"));
+  const host = storagePanel?.parentElement;
+  if (!host) return;
+
+  const panel = document.createElement("section");
+  panel.setAttribute("data-program-upgrade-center", "true");
+  panel.innerHTML = `
+    <div class="upgrade-head">
+      <div>
+        <p class="upgrade-kicker">PROGRAM / UPGRADE</p>
+        <h2>程序升级中心</h2>
+      </div>
+      <div class="upgrade-version"><span>当前程序版本</span><strong>v${PROGRAM_VERSION}</strong></div>
+    </div>
+    <div class="upgrade-grid">
+      <div><strong>升级机制已启用</strong><small>后续可以只升级程序，不重新部署整个网站。</small></div>
+      <div><strong>D1 / KV 保留</strong><small>升级不得替换数据库、媒体空间和已有资源 ID。</small></div>
+      <div><strong>内容与账号保留</strong><small>管理员、草稿、发布内容、图片、视频和二维码全部保留。</small></div>
+    </div>
+    <p class="upgrade-note">以后发布新版本时，把“升级指令”交给 GPT/Codex。升级流程必须先确认当前 Worker、DB 和 MEDIA_KV，再只更新程序代码与增量迁移。</p>
+    <div class="upgrade-actions">
+      <button type="button" data-upgrade-copy>复制给 GPT 的升级指令</button>
+      <details>
+        <summary>查看升级说明</summary>
+        <div class="upgrade-detail">
+          <p><strong>标准要求：</strong>最低使用 GPT-5.6 Sol，默认思考程度为“高”；遇到部署失败、资源绑定、数据库迁移或版本冲突时改为“超高”。</p>
+          <p><strong>绝对禁止：</strong>升级时新建第二套 Worker、D1、KV，或用模板仓库的资源 ID 覆盖当前站点。</p>
+          <p><strong>升级完成后：</strong>验证后台登录、图片读取、视频播放、草稿预览、正式发布和网站空间统计。</p>
+        </div>
+      </details>
+    </div>
+  `;
+  host.appendChild(panel);
+
+  const copyButton = panel.querySelector("[data-upgrade-copy]");
+  copyButton?.addEventListener("click", () => {
+    const clipboard = (navigator as unknown as { clipboard?: { writeText?: (value: string) => Promise<void> } }).clipboard;
+    if (!clipboard?.writeText) {
+      copyButton.textContent = "浏览器不支持自动复制";
+      return;
+    }
+    void clipboard.writeText(UPGRADE_PROMPT)
+      .then(() => {
+        copyButton.textContent = "已复制升级指令";
+        window.setTimeout(() => { copyButton.textContent = "复制给 GPT 的升级指令"; }, 1800);
+      })
+      .catch(() => { copyButton.textContent = "复制失败，请重试"; });
+  });
 }
 
 function applyHeroMode(select: SelectLike, shouldScroll: boolean) {
