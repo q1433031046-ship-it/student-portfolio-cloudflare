@@ -1,0 +1,32 @@
+name: Final Delivery Verification
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "FINAL-DELIVERY.md"
+
+permissions:
+  contents: read
+
+jobs:
+  full-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22.13.0
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Full tests and production build
+        run: npm test
+      - name: Lint
+        run: npm run lint
+      - name: TypeScript
+        run: ./node_modules/.bin/tsc --noEmit
