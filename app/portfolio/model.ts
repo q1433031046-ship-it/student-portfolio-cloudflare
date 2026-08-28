@@ -357,7 +357,7 @@ function normalizePortfolioInput(input: Record<string, unknown>): Record<string,
   const settings = isRecord(oldSettings)
     ? {
         ...oldSettings,
-        siteTitle: "中科云领学生作品展示",
+        siteTitle: "学生作品展示",
         coverOverlayMode: "hover",
         customFont: {
           id: "site-font",
@@ -517,7 +517,7 @@ function normalizeSchemaFourPresentation(candidate: Record<string, unknown>): Re
   const settings = isRecord(candidate.settings)
     ? {
         ...candidate.settings,
-        siteTitle: typeof candidate.settings.siteTitle === "string" ? candidate.settings.siteTitle : "中科云领学生作品展示",
+        siteTitle: typeof candidate.settings.siteTitle === "string" ? candidate.settings.siteTitle : "学生作品展示",
         coverOverlayMode: isStringIn(candidate.settings.coverOverlayMode, COVER_OVERLAY_MODES) ? candidate.settings.coverOverlayMode : "hover",
         customFont: normalizeAsset(candidate.settings.customFont),
         contact: normalizeContactConfig(candidate.settings.contact),
