@@ -18,10 +18,12 @@ const fieldLabels: Array<[RegExp, string]> = [
   [/\.solution/u, "解决思路"],
 ];
 
+type SelectLike = Element & { value: string };
+
 export function AdminInteractionEnhancements() {
   useEffect(() => {
-    let lastUploadGroup: HTMLElement | null = null;
-    let lastProblemTarget: HTMLElement | null = null;
+    let lastUploadGroup: Element | null = null;
+    let lastProblemTarget: Element | null = null;
 
     const rememberUploadTarget = (event: Event) => {
       const element = event.target instanceof Element ? event.target : null;
@@ -31,7 +33,9 @@ export function AdminInteractionEnhancements() {
     };
 
     const handleModeChange = (event: Event) => {
-      const select = event.target instanceof HTMLSelectElement ? event.target : null;
+      const select = event.target instanceof Element && event.target.tagName === "SELECT"
+        ? event.target as SelectLike
+        : null;
       if (!select) return;
       const field = select.closest("label");
       if (!field || !fieldText(field).includes("显示模式")) return;
@@ -39,15 +43,17 @@ export function AdminInteractionEnhancements() {
     };
 
     const enhance = () => {
-      document.querySelectorAll<HTMLSelectElement>("select").forEach((select) => {
+      document.querySelectorAll("select").forEach((node) => {
+        if (!(node instanceof Element)) return;
+        const select = node as SelectLike;
         const field = select.closest("label");
         if (field && fieldText(field).includes("显示模式")) applyHeroMode(select, false);
       });
 
-      const dialog = Array.from(document.querySelectorAll<HTMLElement>("[role='dialog']"))
+      const dialog = Array.from(document.querySelectorAll("[role='dialog']"))
         .find((node) => node.textContent?.includes("OPERATION FAILED"));
-      if (!dialog || dialog.dataset.autoLocated === "true") return;
-      dialog.dataset.autoLocated = "true";
+      if (!dialog || getData(dialog, "autoLocated") === "true") return;
+      setData(dialog, "autoLocated", "true");
       const reason = dialog.textContent ?? "";
       const uploadFailure = /上传|文件|MP4|JPG|PNG|WebP|AVIF|WOFF|TTF|OTF|50 MB|8 MiB|10 MiB/u.test(reason);
       if (uploadFailure && lastUploadGroup?.isConnected) {
@@ -70,7 +76,7 @@ export function AdminInteractionEnhancements() {
     document.addEventListener("change", handleModeChange, true);
 
     const focusAfterDialog = (event: Event) => {
-      const button = event.target instanceof HTMLButtonElement ? event.target : null;
+      const button = event.target instanceof Element && event.target.tagName === "BUTTON" ? event.target : null;
       if (!button || button.textContent?.trim() !== "返回继续处理" || !lastProblemTarget) return;
       const target = lastProblemTarget;
       window.setTimeout(() => revealTarget(target, true), 30);
@@ -104,36 +110,36 @@ export function AdminInteractionEnhancements() {
   `}</style>;
 }
 
-function applyHeroMode(select: HTMLSelectElement, shouldScroll: boolean) {
-  const slideCard = select.closest<HTMLElement>("article");
+function applyHeroMode(select: SelectLike, shouldScroll: boolean) {
+  const slideCard = select.closest("article");
   if (!slideCard) return;
-  const uploadLabel = Array.from(slideCard.querySelectorAll<HTMLLabelElement>("label"))
+  const uploadLabel = Array.from(slideCard.querySelectorAll("label"))
     .find((label) => fieldText(label).includes("首图图片"));
   const uploadGroup = uploadLabel?.parentElement;
-  if (uploadGroup) uploadGroup.dataset.adminHeroMediaCollapsed = select.value === "image-only" ? "false" : "true";
+  if (uploadGroup) setData(uploadGroup, "adminHeroMediaCollapsed", select.value === "image-only" ? "false" : "true");
   if (!shouldScroll || select.value === "image-only") return;
   window.requestAnimationFrame(() => {
-    const hint = Array.from(slideCard.querySelectorAll<HTMLElement>("p, small"))
+    const hint = Array.from(slideCard.querySelectorAll("p, small"))
       .find((node) => node.textContent?.includes("拖动文字改变位置"));
     revealTarget(hint?.parentElement ?? select, true);
   });
 }
 
-function locateValidationProblem(reason: string): HTMLElement | null {
+function locateValidationProblem(reason: string): Element | null {
   const view = validationView(reason);
   if (view) {
-    const navButton = Array.from(document.querySelectorAll<HTMLButtonElement>("nav button"))
+    const navButton = Array.from(document.querySelectorAll("nav button"))
       .find((button) => button.textContent?.includes(view));
-    navButton?.click();
+    clickElement(navButton);
   }
 
   const projectIndexMatch = reason.match(/projects\[(\d+)\]/u);
   if (projectIndexMatch) {
     const index = Number(projectIndexMatch[1]);
     window.requestAnimationFrame(() => {
-      const contentButtons = Array.from(document.querySelectorAll<HTMLButtonElement>("button"))
+      const contentButtons = Array.from(document.querySelectorAll("button"))
         .filter((button) => /^\d{2}/u.test(button.textContent?.trim() ?? "") && button.querySelector("strong"));
-      contentButtons[index]?.click();
+      clickElement(contentButtons[index]);
     });
   }
 
@@ -144,9 +150,9 @@ function locateValidationProblem(reason: string): HTMLElement | null {
       break;
     }
   }
-  if (!fieldLabel) return document.querySelector<HTMLElement>("section");
+  if (!fieldLabel) return document.querySelector("section");
 
-  const findField = () => Array.from(document.querySelectorAll<HTMLLabelElement>("label"))
+  const findField = () => Array.from(document.querySelectorAll("label"))
     .find((label) => fieldText(label).includes(fieldLabel));
   const immediate = findField();
   if (immediate) return immediate;
@@ -168,15 +174,39 @@ function validationView(reason: string) {
   return "";
 }
 
-function revealTarget(target: HTMLElement, focus = false) {
-  document.querySelectorAll<HTMLElement>("[data-admin-problem='true']").forEach((node) => delete node.dataset.adminProblem);
-  target.dataset.adminProblem = "true";
+function revealTarget(target: Element, focus = false) {
+  document.querySelectorAll("[data-admin-problem='true']").forEach((node) => node.removeAttribute("data-admin-problem"));
+  target.setAttribute("data-admin-problem", "true");
   target.scrollIntoView({ behavior: "smooth", block: "center" });
   if (!focus) return;
   const control = target.matches("input, textarea, select, button")
     ? target
-    : target.querySelector<HTMLElement>("input, textarea, select, button");
-  control?.focus({ preventScroll: true });
+    : target.querySelector("input, textarea, select, button");
+  focusElement(control);
+}
+
+function clickElement(element: Element | undefined) {
+  if (!element) return;
+  const clickable = element as unknown as { click?: () => void };
+  clickable.click?.();
+}
+
+function focusElement(element: Element | null) {
+  if (!element) return;
+  const focusable = element as unknown as { focus?: (options?: { preventScroll?: boolean }) => void };
+  focusable.focus?.({ preventScroll: true });
+}
+
+function getData(element: Element, key: string) {
+  return element.getAttribute(`data-${camelToKebab(key)}`);
+}
+
+function setData(element: Element, key: string, value: string) {
+  element.setAttribute(`data-${camelToKebab(key)}`, value);
+}
+
+function camelToKebab(value: string) {
+  return value.replace(/[A-Z]/gu, (letter) => `-${letter.toLowerCase()}`);
 }
 
 function isUploadLabel(label: Element) {
