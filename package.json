@@ -16,7 +16,7 @@
     "cloudflare:deploy": "bash scripts/deploy-cloudflare.sh",
     "cloudflare:package": "bash scripts/package-cloudflare.sh",
     "start": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext start",
-    "test": "npm run build && node --test tests/*.test.mjs",
+    "test": "npm run build && node --experimental-strip-types --test tests/*.test.mjs",
     "lint": "bash scripts/sites-env.sh -- eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern cloudflare-pages-dist",
     "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate"
   },
