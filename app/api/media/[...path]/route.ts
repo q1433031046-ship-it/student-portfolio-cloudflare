@@ -1,6 +1,7 @@
-import { findPublishedMedia } from "../../../portfolio/model";
+import { findPublishedMedia, type PortfolioDocument } from "../../../portfolio/model";
+import { authorizeAdmin, canManagePortfolio } from "../../_lib/auth";
 import { getMediaSigningKey, verifyPlaybackGrant } from "../../_lib/media-security";
-import { getPortfolioDb, getPublishedPortfolio } from "../../_lib/portfolio-store";
+import { getPortfolioDb, getPortfolioRecord, getPublishedPortfolio } from "../../_lib/portfolio-store";
 import { getBucket, getMediaKv, kvChunkKey } from "../../_lib/storage";
 import { checkPortfolioAccess } from "../../_lib/portfolio-access";
 
@@ -32,12 +33,23 @@ async function serveMedia(
   if (!validObjectKey(key)) return new Response("Not found", { status: 404 });
 
   try {
-    const access = await checkPortfolioAccess(request);
-    if (!access.allowed) return new Response("Access pass required", { status: 403, headers: { "Cache-Control": "no-store" } });
-    const published = await findPortfolioMedia(key);
-    if (!published) return new Response("Not found", { status: 404 });
+    const adminDocument = await getAdminDraftDocument(request);
+    let document: PortfolioDocument | null = adminDocument;
+    let restricted = Boolean(adminDocument);
 
-    if (published.kind === "video") {
+    if (!document) {
+      const access = await checkPortfolioAccess(request);
+      if (!access.allowed) return new Response("Access pass required", { status: 403, headers: { "Cache-Control": "no-store" } });
+      const published = await getPublishedPortfolio();
+      document = published.document;
+      restricted = access.restricted;
+    }
+
+    if (!document) return new Response("Not found", { status: 404 });
+    const media = await findPortfolioMedia(key, document);
+    if (!media) return new Response("Not found", { status: 404 });
+
+    if (media.kind === "video" && !adminDocument) {
       const url = new URL(request.url);
       const expiresAt = Number(url.searchParams.get("exp"));
       const signature = url.searchParams.get("sig") ?? "";
@@ -46,14 +58,22 @@ async function serveMedia(
       }
     }
 
-    if (published.record.storage_backend === "kv") {
-      return serveKvMedia(request, published.record, published.kind, access.restricted, headOnly);
+    if (media.record.storage_backend === "kv") {
+      return serveKvMedia(request, media.record, media.kind, restricted, headOnly);
     }
-    return serveR2Media(request, published.record, published.kind, access.restricted, headOnly);
+    return serveR2Media(request, media.record, media.kind, restricted, headOnly);
   } catch (error) {
     console.error(JSON.stringify({ message: "media read failed", error: errorMessage(error), key }));
     return new Response("Media unavailable", { status: 503 });
   }
+}
+
+async function getAdminDraftDocument(request: Request): Promise<PortfolioDocument | null> {
+  const identity = await authorizeAdmin(request);
+  if (!identity) return null;
+  const record = await getPortfolioRecord();
+  if (!record || !canManagePortfolio(identity, record.ownerEmail)) return null;
+  return record.draft;
 }
 
 async function serveKvMedia(
@@ -137,17 +157,15 @@ function mediaHeaders(record: MediaRow, kind: string, restricted: boolean) {
   });
 }
 
-async function findPortfolioMedia(key: string) {
-  const { document } = await getPublishedPortfolio();
-  if (!document) return null;
-  const published = findPublishedMedia(document, key);
-  if (!published) return null;
+async function findPortfolioMedia(key: string, document: PortfolioDocument) {
+  const asset = findPublishedMedia(document, key);
+  if (!asset) return null;
   const record = await getPortfolioDb()
     .prepare(`SELECT id, object_key, content_type, byte_size, storage_backend, chunk_size, chunk_count
       FROM portfolio_media WHERE object_key = ? AND status = 'uploaded' LIMIT 1`)
     .bind(key)
     .first<MediaRow>();
-  return record ? { kind: published.asset.kind, record } : null;
+  return record ? { kind: asset.asset.kind, record } : null;
 }
 
 function parseRange(value: string | null, size: number): { start: number; end: number } | "invalid" | null {
