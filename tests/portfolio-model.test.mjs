@@ -140,7 +140,7 @@ function schemaThreeDocumentFixture() {
 test("accepts an extensible portfolio document", () => {
   const result = validatePortfolioDocument(documentFixture());
   assert.equal(result.ok, true);
-  assert.equal(result.value.settings.siteTitle, "中科云领学生作品展示");
+  assert.equal(result.value.settings.siteTitle, "学生作品展示");
   assert.equal(result.value.settings.coverOverlayMode, "hover");
   assert.equal(result.value.settings.contact.layout, "details-left");
   assert.equal(result.value.settings.contact.titleStyle.fontFamily, "system");
