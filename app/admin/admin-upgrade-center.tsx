@@ -1,30 +1,27 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 
 const PROGRAM_VERSION = "1.0.0";
 const UPGRADE_PROMPT = "请把我的学生作品集网站升级到模板最新版本。先读取 AGENTS.md、deployment/agent-manifest.json、deployment/template-version.json 和 UPGRADE-GUIDE.md。升级只允许更新程序代码和增量数据库迁移，必须保留当前 Worker、workers.dev 地址、D1 DB、MEDIA_KV、管理员账号、Secrets、图片、视频、草稿、已发布内容、二维码和访问记录。不要创建新的 D1、KV 或 Worker，也不要把模板仓库中的资源 ID 覆盖到我的站点。先检查并确认目标站点和现有资源，再执行升级；需要账号官方授权时再叫我，任何密码、一次性部署口令和系统恢复码都由我本人在官方页面输入，不要向我索取。升级完成后请验证后台登录、图片、视频、草稿预览、正式发布和网站空间统计。";
 
 export function AdminUpgradeCenter() {
-  const ref = useRef<HTMLElement | null>(null);
+  const [host, setHost] = useState<HTMLElement | null>(null);
   const [copyLabel, setCopyLabel] = useState("复制给 GPT 的升级指令");
 
   useEffect(() => {
-    const place = () => {
-      const element = ref.current;
-      if (!element) return false;
-      const storage = Array.from(document.querySelectorAll("section")).find((node) =>
+    const locate = () => {
+      const storage = Array.from(document.querySelectorAll<HTMLElement>("section")).find((node) =>
         node.textContent?.includes("WEBSITE STORAGE") && node.textContent?.includes("网站空间"),
       );
-      if (!storage?.parentElement) return false;
-      if (storage.nextElementSibling !== element) storage.insertAdjacentElement("afterend", element);
-      return true;
+      const nextHost = storage?.parentElement ?? null;
+      setHost((current) => current === nextHost ? current : nextHost);
     };
-    if (place()) return;
-    const observer = new MutationObserver(() => { if (place()) observer.disconnect(); });
+    locate();
+    const observer = new MutationObserver(locate);
     observer.observe(document.body, { childList: true, subtree: true });
-    const timeout = window.setTimeout(() => observer.disconnect(), 8000);
-    return () => { observer.disconnect(); window.clearTimeout(timeout); };
+    return () => observer.disconnect();
   }, []);
 
   async function copyPrompt() {
@@ -37,21 +34,21 @@ export function AdminUpgradeCenter() {
     }
   }
 
-  return (
-    <section ref={ref} data-native-upgrade-center data-program-upgrade-center>
+  const panel = (
+    <section data-native-upgrade-center>
       <style>{`
         [data-native-upgrade-center]{margin:22px 0 0;padding:clamp(24px,4vw,42px);border:1px solid var(--line,#d9d9d6);background:#fff;color:var(--ink,#101114)}
         [data-native-upgrade-center] header{display:flex;justify-content:space-between;gap:24px;align-items:flex-end}
         [data-native-upgrade-center] .kicker{margin:0 0 10px;color:var(--accent,#3258ff);font-size:9px;font-weight:800;letter-spacing:.18em}
         [data-native-upgrade-center] h2{margin:0;font-size:clamp(30px,4vw,48px);letter-spacing:-.055em}
-        [data-native-upgrade-center] .version{text-align:right}.version small{display:block;color:var(--muted,#6d7077);font-size:10px}.version strong{font-size:clamp(28px,3vw,44px);letter-spacing:-.05em}
+        [data-native-upgrade-center] .version{text-align:right}[data-native-upgrade-center] .version small{display:block;color:var(--muted,#6d7077);font-size:10px}[data-native-upgrade-center] .version strong{font-size:clamp(28px,3vw,44px);letter-spacing:-.05em}
         [data-native-upgrade-center] .grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin:30px 0 22px;border:1px solid var(--line,#d9d9d6)}
         [data-native-upgrade-center] .grid>div{min-height:108px;padding:20px;border-right:1px solid var(--line,#d9d9d6)}[data-native-upgrade-center] .grid>div:last-child{border-right:0}
-        [data-native-upgrade-center] .grid strong,[data-native-upgrade-center] .grid small{display:block}.grid strong{margin-bottom:8px}.grid small{color:var(--muted,#6d7077);line-height:1.6}
+        [data-native-upgrade-center] .grid strong,[data-native-upgrade-center] .grid small{display:block}[data-native-upgrade-center] .grid strong{margin-bottom:8px}[data-native-upgrade-center] .grid small{color:var(--muted,#6d7077);line-height:1.6}
         [data-native-upgrade-center] .note{color:var(--muted,#6d7077);font-size:12px;line-height:1.75}
         [data-native-upgrade-center] .actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:20px}[data-native-upgrade-center] button,[data-native-upgrade-center] summary{padding:11px 15px;border:1px solid var(--line,#d9d9d6);border-radius:8px;background:#fff;color:inherit;cursor:pointer;font:inherit}
-        [data-native-upgrade-center] details{width:100%;margin-top:4px}.detail{margin-top:12px;padding:16px;border:1px solid #e4e4e0;background:#fafaf8;color:var(--muted,#6d7077);font-size:12px;line-height:1.75}.detail p{margin:0 0 10px}.detail p:last-child{margin-bottom:0}
-        @media(max-width:760px){[data-native-upgrade-center] header{display:grid}.version{text-align:left}[data-native-upgrade-center] .grid{grid-template-columns:1fr}.grid>div{border-right:0!important;border-bottom:1px solid var(--line,#d9d9d6)}.grid>div:last-child{border-bottom:0}}
+        [data-native-upgrade-center] details{width:100%;margin-top:4px}[data-native-upgrade-center] .detail{margin-top:12px;padding:16px;border:1px solid #e4e4e0;background:#fafaf8;color:var(--muted,#6d7077);font-size:12px;line-height:1.75}[data-native-upgrade-center] .detail p{margin:0 0 10px}[data-native-upgrade-center] .detail p:last-child{margin-bottom:0}
+        @media(max-width:760px){[data-native-upgrade-center] header{display:grid}[data-native-upgrade-center] .version{text-align:left}[data-native-upgrade-center] .grid{grid-template-columns:1fr}[data-native-upgrade-center] .grid>div{border-right:0!important;border-bottom:1px solid var(--line,#d9d9d6)}[data-native-upgrade-center] .grid>div:last-child{border-bottom:0}}
       `}</style>
       <header>
         <div><p className="kicker">PROGRAM / UPGRADE</p><h2>程序升级中心</h2></div>
@@ -72,5 +69,12 @@ export function AdminUpgradeCenter() {
         </div></details>
       </div>
     </section>
+  );
+
+  return (
+    <>
+      <span data-program-upgrade-center hidden aria-hidden="true" />
+      {host ? createPortal(panel, host) : null}
+    </>
   );
 }
