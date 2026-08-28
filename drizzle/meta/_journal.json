@@ -1,0 +1,41 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1787646379918,
+      "tag": "0000_bumpy_ultimo",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1787749310285,
+      "tag": "0001_perpetual_firestar",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1787792079647,
+      "tag": "0002_nosy_silhouette",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1787851405910,
+      "tag": "0003_careful_justice",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1787897884107,
+      "tag": "0004_owner_email_onboarding",
+      "breakpoints": true
+    }
+  ]
+}

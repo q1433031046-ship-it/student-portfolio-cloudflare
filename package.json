@@ -1,0 +1,76 @@
+{
+  "name": "zkyl-student-showcase",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "install:ci": "bash scripts/install-ci.sh",
+    "dev": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vite",
+    "build": "bash scripts/build-verified.sh",
+    "build:pages-demo": "vite build cloudflare-demo --outDir ../cloudflare-pages-dist --emptyOutDir",
+    "deploy": "npm run build && npm run db:migrate:remote && wrangler deploy --config wrangler.jsonc --keep-vars",
+    "db:migrate:remote": "wrangler d1 migrations apply DB --remote --config wrangler.jsonc",
+    "cloudflare:setup": "bash scripts/setup-cloudflare.sh",
+    "cloudflare:deploy": "bash scripts/deploy-cloudflare.sh",
+    "cloudflare:package": "bash scripts/package-cloudflare.sh",
+    "start": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext start",
+    "test": "npm run build && node --test tests/*.test.mjs",
+    "lint": "bash scripts/sites-env.sh -- eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern cloudflare-pages-dist",
+    "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate"
+  },
+  "cloudflare": {
+    "bindings": {
+      "DB": {
+        "description": "网站作品、唯一管理员绑定、二维码凭证和访问记录。"
+      },
+      "BUCKET": {
+        "description": "网站后台上传的图片、字体和视频。"
+      },
+      "EMAIL": {
+        "description": "首次绑定后发送永久后台入口，需要先在 Cloudflare Email Service 验证发件地址。"
+      },
+      "CF_ACCESS_TEAM_DOMAIN": {
+        "description": "部署完成后，从 Cloudflare Zero Trust Access 复制 Team Domain。"
+      },
+      "CF_ACCESS_AUD": {
+        "description": "部署完成后，从后台 Access 应用复制 Audience Tag。"
+      },
+      "ADMIN_EMAILS": {
+        "description": "唯一允许进入和绑定后台的管理员邮箱。"
+      },
+      "ADMIN_EMAIL_FROM": {
+        "description": "Cloudflare Email Service 中已经验证的完整发件地址。"
+      }
+    }
+  },
+  "dependencies": {
+    "drizzle-orm": "0.45.2",
+    "jose": "6.2.10",
+    "next": "16.2.6",
+    "react": "19.2.6",
+    "react-dom": "19.2.6"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "4.20260702.1",
+    "@cloudflare/vite-plugin": "1.37.1",
+    "@tailwindcss/postcss": "4.2.1",
+    "@types/node": "22.19.19",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "6.0.2",
+    "@vitejs/plugin-rsc": "0.5.26",
+    "drizzle-kit": "0.31.10",
+    "eslint": "9.39.4",
+    "eslint-config-next": "16.2.6",
+    "react-server-dom-webpack": "19.2.6",
+    "tailwindcss": "4.2.1",
+    "typescript": "5.9.3",
+    "vinext": "0.0.50",
+    "vite": "8.0.13",
+    "wrangler": "4.92.0"
+  },
+  "type": "module",
+  "displayName": "\u4e2d\u79d1\u4e91\u9886\u5b66\u751f\u4f5c\u54c1\u5c55\u793a"
+}

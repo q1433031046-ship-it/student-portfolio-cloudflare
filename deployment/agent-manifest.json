@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "project": {
+    "name": "student-portfolio",
+    "target": "cloudflare-workers",
+    "distribution": "deploy-to-cloudflare-public-template",
+    "defaultHostname": "workers.dev",
+    "initialContent": "empty"
+  },
+  "runtime": {
+    "node": ">=22.13.0",
+    "config": "wrangler.jsonc",
+    "entrypoint": "cloudflare/worker-entry.js"
+  },
+  "resources": [
+    { "binding": "DB", "type": "d1", "purpose": "portfolio, ownership, access passes and events" },
+    { "binding": "BUCKET", "type": "r2", "purpose": "private images, fonts and video" },
+    { "binding": "EMAIL", "type": "send_email", "purpose": "permanent admin-link delivery" }
+  ],
+  "authentication": {
+    "provider": "cloudflare-access",
+    "loginMethod": "one-time-pin",
+    "sessionMinutes": 15,
+    "protectedPaths": ["/admin*", "/api/admin*", "/preview*"],
+    "administratorAllowlist": "owner-confirmed-email",
+    "ownerBinding": "first-verified-email-immutable"
+  },
+  "requiredSecrets": [
+    "CF_ACCESS_TEAM_DOMAIN",
+    "CF_ACCESS_AUD",
+    "ADMIN_EMAILS",
+    "ADMIN_EMAIL_FROM",
+    "MEDIA_SIGNING_KEY",
+    "ACCESS_SIGNING_KEY",
+    "ANALYTICS_HASH_KEY"
+  ],
+  "commands": {
+    "verify": ["npm ci", "npm test", "npm run lint", "npx tsc --noEmit"],
+    "cloudBuildDeploy": "npm run deploy",
+    "firstDeploy": "npm run cloudflare:setup",
+    "update": "npm run cloudflare:deploy"
+  },
+  "humanActions": [
+    "approve official Cloudflare authorization",
+    "confirm the administrator email",
+    "verify or select a Cloudflare Email Service sender",
+    "read received one-time codes and confirm mail delivery"
+  ],
+  "liveTests": [
+    "unauthenticated admin request triggers an email OTP challenge",
+    "first verified email binds as the immutable owner",
+    "permanent admin-link email arrives and points to same-origin /admin",
+    "secure logout requires a new OTP on re-entry",
+    "a different email cannot open admin pages or admin APIs",
+    "draft save and preview do not change the public portfolio",
+    "image upload renders successfully",
+    "video upload supports range playback and seeking",
+    "publishing changes the public portfolio",
+    "QR public, unrestricted, restricted, exhausted and expired states work"
+  ]
+}

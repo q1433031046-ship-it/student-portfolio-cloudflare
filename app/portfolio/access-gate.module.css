@@ -1,0 +1,12 @@
+.gate { min-height: 100svh; padding: clamp(24px, 6vw, 84px); display: grid; place-items: center; color: #17181b; background: #f4f3ee; font-family: Arial, "PingFang SC", "Microsoft YaHei", sans-serif; }
+.panel { width: min(760px, 100%); padding: clamp(30px, 6vw, 72px); border: 1px solid #d6d5d0; border-radius: 18px; background: #fff; box-shadow: 0 30px 90px #17181b12; }
+.brand { display: flex; align-items: center; gap: 14px; }
+.brand i { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 50%; color: white; background: #17181b; font-style: normal; font-size: 10px; font-weight: 800; }
+.brand span { color: #6b6d73; font-size: 9px; font-weight: 800; letter-spacing: .16em; }
+.panel h1 { max-width: 600px; margin: clamp(48px, 9vw, 96px) 0 20px; font-size: clamp(46px, 9vw, 92px); line-height: .91; letter-spacing: -.075em; }
+.panel > p { max-width: 540px; margin: 0; color: #6b6d73; font-size: 13px; line-height: 1.8; }
+.error { margin-top: 18px !important; padding: 12px 14px; border-left: 3px solid #c34b42; color: #8e302a !important; background: #fff0ee; }
+.actions { margin-top: 42px; display: flex; align-items: center; gap: 18px; }
+.actions a { min-height: 46px; padding: 0 18px; display: inline-flex; align-items: center; border: 1px solid #17181b; border-radius: 999px; color: #17181b; font-size: 11px; font-weight: 750; text-decoration: none; }
+.actions span { color: #8a8c91; font-size: 10px; }
+@media (max-width: 600px) { .panel { border-radius: 12px; } .actions { align-items: flex-start; flex-direction: column; } }
