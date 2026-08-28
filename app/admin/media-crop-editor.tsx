@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import type { MediaAsset, MediaCrop } from "../portfolio/model";
 import { croppedImageStyle, fitCropToAspect, fullMediaCrop, normalizeMediaCrop, validAspect } from "../portfolio/media-crop";
@@ -35,11 +35,6 @@ export function MediaCropEditor({
     height: number;
     crop: MediaCrop;
   } | null>(null);
-  const cropSignature = asset.crop ? `${asset.crop.x}:${asset.crop.y}:${asset.crop.width}:${asset.crop.height}` : "none";
-
-  useEffect(() => {
-    setDraft(asset.crop ?? (fixedAspect ? fitCropToAspect(sourceAspect, fixedAspect) : fullMediaCrop()));
-  }, [asset.key, cropSignature, fixedAspect, sourceAspect, asset.crop]);
 
   function start(event: ReactPointerEvent<HTMLElement>, handle: Handle) {
     event.preventDefault();
