@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "program": "student-portfolio-cloudflare",
+  "version": "1.0.0",
+  "releasedAt": "2026-08-29",
+  "portfolioDocumentSchemaVersion": 4,
+  "templateRepository": "https://github.com/q1433031046-ship-it/student-portfolio-cloudflare",
+  "upgradePolicy": {
+    "existingInstallCommand": "npm run cloudflare:deploy",
+    "preserveExistingCloudflareResources": true,
+    "neverReplaceResourceIdsDuringUpgrade": true,
+    "preserve": [
+      "existing Worker identity and workers.dev hostname",
+      "D1 DB binding, resource id, migrations and all stored data",
+      "MEDIA_KV binding, resource id and all uploaded media",
+      "Cloudflare secrets and runtime variables",
+      "administrator credentials, sessions and recovery state",
+      "draft and published portfolio content",
+      "access passes, analytics and audit records"
+    ],
+    "readBeforeUpgrade": [
+      "AGENTS.md",
+      "deployment/agent-manifest.json",
+      "UPGRADE-GUIDE.md",
+      "deployment/template-version.json"
+    ]
+  }
+}
