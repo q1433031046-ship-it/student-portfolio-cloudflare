@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { chatGPTSignInPath, chatGPTSignOutPath, getChatGPTUser } from "../chatgpt-auth";
 import { AdminClient } from "./admin-client";
+import { AdminInteractionEnhancements } from "./admin-interaction-enhancements";
 import styles from "./admin.module.css";
 
 export const dynamic = "force-dynamic";
@@ -14,5 +15,6 @@ export default async function AdminPage() {
       signInHref={sitesPlatform ? chatGPTSignInPath("/admin") : null}
       signOutHref={sitesPlatform ? chatGPTSignOutPath("/admin") : null}
     />
+    <AdminInteractionEnhancements />
   </main>;
 }
