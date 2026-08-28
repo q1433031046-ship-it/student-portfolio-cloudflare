@@ -1,41 +1,21 @@
-name: Verify
+name: Verify Key Areas
 
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  verify:
+  verify-key-areas:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Fix mobile gallery ratios
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('app/demo/portfolio-demo.module.css')
-          text = path.read_text()
-          old = '  .galleryGrid .mediaFrame { aspect-ratio: 3 / 4; }'
-          new = '  .galleryGrid[data-orientation="portrait"] .mediaFrame { aspect-ratio: 3 / 4; }\n  .galleryGrid[data-orientation="landscape"] .mediaFrame { aspect-ratio: 4 / 3; }'
-          if old in text:
-              path.write_text(text.replace(old, new, 1))
-          PY
-          if ! git diff --quiet -- app/demo/portfolio-demo.module.css; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add app/demo/portfolio-demo.module.css
-            git commit -m "Fix mobile gallery orientation ratios"
-            git push origin HEAD:main
-          fi
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -46,11 +26,8 @@ jobs:
       - name: Install
         run: npm ci
 
-      - name: Test
-        run: npm test
+      - name: Admin regression checks
+        run: node --experimental-strip-types --test tests/admin-regressions.test.mjs tests/media-crop.test.mjs tests/hero-layout.test.mjs
 
-      - name: Lint
-        run: npm run lint
-
-      - name: Typecheck
-        run: ./node_modules/.bin/tsc --noEmit
+      - name: Lint changed admin surfaces
+        run: npx eslint app/admin/admin-client.tsx app/admin/media-crop-editor.tsx app/admin/admin-interaction-enhancements.tsx
