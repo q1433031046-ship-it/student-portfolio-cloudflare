@@ -6,6 +6,7 @@ import type { HeroConfig, HeroLayer, HeroSlide } from "../portfolio/model";
 import { clampHeroLayer, keyboardMoveDelta, moveHeroLayer, resizeHeroLayer } from "../portfolio/hero-layout";
 import { croppedImageStyle, mediaCropAspect } from "../portfolio/media-crop";
 import styles from "./admin.module.css";
+import { useMediaPreview } from "./media-preview-cache";
 
 const labels: Record<HeroLayer["kind"], string> = {
   identity: "姓名",
@@ -26,6 +27,7 @@ export function HeroLayoutEditor({
   onChange: (slide: HeroSlide) => void;
   onHeroChange: (patch: Partial<HeroConfig>) => void;
 }) {
+  const previewSrc = useMediaPreview(slide.media);
   const [selectedId, setSelectedId] = useState(slide.layers[0]?.id ?? "");
   const dragRef = useRef<{
     id: string;
@@ -77,9 +79,9 @@ export function HeroLayoutEditor({
   return (
     <div className={styles.layoutEditor}>
       <div className={styles.layoutCanvas} data-layout-canvas style={{ aspectRatio: mediaCropAspect(slide.media) }}>
-        {slide.media.src
+        {previewSrc
           // eslint-disable-next-line @next/next/no-img-element
-          ? <img src={slide.media.src} alt="" style={croppedImageStyle(slide.media, "contain")} />
+          ? <img src={previewSrc} alt="" style={croppedImageStyle(slide.media, "contain")} />
           : <div className={styles.layoutPlaceholder}>上传首图后在这里排版</div>}
         {slide.layers.filter((layer) => layer.visible).map((layer) => (
           <div
@@ -173,7 +175,10 @@ function InlineEditable({ value, ariaLabel, onCommit, tag = "span" }: { value: s
     onPointerDown: (event: React.PointerEvent<HTMLElement>) => { if (editing) event.stopPropagation(); },
     onBlur: (event: React.FocusEvent<HTMLElement>) => { setEditing(false); onCommit(event.currentTarget.textContent?.trim() ?? ""); },
     onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => {
-      if (editing && event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); }
+      if (editing && event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        event.currentTarget.blur();
+      }
       if (editing) event.stopPropagation();
     },
     children: value,

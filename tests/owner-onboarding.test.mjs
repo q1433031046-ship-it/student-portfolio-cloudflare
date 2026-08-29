@@ -9,7 +9,7 @@ register(new URL("./cloudflare-workers-loader.mjs", import.meta.url));
 const { env } = await import("cloudflare:workers");
 
 test("initializes password access once and keeps management APIs locked", async () => {
-  const deploymentCode = randomTestValue("D");
+  const deploymentCode = "StudentWeb2026A1";
   const password = randomTestValue("P");
   const database = await createDatabase();
   env.DB = d1Adapter(database);
@@ -64,7 +64,7 @@ test("initializes password access once and keeps management APIs locked", async 
 });
 
 test("recovers a password once, rotates the recovery code and revokes old sessions", async () => {
-  const deploymentCode = randomTestValue("D");
+  const deploymentCode = "StudentWeb2026A1";
   const oldPasswordValue = randomTestValue("P");
   const newPasswordValue = randomTestValue("N");
   const database = await createDatabase();
@@ -137,6 +137,7 @@ async function createDatabase() {
     "0003_careful_justice.sql",
     "0004_owner_email_onboarding.sql",
     "0005_password_auth_kv_media.sql",
+    "0006_authentication_v2.sql",
   ]) {
     const sql = await readFile(new URL(`../drizzle/${name}`, import.meta.url), "utf8");
     database.exec(sql.replaceAll("--> statement-breakpoint", ""));

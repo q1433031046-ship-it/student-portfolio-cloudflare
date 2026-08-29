@@ -565,6 +565,7 @@
 
 .projectCover {
   position: relative;
+  container-type: inline-size;
   overflow: hidden;
   aspect-ratio: 16 / 9;
   background: #08090b;
@@ -584,12 +585,12 @@
 .projectCover:hover .projectCoverInfo,
 .projectCover:has(:focus-visible) .projectCoverInfo { opacity: 1; visibility: visible; transform: translateY(0); }
 .projectCover[data-cover-overlay="fixed"] .projectCoverInfo { opacity: 1; visibility: visible; transform: translateY(0); }
-.projectTitleGroup { position: absolute; top: var(--cover-y, clamp(28px, 8%, 76px)); left: var(--cover-x, clamp(24px, 3.4vw, 52px)); width: min(var(--cover-width, 62%), 760px); max-width: calc(100% - 48px); transform: translateY(-50%) scale(var(--cover-scale, 1)); transform-origin: left center; }
+.projectTitleGroup { position: absolute; top: var(--cover-y, 10%); left: var(--cover-x, 3%); width: min(var(--cover-width, 62%), calc(100% - 48px)); max-width: calc(100% - 48px); transform: translateY(-50%) scale(var(--cover-scale, 1)); transform-origin: left center; }
 .projectTitleGroup > span, .projectSynopsis > span { color: var(--project-accent); font-size: 9px; font-weight: 700; letter-spacing: .14em; }
-.projectTitleGroup h2 { margin: 20px 0 0; font-size: clamp(58px, 7vw, 112px); font-weight: 540; line-height: .84; letter-spacing: -.075em; }
-.projectSynopsis { position: absolute; top: var(--cover-y, 63%); left: var(--cover-x, clamp(24px, 3.4vw, 52px)); width: min(var(--cover-width, 42%), 440px); max-width: calc(100% - 48px); padding: 16px 0 0; border-top: 1px solid rgba(255,255,255,.34); transform: translateY(-50%) scale(var(--cover-scale, 1)); transform-origin: left center; }
-.projectSynopsis p { margin: 13px 0 0; color: rgba(245,245,243,.75); font-size: 12px; line-height: 1.75; }
-.projectFacts { position: absolute; top: var(--cover-y, 78%); left: var(--cover-x, clamp(24px, 3.4vw, 52px)); width: min(var(--cover-width, 72%), calc(100% - 48px)); max-width: calc(100% - 48px); margin: 0; display: grid; grid-template-columns: .55fr 1fr 1fr; border-top: 1px solid rgba(255,255,255,.3); transform: translateY(-50%) scale(var(--cover-scale, 1)); transform-origin: left center; }
+.projectTitleGroup h2 { margin: 1.4cqw 0 0; font-size: 7cqw; font-weight: 540; line-height: .84; letter-spacing: -.075em; }
+.projectSynopsis { position: absolute; top: var(--cover-y, 63%); left: var(--cover-x, 3%); width: min(var(--cover-width, 42%), calc(100% - 48px)); max-width: calc(100% - 48px); padding: 1.15cqw 0 0; border-top: 1px solid rgba(255,255,255,.34); transform: translateY(-50%) scale(var(--cover-scale, 1)); transform-origin: left center; }
+.projectSynopsis p { margin: .9cqw 0 0; color: rgba(245,245,243,.75); font-size: clamp(9px, .9cqw, 15px); line-height: 1.75; }
+.projectFacts { position: absolute; top: var(--cover-y, 78%); left: var(--cover-x, 3%); width: min(var(--cover-width, 72%), calc(100% - 48px)); max-width: calc(100% - 48px); margin: 0; display: grid; grid-template-columns: .55fr 1fr 1fr; border-top: 1px solid rgba(255,255,255,.3); transform: translateY(-50%) scale(var(--cover-scale, 1)); transform-origin: left center; }
 .projectFacts div { min-width: 0; padding: 14px 14px 0 0; }
 .projectFacts div + div { padding-left: 14px; border-left: 1px solid rgba(255,255,255,.22); }
 .projectFacts dt { color: var(--project-accent); font-size: 8px; letter-spacing: .12em; }
@@ -1260,9 +1261,9 @@
   .projectCover { aspect-ratio: 4 / 5; }
   .projectCoverInfo { display: block; padding: 20px; }
   .projectTitleGroup { top: var(--cover-y, 22px); left: var(--cover-x, 20px); width: min(var(--cover-width, calc(100% - 40px)), calc(100% - 40px)); max-width: calc(100% - 40px); }
-  .projectTitleGroup h2 { margin-top: 8px; font-size: clamp(40px, 13vw, 58px); }
+  .projectTitleGroup h2 { margin-top: 2cqw; font-size: 13cqw; }
   .projectSynopsis { top: var(--cover-y, 63%); right: auto; bottom: auto; left: var(--cover-x, 20px); width: min(var(--cover-width, calc(100% - 40px)), calc(100% - 40px)); padding-top: 10px; }
-  .projectSynopsis p { margin-top: 8px; font-size: 10px; line-height: 1.55; display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+  .projectSynopsis p { margin-top: 2cqw; font-size: 2.7cqw; line-height: 1.55; }
   .projectFacts { top: var(--cover-y, 78%); right: auto; bottom: auto; left: var(--cover-x, 20px); width: min(var(--cover-width, calc(100% - 40px)), calc(100% - 40px)); grid-template-columns: 1fr 1fr; }
   .projectFacts div:first-child { grid-column: 1 / -1; }
   .projectFacts div { padding-top: 8px; }
@@ -1349,3 +1350,39 @@
     animation: none !important;
   }
 }
+
+/* authored multiline output */
+.heroLayer h1,
+.heroLayer p,
+.heroLayer dd,
+.projectTitleGroup h2,
+.projectSynopsis p,
+.projectFacts dd,
+.blockCopy h4,
+.blockCopy p,
+.textBlock h4,
+.textBlock div p,
+.galleryBlock h4,
+.fullMediaBlock > p,
+.contactTextLayer h2,
+.contactTextLayer small,
+.footer strong,
+.footer p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* admin cover viewport parity */
+.projectCover[data-cover-preview="mobile"] {
+  width: min(420px, 100%);
+  aspect-ratio: 4 / 5;
+  margin-inline: auto;
+}
+.projectCover[data-cover-preview="mobile"] .projectCoverInfo { display: block; padding: 20px; }
+.projectCover[data-cover-preview="mobile"] .projectTitleGroup { top: var(--cover-y, 22px); left: var(--cover-x, 20px); width: min(var(--cover-width, calc(100% - 40px)), calc(100% - 40px)); max-width: calc(100% - 40px); }
+.projectCover[data-cover-preview="mobile"] .projectTitleGroup h2 { margin-top: 2cqw; font-size: 13cqw; }
+.projectCover[data-cover-preview="mobile"] .projectSynopsis { top: var(--cover-y, 63%); right: auto; bottom: auto; left: var(--cover-x, 20px); width: min(var(--cover-width, calc(100% - 40px)), calc(100% - 40px)); padding-top: 2cqw; }
+.projectCover[data-cover-preview="mobile"] .projectSynopsis p { margin-top: 2cqw; font-size: 2.7cqw; line-height: 1.55; }
+.projectCover[data-cover-preview="mobile"] .projectFacts { top: var(--cover-y, 78%); right: auto; bottom: auto; left: var(--cover-x, 20px); width: min(var(--cover-width, calc(100% - 40px)), calc(100% - 40px)); grid-template-columns: 1fr 1fr; }
+.projectCover[data-cover-preview="mobile"] .projectFacts div:first-child { grid-column: 1 / -1; }
+.projectCover[data-cover-preview="mobile"] .projectFacts div { padding-top: 8px; }

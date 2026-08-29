@@ -16,18 +16,22 @@ import { createDefaultCoverPresentation, createDefaultHeroLayers } from "../port
 import { HeroLayoutEditor } from "./hero-layout-editor";
 import { MediaCropEditor } from "./media-crop-editor";
 import styles from "./admin.module.css";
+import portfolioStyles from "../demo/portfolio-demo.module.css";
 import { createClientId } from "../lib/client-id";
 import { formatVideoDuration } from "../lib/video-duration";
 import { resolveWatermarkText } from "../portfolio/watermark";
 import { croppedImageStyle, fitCropToAspect, fullMediaCrop, mediaCropAspect, validAspect } from "../portfolio/media-crop";
 import { AccessManager, type AccessPayload } from "./access-manager";
+import { rememberLocalMediaPreview, useMediaPreview } from "./media-preview-cache";
+import { FIXED_INITIAL_ADMIN_CODE } from "../program-version";
 
 type View = "overview" | "identity" | "categories" | "projects" | "contact" | "publish" | "records";
 type Operation = "idle" | "saving" | "previewing" | "publishing";
-type OperationError = { title: string; reason: string; solution: string };
+type OperationError = { title: string; reason: string; solution: string; rawReason?: string; actionLabel?: string };
 type SetupPayload = {
-  state: "initial_setup" | "ready";
+  state: "initial_setup" | "password_reset_required" | "ready";
   identity: string | null;
+  currentVersion?: string;
 };
 type AdminPayload = {
   identity: { email: string; provider: string };
@@ -97,12 +101,14 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
   const [access, setAccess] = useState<AccessPayload | null>(null);
   const [storage, setStorage] = useState<StoragePayload | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
-  const [state, setState] = useState<"loading" | "initial_setup" | "recovery_code" | "ready" | "unauthenticated" | "recover" | "error">("loading");
-  const [initialCode, setInitialCode] = useState("");
+  const [state, setState] = useState<"loading" | "initial_setup" | "upgrade_reset" | "recovery_code" | "ready" | "unauthenticated" | "recover" | "error">("loading");
+  const [initialCode, setInitialCode] = useState(FIXED_INITIAL_ADMIN_CODE);
   const [password, setPassword] = useState("");
   const [passwordAgain, setPasswordAgain] = useState("");
   const [recoveryInput, setRecoveryInput] = useState("");
   const [issuedRecoveryCode, setIssuedRecoveryCode] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
+  const [capsLockOn, setCapsLockOn] = useState(false);
   const [message, setMessage] = useState("正在读取管理数据…");
   const [dirty, setDirty] = useState(false);
   const [operation, setOperation] = useState<Operation>("idle");
@@ -129,8 +135,14 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
       const setupBody = await setupResponse.json() as SetupPayload & { error?: string };
       if (!setupResponse.ok) throw new Error(setupBody.error || "管理员绑定状态读取失败");
       if (setupBody.state === "initial_setup") {
+        setInitialCode(FIXED_INITIAL_ADMIN_CODE);
         setState("initial_setup");
-        setMessage("使用部署时填写的一次性口令初始化管理员");
+        setMessage("使用统一的一次性口令创建管理员");
+        return;
+      }
+      if (setupBody.state === "password_reset_required") {
+        setState("upgrade_reset");
+        setMessage(`程序已升级到 v${setupBody.currentVersion ?? "最新版本"}，请使用最新恢复码重置一次密码`);
         return;
       }
 
@@ -171,26 +183,32 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
       return;
     }
     setSetupBusy(true);
-    setMessage("正在创建管理员和系统恢复码…");
+    setMessage("正在验证一次性口令并创建管理员…");
     try {
-      const response = await fetch("/api/admin/setup", {
+      const result = await api<{ state: string; recoveryCode: string }>("/api/admin/setup", {
         method: "POST",
-        credentials: "same-origin",
-        cache: "no-store",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ initialCode, password }),
+        timeoutMs: 20_000,
       });
-      const body = await response.json() as { state?: string; recoveryCode?: string; error?: string };
-      if (!response.ok || !body.recoveryCode) throw new Error(body.error || "管理员初始化暂时无法完成");
-      setIssuedRecoveryCode(body.recoveryCode);
-      setInitialCode("");
+      setIssuedRecoveryCode(result.recoveryCode);
+      setInitialCode(FIXED_INITIAL_ADMIN_CODE);
       setPassword("");
       setPasswordAgain("");
       setState("recovery_code");
-      setMessage("请立即保存系统恢复码");
+      setMessage("管理员已创建，请立即保存最新系统恢复码");
     } catch (error) {
-      setState("initial_setup");
-      notify(errorMessage(error));
+      if (error instanceof ApiError && error.code === "ADMIN_ALREADY_INITIALIZED") {
+        setState("unauthenticated");
+        setMessage("管理员已经创建，请使用刚才设置的密码登录");
+      } else if (error instanceof ApiError && error.code === "REQUEST_TIMEOUT") {
+        setMessage("响应等待较久，正在确认管理员是否已经创建…");
+        await wait(500);
+        await load();
+      } else {
+        setState("initial_setup");
+        notify(errorMessage(error));
+      }
     } finally {
       setSetupBusy(false);
     }
@@ -205,12 +223,23 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ password }),
+        timeoutMs: 20_000,
       });
       setPassword("");
+      setMessage("密码正确，正在确认登录状态…");
+      if (!await confirmAdminSession()) {
+        throw new ApiError("密码已经验证，但登录状态尚未建立，请重新点击进入后台", 503, "SESSION_CONFIRMATION_FAILED");
+      }
       await load();
     } catch (error) {
-      setState("unauthenticated");
-      notify(errorMessage(error));
+      if (error instanceof ApiError && error.code === "PASSWORD_RESET_REQUIRED") {
+        setPassword("");
+        setState("upgrade_reset");
+        setMessage("程序升级后需要使用最新恢复码重置一次密码");
+      } else {
+        setState("unauthenticated");
+        notify(errorMessage(error));
+      }
     } finally {
       setSetupBusy(false);
     }
@@ -222,22 +251,24 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
       notify("两次输入的新密码不一致");
       return;
     }
+    const returnState = state === "upgrade_reset" ? "upgrade_reset" : "recover";
     setSetupBusy(true);
-    setMessage("正在校验恢复码并重置密码…");
+    setMessage(returnState === "upgrade_reset" ? "正在完成本次升级安全确认…" : "正在校验恢复码并重置密码…");
     try {
       const result = await api<{ ok: boolean; recoveryCode: string }>("/api/admin/recover", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ recoveryCode: recoveryInput, password }),
+        timeoutMs: 25_000,
       });
       setIssuedRecoveryCode(result.recoveryCode);
       setRecoveryInput("");
       setPassword("");
       setPasswordAgain("");
       setState("recovery_code");
-      setMessage("旧恢复码已作废，请保存新的系统恢复码");
+      setMessage("密码已更新；旧恢复码已经失效，请保存新恢复码");
     } catch (error) {
-      setState("recover");
+      setState(returnState);
       notify(errorMessage(error));
     } finally {
       setSetupBusy(false);
@@ -261,7 +292,7 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
   function saveRecoveryCode() {
     if (!issuedRecoveryCode) return;
     const blob = new Blob([
-      `网站管理员系统恢复码\n\n${issuedRecoveryCode}\n\n此恢复码只能使用一次。使用后系统会生成新恢复码。\n`,
+      `网站管理员最新系统恢复码\n\n${issuedRecoveryCode}\n\n重要：旧恢复码已经失效。此恢复码用于忘记密码和下一次正式版本升级；使用后系统会再生成一份新恢复码。\n`,
     ], { type: "text/plain;charset=utf-8" });
     const href = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -403,31 +434,47 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
       <StatePanel
         label="FIRST SETUP"
         title="创建网站管理员"
-        detail="输入部署页面里填写的一次性口令，再设置以后登录后台使用的密码。一次性口令成功使用后不能再直接登录。"
+        detail="统一口令已经填写。设置自己的管理员密码后，系统会生成第一份恢复码。"
       >
         <form className={styles.authForm} onSubmit={(event) => { event.preventDefault(); void completeSetup(); }}>
-          <label><span>一次性部署口令</span><input type="password" autoComplete="one-time-code" value={initialCode} onChange={(event) => setInitialCode(event.target.value)} /><small>部署时设置的至少16位英文字母和数字组合</small></label>
-          <label><span>管理员密码</span><input type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} /><small>10至128位，至少包含文字和数字</small></label>
-          <label><span>再次输入密码</span><input type="password" autoComplete="new-password" value={passwordAgain} onChange={(event) => setPasswordAgain(event.target.value)} /></label>
-          <button className={styles.primaryAction} type="submit" disabled={setupBusy}>{setupBusy ? "正在创建…" : "创建管理员 →"}</button>
+          <label><span>统一一次性部署口令</span><input type="text" autoComplete="off" spellCheck={false} value={initialCode} readOnly /><small>固定为 {FIXED_INITIAL_ADMIN_CODE}，只用于第一次创建管理员</small></label>
+          <label><span>管理员密码</span><input type={showPassword ? "text" : "password"} autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="new-password" value={password} onKeyUp={(event) => setCapsLockOn(event.getModifierState("CapsLock"))} onChange={(event) => setPassword(event.target.value)} /><small>10至128位，至少包含文字和数字；首尾不要留空格</small></label>
+          <label><span>再次输入密码</span><input type={showPassword ? "text" : "password"} autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="new-password" value={passwordAgain} onKeyUp={(event) => setCapsLockOn(event.getModifierState("CapsLock"))} onChange={(event) => setPasswordAgain(event.target.value)} />{passwordAgain && password !== passwordAgain && <small>两次密码还不一致</small>}</label>
+          {capsLockOn && <p role="status">大写锁定已开启，请确认大小写。</p>}
+          <button className={styles.textAction} type="button" onClick={() => setShowPassword((current) => !current)}>{showPassword ? "隐藏密码" : "显示密码"}</button>
+          <button className={styles.primaryAction} type="submit" disabled={setupBusy}>{setupBusy ? "正在创建并确认…" : "创建管理员 →"}</button>
         </form>
       </StatePanel>
     );
   }
+  if (state === "upgrade_reset") return (
+    <StatePanel label="SECURITY UPDATE" title="完成本次版本升级" detail="输入你保存的最新系统恢复码，设置一次新密码。完成后旧恢复码作废，系统会生成新的恢复码。">
+      <form className={styles.authForm} onSubmit={(event) => { event.preventDefault(); void recoverPassword(); }}>
+        <label><span>最新系统恢复码</span><input type="text" autoCapitalize="characters" autoComplete="off" spellCheck={false} value={recoveryInput} onChange={(event) => setRecoveryInput(event.target.value)} /><small>只使用最后一次保存的恢复码</small></label>
+        <label><span>新管理员密码</span><input type={showPassword ? "text" : "password"} autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="new-password" value={password} onKeyUp={(event) => setCapsLockOn(event.getModifierState("CapsLock"))} onChange={(event) => setPassword(event.target.value)} /></label>
+        <label><span>再次输入新密码</span><input type={showPassword ? "text" : "password"} autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="new-password" value={passwordAgain} onKeyUp={(event) => setCapsLockOn(event.getModifierState("CapsLock"))} onChange={(event) => setPasswordAgain(event.target.value)} />{passwordAgain && password !== passwordAgain && <small>两次密码还不一致</small>}</label>
+        {capsLockOn && <p role="status">大写锁定已开启，请确认大小写。</p>}
+        <button className={styles.textAction} type="button" onClick={() => setShowPassword((current) => !current)}>{showPassword ? "隐藏密码" : "显示密码"}</button>
+        <button className={styles.primaryAction} type="submit" disabled={setupBusy}>{setupBusy ? "正在更新密码…" : "完成升级并生成新恢复码 →"}</button>
+      </form>
+    </StatePanel>
+  );
   if (state === "recover") return (
     <StatePanel label="PASSWORD RECOVERY" title="使用系统恢复码" detail="恢复成功后，旧恢复码会立即作废，系统会再生成一份新的恢复码。">
       <form className={styles.authForm} onSubmit={(event) => { event.preventDefault(); void recoverPassword(); }}>
-        <label><span>系统恢复码</span><input type="text" autoCapitalize="characters" autoComplete="off" value={recoveryInput} onChange={(event) => setRecoveryInput(event.target.value)} /></label>
-        <label><span>新管理员密码</span><input type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
-        <label><span>再次输入新密码</span><input type="password" autoComplete="new-password" value={passwordAgain} onChange={(event) => setPasswordAgain(event.target.value)} /></label>
-        <button className={styles.primaryAction} type="submit" disabled={setupBusy}>{setupBusy ? "正在重置…" : "重置密码 →"}</button>
+        <label><span>最新系统恢复码</span><input type="text" autoCapitalize="characters" autoComplete="off" spellCheck={false} value={recoveryInput} onChange={(event) => setRecoveryInput(event.target.value)} /></label>
+        <label><span>新管理员密码</span><input type={showPassword ? "text" : "password"} autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="new-password" value={password} onKeyUp={(event) => setCapsLockOn(event.getModifierState("CapsLock"))} onChange={(event) => setPassword(event.target.value)} /></label>
+        <label><span>再次输入新密码</span><input type={showPassword ? "text" : "password"} autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="new-password" value={passwordAgain} onKeyUp={(event) => setCapsLockOn(event.getModifierState("CapsLock"))} onChange={(event) => setPasswordAgain(event.target.value)} />{passwordAgain && password !== passwordAgain && <small>两次密码还不一致</small>}</label>
+        {capsLockOn && <p role="status">大写锁定已开启，请确认大小写。</p>}
+        <button className={styles.textAction} type="button" onClick={() => setShowPassword((current) => !current)}>{showPassword ? "隐藏密码" : "显示密码"}</button>
+        <button className={styles.primaryAction} type="submit" disabled={setupBusy}>{setupBusy ? "正在重置…" : "重置密码并生成新恢复码 →"}</button>
         <button className={styles.textAction} type="button" onClick={() => { setPassword(""); setPasswordAgain(""); setState("unauthenticated"); }}>返回密码登录</button>
       </form>
     </StatePanel>
   );
   if (state === "recovery_code" && issuedRecoveryCode) return (
-    <StatePanel label="RECOVERY CODE" title="立即保存恢复码" detail="系统以后不会再次显示这份恢复码。密码和恢复码同时丢失时，网站无法自行找回。">
-      <div className={styles.recoveryCard}><span>系统恢复码</span><strong>{issuedRecoveryCode}</strong><small>一次性使用 · 请离线保存</small></div>
+    <StatePanel label="RECOVERY CODE" title="立即保存恢复码" detail="这是当前唯一有效的最新恢复码。旧恢复码已经作废；下次忘记密码或正式版本升级时需要使用这一份。">
+      <div className={styles.recoveryCard}><span>系统恢复码</span><strong>{issuedRecoveryCode}</strong><small>最新一份 · 使用后会换新 · 请立即离线保存</small></div>
       <div className={styles.recoveryActions}>
         <button className={styles.primaryAction} type="button" onClick={saveRecoveryCode}>下载恢复码</button>
         <button className={styles.textAction} type="button" onClick={() => void load()}>我已妥善保存，进入后台 →</button>
@@ -451,7 +498,7 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
       <aside className={styles.sidebar}>
         <div className={styles.ownerCard}>
           <span>ADMIN</span>
-          <strong>{portfolio.hero.name}</strong>
+          <strong>{portfolio.hero.name || "未命名作品集"}</strong>
           <small>{data.identity.email || initialEmail}</small>
         </div>
         <nav aria-label="后台功能">
@@ -701,6 +748,7 @@ function ContactEditor({ portfolio, change, setMessage }: { portfolio: Portfolio
 
 function ContactLayoutPreview({ portfolio, updateContact, updateHero, updateStyle }: { portfolio: PortfolioDocument; updateContact: (patch: Partial<PortfolioDocument["settings"]["contact"]>) => void; updateHero: (field: "email" | "phone", value: string) => void; updateStyle: (key: "eyebrowStyle" | "titleStyle" | "detailsStyle" | "noteStyle", patch: Partial<CoverTextStyle>) => void }) {
   const contact = portfolio.settings.contact;
+  const previewSrc = useMediaPreview(contact.image);
   const [selected, setSelected] = useState<"eyebrowStyle" | "titleStyle" | "detailsStyle" | "noteStyle">("titleStyle");
   const [drag, setDrag] = useState<{ key: "eyebrowStyle" | "titleStyle" | "detailsStyle" | "noteStyle"; mode: "move" | "resize"; startX: number; startY: number; width: number; height: number; style: CoverTextStyle } | null>(null);
   function start(event: React.PointerEvent<HTMLElement>, key: typeof selected, mode: "move" | "resize") {
@@ -731,9 +779,9 @@ function ContactLayoutPreview({ portfolio, updateContact, updateHero, updateStyl
   return (
     <section className={styles.contactAdminPreview} data-layout={contact.layout} data-contact-canvas aria-label="联系弹层预览">
       <div className={styles.contactAdminVisual}>
-        {contact.image.src
+        {previewSrc
           // eslint-disable-next-line @next/next/no-img-element
-          ? <img src={contact.image.src} alt="" style={croppedImageStyle(contact.image)} />
+          ? <img src={previewSrc} alt="" style={croppedImageStyle(contact.image)} />
           : <span>联系图片预览</span>}
       </div>
       <section {...layerProps("eyebrowStyle")} className={styles.contactTextLayer} style={styleFor(contact.eyebrowStyle, "eyebrowStyle")}><DirectText tag="p" value={contact.eyebrow} label="联系眉题" onCommit={(eyebrow) => updateContact({ eyebrow })} /><i className={styles.resizeHandle} onPointerDown={(event) => start(event, "eyebrowStyle", "resize")} onPointerMove={move} onPointerUp={stop} /></section>
@@ -851,14 +899,15 @@ function ProjectEditor({
           {portfolio.projects.map((project, index) => (
             <button key={project.id} type="button" data-selected={selectedProjectId === project.id} onClick={() => setSelectedProjectId(project.id)}>
               <span>{String(index + 1).padStart(2, "0")}</span>
-              <strong>{project.title}</strong>
-              <small>{portfolio.categories.find((category) => category.id === project.categoryId)?.label}</small>
+              <strong>{project.title || "未命名作品"}</strong>
+              <small>{portfolio.categories.find((category) => category.id === project.categoryId)?.label || "未命名分类"}</small>
             </button>
           ))}
         </aside>
         <div className={styles.projectForm}>
           {!selectedProject ? <p className={styles.emptyState}>新建一个作品后开始编辑。</p> : (
             <ProjectForm
+              key={selectedProject.id}
               project={selectedProject}
               categories={portfolio.categories}
               update={(updater) => updateProject(selectedProject.id, updater)}
@@ -984,7 +1033,7 @@ function ProjectForm({ project, categories, update, remove, move, setMessage, cu
 
 function BlockEditor({ block, index, projectId, setMessage, update, move, remove }: { block: ProjectBlock; index: number; projectId: string; setMessage: (value: string) => void; update: (updater: (block: ProjectBlock) => ProjectBlock) => void; move: (direction: -1 | 1) => void; remove: () => void }) {
   return (
-    <article className={styles.blockCard}>
+    <article className={styles.blockCard} data-block-index={index}>
       <header><span>{String(index + 1).padStart(2, "0")} · {blockLabel(block.type)}</span><div><button onClick={() => move(-1)}>↑</button><button onClick={() => move(1)}>↓</button><button onClick={remove}>删除</button></div></header>
       {block.type !== "full-media" && <Field label="眉题"><input value={block.eyebrow} onChange={(event) => update((current) => ({ ...current, eyebrow: event.target.value }))} /></Field>}
       {block.type !== "full-media" && <Field label="标题"><input value={block.title} onChange={(event) => update((current) => ({ ...current, title: event.target.value }))} /></Field>}
@@ -1036,18 +1085,19 @@ function BlockEditor({ block, index, projectId, setMessage, update, move, remove
 
 function CoverLayoutPreview({ project, categoryLabel, update, updateStyle }: { project: Project; categoryLabel: string; update: (updater: (project: Project) => Project) => void; updateStyle: (key: "titleStyle" | "synopsisStyle" | "factsStyle", patch: Partial<CoverTextStyle>) => void }) {
   const defaults = createDefaultCoverPresentation();
+  const previewSrc = useMediaPreview(project.cover);
+  const [previewMode, setPreviewMode] = useState<"desktop" | "mobile">("desktop");
   const [selected, setSelected] = useState<"titleStyle" | "synopsisStyle" | "factsStyle">("titleStyle");
   const [drag, setDrag] = useState<{ key: "titleStyle" | "synopsisStyle" | "factsStyle"; mode: "move" | "resize"; startX: number; startY: number; width: number; height: number; style: CoverTextStyle } | null>(null);
   const styleFor = (style: CoverTextStyle): React.CSSProperties => ({
-    left: `${style.x}%`,
-    top: `${style.y}%`,
-    width: `${style.width}%`,
-    transform: `translateY(-50%) scale(${style.scale})`,
-    transformOrigin: "left center",
+    "--cover-x": `${style.x}%`,
+    "--cover-y": `${style.y}%`,
+    "--cover-width": `${style.width}%`,
+    "--cover-scale": style.scale,
     textAlign: style.align,
     color: style.color === "system" ? undefined : style.color,
     fontFamily: style.fontFamily === "custom" ? "PortfolioCustom, sans-serif" : undefined,
-  });
+  } as React.CSSProperties);
   function start(event: React.PointerEvent<HTMLElement>, key: "titleStyle" | "synopsisStyle" | "factsStyle", mode: "move" | "resize") {
     event.preventDefault();
     event.stopPropagation();
@@ -1082,21 +1132,53 @@ function CoverLayoutPreview({ project, categoryLabel, update, updateStyle }: { p
       onPointerCancel: stopPointer,
     };
   }
+  const category = categoryLabel.trim();
+  const duration = project.duration !== "00:00" ? project.duration : "";
+  const yearDuration = [project.year.trim(), duration].filter(Boolean).join(" · ");
   return (
-    <div className={styles.coverLayoutPreview} data-cover-canvas style={{ aspectRatio: mediaCropAspect(project.cover, 16 / 9) }}>
-      {project.cover.src
-        // eslint-disable-next-line @next/next/no-img-element
-        ? <img src={project.cover.src} alt="" style={croppedImageStyle(project.cover)} />
-        : <span className={styles.coverPreviewPlaceholder}>上传项目封面后在这里排版</span>}
-      <i aria-hidden="true" />
-      {project.coverPresentation.showTitle && <section {...layerProps("titleStyle")} className={styles.coverPreviewTitle} style={styleFor(project.coverPresentation.titleStyle ?? defaults.titleStyle)}><small>{categoryLabel}</small><DirectText tag="strong" value={project.title} label="作品名称" onCommit={(title) => update((current) => ({ ...current, title }))} /><i className={styles.resizeHandle} onPointerDown={(event) => start(event, "titleStyle", "resize")} onPointerMove={movePointer} onPointerUp={stopPointer} /></section>}
-      {project.coverPresentation.showSynopsis && <section {...layerProps("synopsisStyle")} className={styles.coverPreviewSynopsis} style={styleFor(project.coverPresentation.synopsisStyle ?? defaults.synopsisStyle)}><small>项目介绍</small><DirectText tag="p" value={project.synopsis} label="作品简介" onCommit={(synopsis) => update((current) => ({ ...current, synopsis }))} /><i className={styles.resizeHandle} onPointerDown={(event) => start(event, "synopsisStyle", "resize")} onPointerMove={movePointer} onPointerUp={stopPointer} /></section>}
-      {project.coverPresentation.showFacts && <section {...layerProps("factsStyle")} className={styles.coverPreviewFacts} style={styleFor(project.coverPresentation.factsStyle ?? defaults.factsStyle)}><span><DirectText value={project.year} label="年份" onCommit={(year) => update((current) => ({ ...current, year }))} /> · {project.duration}</span><DirectText value={project.challenge || "项目难点"} label="项目难点" onCommit={(challenge) => update((current) => ({ ...current, challenge }))} /><DirectText value={project.solution || "解决思路"} label="解决思路" onCommit={(solution) => update((current) => ({ ...current, solution }))} /><i className={styles.resizeHandle} onPointerDown={(event) => start(event, "factsStyle", "resize")} onPointerMove={movePointer} onPointerUp={stopPointer} /></section>}
-    </div>
+    <>
+      <div className={styles.coverPreviewMode} role="group" aria-label="封面预览尺寸">
+        <button type="button" data-active={previewMode === "desktop"} onClick={() => setPreviewMode("desktop")}>桌面 16:9</button>
+        <button type="button" data-active={previewMode === "mobile"} onClick={() => setPreviewMode("mobile")}>手机 4:5</button>
+        <span>此画布与正式前台使用同一套字号、宽度和换行规则。</span>
+      </div>
+      <div
+        className={`${styles.coverLayoutPreview} ${portfolioStyles.projectCover}`}
+        data-cover-canvas
+        data-cover-overlay="fixed"
+        data-cover-preview={previewMode}
+        style={{ aspectRatio: previewMode === "mobile" ? 4 / 5 : mediaCropAspect(project.cover, 16 / 9) }}
+      >
+        <figure className={portfolioStyles.projectArtwork}>
+          {previewSrc
+            // eslint-disable-next-line @next/next/no-img-element
+            ? <img src={previewSrc} alt="" style={croppedImageStyle(project.cover)} />
+            : <span className={styles.coverPreviewPlaceholder}>上传项目封面后在这里排版</span>}
+        </figure>
+        <div className={portfolioStyles.projectCoverInfo}>
+          {project.coverPresentation.showTitle && <section {...layerProps("titleStyle")} className={`${portfolioStyles.projectTitleGroup} ${styles.coverPreviewLayer}`} style={styleFor(project.coverPresentation.titleStyle ?? defaults.titleStyle)}>
+            {category && <span>{category}</span>}
+            <h2><DirectText value={project.title} placeholder="双击填写作品名称" label="作品名称" onCommit={(title) => update((current) => ({ ...current, title }))} /></h2>
+            <i className={styles.resizeHandle} onPointerDown={(event) => start(event, "titleStyle", "resize")} onPointerMove={movePointer} onPointerUp={stopPointer} />
+          </section>}
+          {project.coverPresentation.showSynopsis && <section {...layerProps("synopsisStyle")} className={`${portfolioStyles.projectSynopsis} ${styles.coverPreviewLayer}`} style={styleFor(project.coverPresentation.synopsisStyle ?? defaults.synopsisStyle)}>
+            <span>项目介绍</span>
+            <p><DirectText value={project.synopsis} placeholder="双击填写作品简介" label="作品简介" onCommit={(synopsis) => update((current) => ({ ...current, synopsis }))} /></p>
+            <i className={styles.resizeHandle} onPointerDown={(event) => start(event, "synopsisStyle", "resize")} onPointerMove={movePointer} onPointerUp={stopPointer} />
+          </section>}
+          {project.coverPresentation.showFacts && <dl {...layerProps("factsStyle")} className={`${portfolioStyles.projectFacts} ${styles.coverPreviewLayer}`} style={styleFor(project.coverPresentation.factsStyle ?? defaults.factsStyle)}>
+            <div><dt>年份 / 时长</dt><dd><DirectText value={yearDuration} placeholder="双击填写年份" label="年份" onCommit={(year) => update((current) => ({ ...current, year: year.split("·")[0]?.trim() ?? "" }))} /></dd></div>
+            <div><dt>项目难点</dt><dd><DirectText value={project.challenge} placeholder="双击填写项目难点" label="项目难点" onCommit={(challenge) => update((current) => ({ ...current, challenge }))} /></dd></div>
+            <div><dt>解决思路</dt><dd><DirectText value={project.solution} placeholder="双击填写解决思路" label="解决思路" onCommit={(solution) => update((current) => ({ ...current, solution }))} /></dd></div>
+            <i className={styles.resizeHandle} onPointerDown={(event) => start(event, "factsStyle", "resize")} onPointerMove={movePointer} onPointerUp={stopPointer} />
+          </dl>}
+        </div>
+      </div>
+    </>
   );
 }
 
-function DirectText({ value, label, onCommit, tag = "span" }: { value: string; label: string; onCommit: (value: string) => void; tag?: "span" | "strong" | "p" | "small" }) {
+function DirectText({ value, placeholder = "", label, onCommit, tag = "span" }: { value: string; placeholder?: string; label: string; onCommit: (value: string) => void; tag?: "span" | "strong" | "p" | "small" }) {
   const [editing, setEditing] = useState(false);
   const ref = useRef<HTMLElement | null>(null);
   useEffect(() => {
@@ -1115,11 +1197,18 @@ function DirectText({ value, label, onCommit, tag = "span" }: { value: string; l
     role: "textbox",
     "aria-label": `双击修改${label}`,
     "data-editing": editing,
+    "data-placeholder": !value && !editing,
     onDoubleClick: (event: React.MouseEvent<HTMLElement>) => { event.preventDefault(); event.stopPropagation(); setEditing(true); },
     onPointerDown: (event: React.PointerEvent<HTMLElement>) => { if (editing) event.stopPropagation(); },
     onBlur: (event: React.FocusEvent<HTMLElement>) => { setEditing(false); onCommit(event.currentTarget.textContent?.trim() ?? ""); },
-    onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => { if (editing && event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); } if (editing) event.stopPropagation(); },
-    children: value,
+    onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => {
+      if (editing && event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        event.currentTarget.blur();
+      }
+      if (editing) event.stopPropagation();
+    },
+    children: editing ? value : value || placeholder,
   };
   if (tag === "strong") return <strong {...props} />;
   if (tag === "p") return <p {...props} />;
@@ -1145,7 +1234,7 @@ function CoverStyleControls({ label, style, customFontReady, onChange }: { label
 function MediaUpload({ projectId, slot, title, asset, cropAspect = 16 / 9, freeCrop = false, setMessage, onUploaded, onCropChange }: { projectId: string; slot: "hero" | "transition" | "cover" | "final" | "detail" | "font" | "contact"; title: string; asset: MediaAsset; cropAspect?: number; freeCrop?: boolean; setMessage: (message: string) => void; onUploaded: (asset: MediaAsset, metadata?: { durationSeconds?: number }) => void; onCropChange?: (crop: MediaCrop, sourceAspectRatio: number) => void }) {
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
-  const [previewSrc, setPreviewSrc] = useState<string | undefined>(asset.src);
+  const previewSrc = useMediaPreview(asset);
   async function upload(file: File) {
     setUploading(true);
     setMessage(`正在上传 ${file.name}…`);
@@ -1203,7 +1292,7 @@ function MediaUpload({ projectId, slot, title, asset, cropAspect = 16 / 9, freeC
           body: "{}",
         });
       }
-      if (asset.kind === "image") setPreviewSrc(URL.createObjectURL(uploadFile));
+      if (asset.kind === "image") rememberLocalMediaPreview(result.asset, uploadFile);
       const nextCrop = sourceAspectRatio
         ? freeCrop ? fullMediaCrop() : fitCropToAspect(sourceAspectRatio, cropAspect)
         : asset.crop;
@@ -1313,14 +1402,15 @@ function OperationErrorDialog({ error, onClose }: { error: OperationError; onClo
           <div><dt>失败原因</dt><dd>{error.reason}</dd></div>
           <div><dt>解决方法</dt><dd>{error.solution}</dd></div>
         </dl>
-        <button type="button" autoFocus onClick={onClose}>返回继续处理</button>
+        {error.rawReason && <span hidden data-error-path>{error.rawReason}</span>}
+        <button type="button" autoFocus onClick={onClose}>{error.actionLabel || "返回继续处理"}</button>
       </section>
     </div>
   );
 }
 
 function createProject(categoryId: string, order: number): Project {
-  return { id: `project-${createClientId()}`, order, categoryId, title: "未命名作品", year: String(new Date().getFullYear()), duration: "00:00", synopsis: "填写作品简介。", challenge: "", solution: "", cover: emptyMedia("image"), finalVideo: emptyMedia("video"), coverPresentation: createDefaultCoverPresentation(), detailBlocks: [] };
+  return { id: `project-${createClientId()}`, order, categoryId, title: "", year: "", duration: "00:00", synopsis: "", challenge: "", solution: "", cover: emptyMedia("image"), finalVideo: emptyMedia("video"), coverPresentation: createDefaultCoverPresentation(), detailBlocks: [] };
 }
 function emptyMedia(kind: "image" | "video" | "font"): MediaAsset { return { id: `media-${createClientId()}`, label: "", alt: "", kind, visualKey: "frame" }; }
 
@@ -1358,10 +1448,10 @@ async function readImageAspectRatio(file: File): Promise<number | undefined> {
 
 function createBlock(type: ProjectBlock["type"]): ProjectBlock {
   const id = `block-${createClientId()}`;
-  if (type === "text") return { id, type, eyebrow: "PROCESS", title: "新内容", body: "填写内容。" };
-  if (type === "media-text") return { id, type, eyebrow: "PROCESS", title: "图文内容", body: "填写内容。", side: "left", media: emptyMedia("image") };
-  if (type === "gallery") return { id, type, eyebrow: "GALLERY", title: "图片组", orientation: "portrait", items: [emptyMedia("image")] };
-  return { id, type, caption: "图片说明", media: emptyMedia("image") };
+  if (type === "text") return { id, type, eyebrow: "", title: "", body: "" };
+  if (type === "media-text") return { id, type, eyebrow: "", title: "", body: "", side: "left", media: emptyMedia("image") };
+  if (type === "gallery") return { id, type, eyebrow: "", title: "", orientation: "portrait", items: [emptyMedia("image")] };
+  return { id, type, caption: "", media: emptyMedia("image") };
 }
 function moveItem<T extends { id: string }>(items: T[], id: string, direction: -1 | 1) { const index = items.findIndex((item) => item.id === id); const target = index + direction; if (index < 0 || target < 0 || target >= items.length) return items; const next = [...items]; [next[index], next[target]] = [next[target], next[index]]; return next; }
 function clamp(value: number, min: number, max: number) { return Math.max(min, Math.min(max, Math.round(value * 10) / 10)); }
@@ -1373,12 +1463,42 @@ function formatStorage(value: number) { return value >= 1024 * 1024 * 1024 ? `${
 function errorMessage(error: unknown) { return error instanceof Error ? error.message : "操作失败"; }
 function isFailureMessage(message: string) { return /失败|不能|无法|无效|超过|不存在|请先|至少需要|暂时|中断|冲突|权限/u.test(message); }
 function failureGuidance(message: string): OperationError {
+  const validation = humanizeValidationFailure(message);
+  if (validation) return {
+    title: "这项内容需要调整",
+    reason: validation,
+    solution: "点击“定位并修改”，系统会进入对应作品、内容块和输入框。",
+    rawReason: message,
+    actionLabel: "定位并修改",
+  };
   if (/超过|过大|50 MB|10 MiB|8 MiB|空间不足/u.test(message)) return { title: "文件没有上传", reason: message, solution: "压缩文件、删除不再使用的媒体，或重新选择更小的文件后再上传。" };
   if (/登录|身份|权限/u.test(message)) return { title: "当前操作没有完成", reason: message, solution: "重新输入管理员密码后再试。" };
   if (/草稿已|冲突|修订/u.test(message)) return { title: "版本已经变化", reason: message, solution: "刷新后台读取最新草稿，再重新应用并保存本次修改。" };
   if (/格式|JPG|MP4|WOFF|字体|视频|图片/u.test(message)) return { title: "文件格式不符合要求", reason: message, solution: "按上传框标注的格式重新导出文件，然后再次拖入。" };
-  return { title: "操作没有完成", reason: message, solution: "检查网络后重试；如果仍失败，返回对应编辑项并重新提交。" };
+  return { title: "操作没有完成", reason: message, solution: "检查当前提示后重试；如果仍失败，保留提示截图再处理。" };
 }
+
+function humanizeValidationFailure(message: string) {
+  const project = message.match(/projects\[(\d+)\]/u);
+  const block = message.match(/detailBlocks\[(\d+)\]/u);
+  const field = message.match(/\.(siteTitle|name|role|targetRole|email|phone|statement|availability|label|title|year|synopsis|challenge|solution|eyebrow|body|caption)(?:\s|$)/u)?.[1];
+  if (!/无效|必须|超过|长度/u.test(message) || (!project && !field)) return null;
+  const labels: Record<string, string> = {
+    siteTitle: "网站名称", name: "姓名", role: "职业标题", targetRole: "求职方向", email: "联系邮箱",
+    phone: "电话号码", statement: "个人定位", availability: "状态短句", label: "分类名称", title: block ? "内容块标题" : "作品名称",
+    year: "年份", synopsis: "作品简介", challenge: "项目难点", solution: "解决思路", eyebrow: "眉题", body: "正文", caption: "图注",
+  };
+  const limits: Record<string, number> = { siteTitle: 80, name: 60, role: 80, targetRole: 120, email: 160, phone: 30, statement: 260, availability: 100, label: 40, title: block ? 120 : 100, year: 4, synopsis: 1200, challenge: 1200, solution: 1200, eyebrow: 80, body: 4000, caption: 500 };
+  const location = [
+    project ? `第 ${Number(project[1]) + 1} 个作品` : "",
+    block ? `第 ${Number(block[1]) + 1} 个内容块` : "",
+    field ? labels[field] || field : "对应字段",
+  ].filter(Boolean).join(" → ");
+  const limit = field ? limits[field] : undefined;
+  const issue = message.includes("长度无效") && limit ? `内容为空或超过 ${limit} 个字符` : message.replace(/^.*?\s(?=[^\s]+$)/u, "");
+  return `${location}：${issue}`;
+}
+
 async function prepareUploadFile(file: File, kind: MediaAsset["kind"]) {
   if (kind !== "image" || file.type === "image/avif") return file;
   let bitmap: ImageBitmap;
@@ -1423,4 +1543,53 @@ async function uploadChunkWithRetry(path: string, chunk: Blob) {
   }
   throw lastError instanceof Error ? lastError : new Error("上传分片失败");
 }
-async function api<T>(input: string, init?: RequestInit): Promise<T> { const response = await fetch(input, { ...init, credentials: "same-origin", cache: "no-store" }); const body = await response.json().catch(() => ({})) as T & { error?: string; details?: string[] }; if (!response.ok) throw new Error(body.details?.[0] || body.error || `请求失败（${response.status}）`); return body; }
+type ApiRequestInit = RequestInit & { timeoutMs?: number };
+
+class ApiError extends Error {
+  readonly status: number;
+  readonly code: string;
+
+  constructor(message: string, status: number, code = "API_ERROR") {
+    super(message);
+    this.status = status;
+    this.code = code;
+  }
+}
+
+async function confirmAdminSession() {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const response = await fetch("/api/admin/setup", { credentials: "same-origin", cache: "no-store" });
+    if (response.ok) {
+      const body = await response.json().catch(() => ({})) as { state?: string };
+      if (body.state === "ready") return true;
+    }
+    await wait(250 * (attempt + 1));
+  }
+  return false;
+}
+
+function wait(milliseconds: number) {
+  return new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds));
+}
+
+async function api<T>(input: string, init?: ApiRequestInit): Promise<T> {
+  const { timeoutMs, ...requestInit } = init ?? {};
+  const controller = timeoutMs ? new AbortController() : null;
+  const timeout = controller ? window.setTimeout(() => controller.abort(), timeoutMs) : null;
+  try {
+    const response = await fetch(input, {
+      ...requestInit,
+      signal: requestInit.signal ?? controller?.signal,
+      credentials: "same-origin",
+      cache: "no-store",
+    });
+    const body = await response.json().catch(() => ({})) as T & { error?: string; details?: string[]; code?: string };
+    if (!response.ok) throw new ApiError(body.details?.[0] || body.error || `请求失败（${response.status}）`, response.status, body.code);
+    return body;
+  } catch (error) {
+    if (controller?.signal.aborted) throw new ApiError("服务器响应超过等待时间，系统将检查操作是否已经完成", 408, "REQUEST_TIMEOUT");
+    throw error;
+  } finally {
+    if (timeout !== null) window.clearTimeout(timeout);
+  }
+}

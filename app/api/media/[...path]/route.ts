@@ -15,6 +15,10 @@ type MediaRow = {
   chunk_count: number;
 };
 
+type AdminDraftAccess = {
+  document: PortfolioDocument;
+};
+
 export async function GET(request: Request, context: { params: Promise<{ path: string[] }> }) {
   return serveMedia(request, context, false);
 }
@@ -33,9 +37,9 @@ async function serveMedia(
   if (!validObjectKey(key)) return new Response("Not found", { status: 404 });
 
   try {
-    const adminDocument = await getAdminDraftDocument(request);
-    let document: PortfolioDocument | null = adminDocument;
-    let restricted = Boolean(adminDocument);
+    const adminAccess = await getAdminDraftAccess(request);
+    let document: PortfolioDocument | null = adminAccess?.document ?? null;
+    let restricted = Boolean(adminAccess);
 
     if (!document) {
       const access = await checkPortfolioAccess(request);
@@ -46,10 +50,10 @@ async function serveMedia(
     }
 
     if (!document) return new Response("Not found", { status: 404 });
-    const media = await findPortfolioMedia(key, document);
+    const media = await findPortfolioMedia(key, document, Boolean(adminAccess));
     if (!media) return new Response("Not found", { status: 404 });
 
-    if (media.kind === "video" && !adminDocument) {
+    if (media.kind === "video" && !adminAccess) {
       const url = new URL(request.url);
       const expiresAt = Number(url.searchParams.get("exp"));
       const signature = url.searchParams.get("sig") ?? "";
@@ -68,12 +72,12 @@ async function serveMedia(
   }
 }
 
-async function getAdminDraftDocument(request: Request): Promise<PortfolioDocument | null> {
+async function getAdminDraftAccess(request: Request): Promise<AdminDraftAccess | null> {
   const identity = await authorizeAdmin(request);
   if (!identity) return null;
   const record = await getPortfolioRecord();
   if (!record || !canManagePortfolio(identity, record.ownerEmail)) return null;
-  return record.draft;
+  return { document: record.draft };
 }
 
 async function serveKvMedia(
@@ -157,15 +161,25 @@ function mediaHeaders(record: MediaRow, kind: string, restricted: boolean) {
   });
 }
 
-async function findPortfolioMedia(key: string, document: PortfolioDocument) {
+async function findPortfolioMedia(key: string, document: PortfolioDocument, allowUnreferencedAdminMedia: boolean) {
   const asset = findPublishedMedia(document, key);
-  if (!asset) return null;
   const record = await getPortfolioDb()
     .prepare(`SELECT id, object_key, content_type, byte_size, storage_backend, chunk_size, chunk_count
       FROM portfolio_media WHERE object_key = ? AND status = 'uploaded' LIMIT 1`)
     .bind(key)
     .first<MediaRow>();
-  return record ? { kind: asset.asset.kind, record } : null;
+  if (!record) return null;
+  if (asset) return { kind: asset.asset.kind, record };
+  if (!allowUnreferencedAdminMedia) return null;
+  const kind = mediaKindFromContentType(record.content_type);
+  return kind ? { kind, record } : null;
+}
+
+function mediaKindFromContentType(contentType: string): "image" | "video" | "font" | null {
+  if (contentType.startsWith("image/")) return "image";
+  if (contentType === "video/mp4") return "video";
+  if (contentType.startsWith("font/") || contentType.includes("woff") || contentType.includes("truetype") || contentType.includes("opentype")) return "font";
+  return null;
 }
 
 function parseRange(value: string | null, size: number): { start: number; end: number } | "invalid" | null {

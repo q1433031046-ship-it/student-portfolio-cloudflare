@@ -56,6 +56,8 @@ export const adminCredentials = sqliteTable("admin_credentials", {
   passwordSalt: text("password_salt").notNull(),
   recoveryHash: text("recovery_hash").notNull(),
   recoverySalt: text("recovery_salt").notNull(),
+  authScheme: text("auth_scheme", { enum: ["v1", "v2"] }).notNull().default("v1"),
+  securityVersion: text("security_version").notNull().default("legacy"),
   failedAttempts: integer("failed_attempts").notNull().default(0),
   lockedUntil: text("locked_until"),
   initializedAt: text("initialized_at").notNull().default(sql`CURRENT_TIMESTAMP`),
