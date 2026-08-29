@@ -47,6 +47,75 @@ jobs:
       - name: Apply deterministic patch
         run: python scripts/apply-stability-phase1.py
 
+      - name: Fix generated TypeScript details
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          preview = Path('app/admin/media-preview-cache.ts')
+          content = preview.read_text(encoding='utf-8')
+          old = '''export function useMediaPreview(asset: Pick<MediaAsset, "id" | "key" | "src">) {
+            const [preview, setPreview] = useState(() => currentPreview(asset));
+
+            useEffect(() => {
+              const update = () => setPreview(currentPreview(asset));
+              update();
+              listeners.add(update);
+              return () => listeners.delete(update);
+            }, [asset.id, asset.key, asset.src]);
+
+            return preview;
+          }'''
+          new = '''export function useMediaPreview(asset: Pick<MediaAsset, "id" | "key" | "src">) {
+            const [preview, setPreview] = useState(() => currentPreview(asset));
+            const assetId = asset.id;
+            const assetKey = asset.key;
+            const assetSrc = asset.src;
+
+            useEffect(() => {
+              const snapshot = { id: assetId, key: assetKey, src: assetSrc };
+              const update = () => setPreview(currentPreview(snapshot));
+              update();
+              listeners.add(update);
+              return () => { listeners.delete(update); };
+            }, [assetId, assetKey, assetSrc]);
+
+            return preview;
+          }'''
+          if old not in content:
+              raise SystemExit('media preview TypeScript target not found')
+          preview.write_text(content.replace(old, new, 1), encoding='utf-8')
+
+          enhancements = Path('app/admin/admin-interaction-enhancements.tsx')
+          content = enhancements.read_text(encoding='utf-8')
+          old = '''      let scope: ParentNode = document;
+                if (blockIndexMatch) {
+                  const prefix = `${String(Number(blockIndexMatch[1]) + 1).padStart(2, "0")} ·`;
+                  const block = Array.from(document.querySelectorAll("article[data-block-index]"))
+                    .find((article) => article.querySelector(":scope > header > span")?.textContent?.trim().startsWith(prefix));
+                  if (block) scope = block;
+                }
+                const target = fieldLabel
+                  ? Array.from(scope.querySelectorAll("label")).find((label) => fieldText(label).includes(fieldLabel))
+                  : scope instanceof Element ? scope : document.querySelector("section");'''
+          new = '''      const blockScope = blockIndexMatch
+                ? Array.from(document.querySelectorAll("article[data-block-index]"))
+                  .find((article) => {
+                    const prefix = `${String(Number(blockIndexMatch[1]) + 1).padStart(2, "0")} ·`;
+                    return article.querySelector(":scope > header > span")?.textContent?.trim().startsWith(prefix);
+                  }) ?? null
+                : null;
+              const labels = blockScope
+                ? Array.from(blockScope.querySelectorAll("label"))
+                : Array.from(document.querySelectorAll("label"));
+              const target = fieldLabel
+                ? labels.find((label) => fieldText(label).includes(fieldLabel))
+                : blockScope ?? document.querySelector("section");'''
+          if old not in content:
+              raise SystemExit('validation locator TypeScript target not found')
+          enhancements.write_text(content.replace(old, new, 1), encoding='utf-8')
+          PY
+
       - name: Install dependencies
         run: npm ci
 
