@@ -3,8 +3,7 @@
 import { useEffect } from "react";
 
 const auditedStyles = `
-[data-admin-guide-button],
-[data-admin-upgrade-shortcut]{
+[data-admin-tools] button{
   min-height:34px;
   padding:0 10px;
   border:1px solid #d9d9d6;
@@ -17,20 +16,23 @@ const auditedStyles = `
   cursor:pointer;
   white-space:nowrap;
 }
-[data-admin-guide-button]:hover,
-[data-admin-upgrade-shortcut]:hover{
+[data-admin-tools] button:hover{
   border-color:#3258ff;
   color:#2448d8;
   text-decoration:none;
 }
-[data-admin-guide-button]:focus-visible,
-[data-admin-upgrade-shortcut]:focus-visible,
+[data-admin-tools] button[data-kind="upgrade"]{
+  border-color:#3258ff;
+  background:#3258ff;
+  color:#fff;
+}
+[data-admin-tools] button:focus-visible,
 [data-admin-guide-overlay] a:focus-visible,
 [data-admin-guide-overlay] button:focus-visible{
   outline:2px solid #3258ff;
   outline-offset:3px;
 }
-header:has([data-admin-guide-button]) > div{
+header:has([data-admin-tools]) > div{
   gap:10px;
   flex-wrap:wrap;
   justify-content:flex-end;
@@ -45,9 +47,6 @@ header:has([data-admin-guide-button]) > div{
 }
 [data-admin-guide-overlay] .top > div{
   justify-content:flex-end;
-}
-[data-admin-guide-overlay] .top [data-secondary-deploy-link]{
-  display:none;
 }
 [data-admin-guide-overlay] .layout{
   align-items:start;
@@ -73,32 +72,46 @@ header:has([data-admin-guide-button]) > div{
   border-radius:10px;
   overflow:hidden;
 }
+@media(max-width:820px){
+  [data-admin-tools]{
+    position:fixed;
+    right:14px;
+    bottom:14px;
+    z-index:90;
+    padding:7px;
+    gap:6px;
+    border:1px solid #d9d9d6;
+    border-radius:9px;
+    background:rgba(255,255,255,.96);
+    box-shadow:0 12px 32px rgba(16,17,20,.14);
+    backdrop-filter:blur(14px);
+  }
+}
 @media(max-width:720px){
-  header:has([data-admin-guide-button]){
+  header:has([data-admin-tools]){
     height:auto!important;
     min-height:64px;
     padding-block:8px!important;
     gap:8px;
   }
-  header:has([data-admin-guide-button]) > div{
+  header:has([data-admin-tools]) > div{
     gap:6px;
     flex-wrap:nowrap;
   }
-  header:has([data-admin-guide-button]) > div > a[href="/"]{
+  header:has([data-admin-tools]) > div > a[href="/"]{
     display:none;
   }
-  [data-admin-guide-button],
-  [data-admin-upgrade-shortcut]{
+  [data-admin-tools] button{
     min-width:42px;
     min-height:34px;
     padding:0 8px;
     font-size:0;
   }
-  [data-admin-guide-button]::after{
+  [data-admin-tools] button[data-kind="guide"]::after{
     content:"教程";
     font-size:11px;
   }
-  [data-admin-upgrade-shortcut]::after{
+  [data-admin-tools] button[data-kind="upgrade"]::after{
     content:"升级";
     font-size:11px;
   }
@@ -142,31 +155,23 @@ header:has([data-admin-guide-button]) > div{
   }
 }
 @media(max-width:420px){
-  header:has([data-admin-guide-button]) > button:first-child{
+  header:has([data-admin-tools]) > button:first-child{
     min-width:124px!important;
     width:124px;
     grid-template-columns:24px 1fr!important;
     column-gap:7px!important;
   }
-  header:has([data-admin-guide-button]) > button:first-child small{
+  header:has([data-admin-tools]) > button:first-child small{
     display:none;
   }
-  header:has([data-admin-guide-button]) > div{
-    gap:4px;
-  }
-  [data-admin-guide-button],
-  [data-admin-upgrade-shortcut]{
-    min-width:38px;
-    padding-inline:6px;
-  }
+  [data-admin-tools]{right:10px;bottom:10px}
   [data-admin-guide-overlay] .top a[href*="github.com"]{
     display:none;
   }
 }
 @media(prefers-reduced-motion:reduce){
-  [data-admin-guide-overlay]{
-    scroll-behavior:auto;
-  }
+  [data-admin-guide-overlay]{scroll-behavior:auto}
+  [data-admin-tools] button{transition:none}
 }
 `;
 
@@ -184,31 +189,20 @@ export function AdminGuideUiAudit() {
     let cleanupActiveOverlay: (() => void) | null = null;
 
     const labelActions = () => {
-      document.querySelector<HTMLElement>("[data-admin-guide-button]")
+      document.querySelector<HTMLElement>('[data-admin-tools] button[data-kind="guide"]')
         ?.setAttribute("aria-label", "打开后台使用教程");
-      document.querySelector<HTMLElement>("[data-admin-upgrade-shortcut]")
+      document.querySelector<HTMLElement>('[data-admin-tools] button[data-kind="upgrade"]')
         ?.setAttribute("aria-label", "定位到程序升级中心");
     };
 
     const enhanceOverlay = (overlay: HTMLElement) => {
-      const title = overlay.querySelector<HTMLElement>(".top strong");
-      if (title) {
-        title.id = "admin-guide-dialog-title";
-        overlay.setAttribute("aria-labelledby", title.id);
-      }
+      const title = overlay.querySelector<HTMLElement>("#admin-guide-title")
+        ?? overlay.querySelector<HTMLElement>(".top strong");
+      if (title) overlay.setAttribute("aria-labelledby", title.id || "admin-guide-title");
       overlay.tabIndex = -1;
 
       const githubLink = overlay.querySelector<HTMLAnchorElement>('a[href*="github.com"]');
-      if (githubLink && githubLink.textContent !== "GitHub 完整指南 ↗") {
-        githubLink.textContent = "GitHub 完整指南 ↗";
-      }
-
-      const duplicateDeployLink = overlay.querySelector<HTMLAnchorElement>('a[href*="deploy.workers.cloudflare.com"]');
-      if (duplicateDeployLink) {
-        duplicateDeployLink.dataset.secondaryDeployLink = "true";
-        duplicateDeployLink.textContent = "部署新网站（另开） ↗";
-        duplicateDeployLink.title = "仅在需要新增另一个独立网站时使用；正常后台操作不需要重新部署";
-      }
+      if (githubLink) githubLink.textContent = "GitHub 完整指南 ↗";
 
       const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       const adminMain = document.querySelector<InertElement>("main");

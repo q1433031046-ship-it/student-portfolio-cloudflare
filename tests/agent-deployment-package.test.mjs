@@ -34,11 +34,10 @@ test("exposes a public Deploy to Cloudflare template with storage bindings", asy
   assert.match(readme, /student-portfolio-cloudflare/);
 });
 
-test("keeps one public human guide and consistent guidance behind admin login", async () => {
-  const [readme, adminGuide, adminGuideStepTwo, adminUpgrade, adminPage] = await Promise.all([
+test("keeps one public human guide and the same guidance behind admin login", async () => {
+  const [readme, adminGuide, adminUpgrade, adminPage] = await Promise.all([
     readFile("README.md", "utf8"),
     readFile("app/admin/admin-guide-center.tsx", "utf8"),
-    readFile("app/admin/admin-guide-step-two.tsx", "utf8"),
     readFile("app/admin/admin-upgrade-center.tsx", "utf8"),
     readFile("app/admin/page.tsx", "utf8"),
   ]);
@@ -54,33 +53,21 @@ test("keeps one public human guide and consistent guidance behind admin login", 
     assert.match(adminGuide, new RegExp(phrase));
   }
 
-  for (const phrase of [
-    "新建对话",
-    "选择 GPT-5.6 Sol",
-    "思考程度选择“高”",
-    "不要提前点击 Cloudflare",
-    "截图时遮住秘密",
-  ]) {
-    assert.match(readme, new RegExp(phrase));
-    assert.match(adminGuideStepTwo, new RegExp(phrase));
-  }
-
   assert.match(readme, /Set up your application/);
   assert.match(readme, /一个 GPT 帮不同学生部署/);
   assert.match(readme, /同一个托管账号部署多个网站/);
-  assert.match(readme, /后台右上角“程序升级”/);
+  assert.match(readme, /安全边界/);
   assert.match(adminGuide, /一个 GPT 帮不同学生/);
   assert.match(adminGuide, /同一托管账号部署多个网站/);
+  assert.match(adminGuide, /data-admin-tools/);
+  assert.match(adminGuide, /portfolio:open-upgrade/);
+  assert.match(adminUpgrade, /addEventListener\(OPEN_UPGRADE_EVENT/);
+  assert.match(adminUpgrade, /program-upgrade-center/);
   assert.match(adminPage, /AdminGuideCenter/);
-  assert.match(adminPage, /AdminGuideStepTwo/);
   assert.match(adminPage, /AdminUpgradeCenter/);
   assert.match(adminGuide, /使用教程/);
-  assert.match(adminGuide, /打开 GitHub 完整指南/);
-  assert.doesNotMatch(adminGuide, /在 GitHub 打开同版指南/);
-  assert.match(adminUpgrade, /data-admin-upgrade-shortcut/);
-  assert.match(adminUpgrade, />\s*程序升级\s*</);
-  assert.match(adminUpgrade, /scrollIntoView/);
-  assert.match(adminUpgrade, /概览/);
+  assert.match(adminGuide, /在 GitHub 打开同版指南/);
+  assert.equal(existsSync("app/admin/admin-guide-step-two.tsx"), false);
   assert.equal(existsSync("app/guide/page.tsx"), false);
   assert.equal(existsSync("START-HERE.md"), false);
   assert.equal(existsSync("FINAL-DELIVERY.md"), false);

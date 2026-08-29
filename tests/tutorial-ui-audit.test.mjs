@@ -11,46 +11,49 @@ const obsoleteStudentFiles = [
   "deployment/DEPLOY-PROMPT.txt",
   "deployment/UPGRADE-PROMPT.txt",
   "app/guide/page.tsx",
+  "app/admin/admin-guide-step-two.tsx",
 ];
 
-test("no-negative-echo audit keeps only the final tutorial flow", async () => {
-  const [readme, guide, stepTwo, audit, adminPage] = await Promise.all([
+test("no-negative-echo audit keeps one final tutorial flow", async () => {
+  const [readme, guide, audit, upgrade, adminPage] = await Promise.all([
     readFile("README.md", "utf8"),
     readFile("app/admin/admin-guide-center.tsx", "utf8"),
-    readFile("app/admin/admin-guide-step-two.tsx", "utf8"),
     readFile("app/admin/admin-guide-ui-audit.tsx", "utf8"),
+    readFile("app/admin/admin-upgrade-center.tsx", "utf8"),
     readFile("app/admin/page.tsx", "utf8"),
   ]);
 
   for (const path of obsoleteStudentFiles) assert.equal(existsSync(path), false, `${path} should remain removed`);
 
   for (const phrase of [
-    "GitHub 本指南",
     "先打开 GPT",
     "Cloudflare 一键部署",
     "INITIAL_ADMIN_CODE",
     "图片与视频建议尺寸",
     "程序升级",
-  ]) assert.match(readme, new RegExp(phrase));
+  ]) {
+    assert.match(readme, new RegExp(phrase));
+    assert.match(guide, new RegExp(phrase));
+  }
 
-  assert.match(readme, /默认公开；也可以在后台启用二维码限制访问/);
-  assert.doesNotMatch(readme, /同版教程|同版的操作说明|\/guide/);
-
-  assert.match(guide, /使用教程/);
-  assert.match(guide, /默认公开，也可以在后台启用二维码限制访问/);
-  assert.doesNotMatch(guide, /同版指南|模板不再提供公开/);
-
-  assert.match(stepTwo, /在 ChatGPT 里具体怎么点/);
+  assert.match(readme, /安全边界/);
+  assert.match(readme, /完整复制部署引导语/);
+  assert.match(guide, /在 ChatGPT 里具体怎么点/);
+  assert.match(guide, /data-admin-tools/);
+  assert.match(guide, /portfolio:open-upgrade/);
+  assert.match(upgrade, /addEventListener\(OPEN_UPGRADE_EVENT/);
+  assert.match(upgrade, /program-upgrade-center/);
   assert.match(adminPage, /AdminGuideUiAudit/);
+  assert.doesNotMatch(adminPage, /AdminGuideStepTwo/);
   assert.match(audit, /GitHub 完整指南/);
-  assert.match(audit, /data-secondary-deploy-link/);
 });
 
 test("tutorial overlay remains usable on mobile and by keyboard", async () => {
   const audit = await readFile("app/admin/admin-guide-ui-audit.tsx", "utf8");
 
-  assert.match(audit, /data-admin-guide-button/);
-  assert.match(audit, /data-admin-upgrade-shortcut/);
+  assert.match(audit, /data-admin-tools/);
+  assert.match(audit, /data-kind=\\"guide\\"/);
+  assert.match(audit, /data-kind=\\"upgrade\\"/);
   assert.match(audit, /@media\(max-width:720px\)/);
   assert.match(audit, /content:"教程"/);
   assert.match(audit, /content:"升级"/);

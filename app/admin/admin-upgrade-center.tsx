@@ -1,29 +1,30 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 
 const PROGRAM_VERSION = "1.0.0";
-const UPGRADE_PROMPT = "请把我的“学生作品展示”网站升级到模板最新版本。先确认当前要升级的具体网站、Worker、D1 DB 和 MEDIA_KV，再读取 README.md、AGENTS.md、deployment/agent-manifest.json 和 deployment/template-version.json。升级只允许更新程序代码和增量数据库迁移，必须保留当前 Worker、workers.dev 地址、D1 DB、MEDIA_KV、管理员账号、Secrets、图片、视频、草稿、已发布内容、二维码和访问记录。不要创建新的 D1、KV 或 Worker，也不要把模板仓库中的资源 ID 覆盖到我的站点。需要账号官方授权时再叫我；任何密码、一次性部署口令和系统恢复码都由我本人在官方页面输入，不要向我索取。升级完成后请验证后台登录、图片、视频、草稿预览、正式发布、网站空间、使用教程和程序升级按钮。";
+const OPEN_GUIDE_EVENT = "portfolio:open-guide";
+const OPEN_UPGRADE_EVENT = "portfolio:open-upgrade";
+const UPGRADE_PROMPT = `请把我的“学生作品展示”网站升级到模板最新版本。先确认当前要升级的具体网站、Worker、D1 DB 和 MEDIA_KV，再读取 README.md、AGENTS.md、deployment/agent-manifest.json 和 deployment/template-version.json。
+
+升级必须沿用现有 Worker、workers.dev 地址、D1、MEDIA_KV 和 Secrets，只更新程序代码与增量数据库迁移，并完整保留管理员、图片、视频、草稿、已发布内容、二维码和访问记录。检测到创建第二套 Worker、D1 或 KV 的步骤时，请停止并说明原因。
+
+升级完成后检查后台登录、图片读取、视频播放、草稿预览、正式发布、网站空间、使用教程和程序升级按钮。`;
 
 export function AdminUpgradeCenter() {
   const [panelHost, setPanelHost] = useState<HTMLElement | null>(null);
-  const [actionHost, setActionHost] = useState<HTMLElement | null>(null);
   const [copyLabel, setCopyLabel] = useState("复制给 GPT 的升级指令");
 
   useEffect(() => {
     const locate = () => {
-      const storage = Array.from(document.querySelectorAll<HTMLElement>("section")).find((node) =>
-        node.textContent?.includes("WEBSITE STORAGE") && node.textContent?.includes("网站空间"),
-      );
+      const storage = document.querySelector<HTMLElement>("section[class*='storagePanel']")
+        ?? Array.from(document.querySelectorAll<HTMLElement>("section")).find((node) =>
+          node.textContent?.includes("WEBSITE STORAGE") && node.textContent?.includes("网站空间"),
+        )
+        ?? null;
       const nextPanelHost = storage?.parentElement ?? null;
       setPanelHost((current) => current === nextPanelHost ? current : nextPanelHost);
-
-      const header = Array.from(document.querySelectorAll<HTMLElement>("header")).find((node) =>
-        node.textContent?.includes("ONLINE") && node.textContent?.includes("打开已发布前台"),
-      );
-      const nextActionHost = header?.querySelector<HTMLElement>("div") ?? null;
-      setActionHost((current) => current === nextActionHost ? current : nextActionHost);
     };
 
     locate();
@@ -31,6 +32,42 @@ export function AdminUpgradeCenter() {
     observer.observe(document.body, { childList: true, subtree: true });
     return () => observer.disconnect();
   }, []);
+
+  const openUpgradeCenter = useCallback(() => {
+    const overview = Array.from(document.querySelectorAll<HTMLButtonElement>("aside nav button")).find((button) =>
+      button.textContent?.trim().includes("概览"),
+    );
+    overview?.click();
+
+    let attempts = 0;
+    const reveal = () => {
+      const panel = document.getElementById("program-upgrade-center");
+      if (panel) {
+        panel.scrollIntoView({ behavior: "smooth", block: "start" });
+        panel.focus({ preventScroll: true });
+        window.history.replaceState(null, "", "#program-upgrade-center");
+        if (typeof panel.animate === "function") panel.animate(
+          [
+            { boxShadow: "0 0 0 0 rgba(50,88,255,0)" },
+            { boxShadow: "0 0 0 6px rgba(50,88,255,.20)" },
+            { boxShadow: "0 0 0 0 rgba(50,88,255,0)" },
+          ],
+          { duration: 1400, easing: "ease-out" },
+        );
+        return;
+      }
+      attempts += 1;
+      if (attempts < 50) window.setTimeout(reveal, 100);
+    };
+
+    window.setTimeout(reveal, 60);
+  }, []);
+
+  useEffect(() => {
+    const handleOpenUpgrade = () => openUpgradeCenter();
+    window.addEventListener(OPEN_UPGRADE_EVENT, handleOpenUpgrade);
+    return () => window.removeEventListener(OPEN_UPGRADE_EVENT, handleOpenUpgrade);
+  }, [openUpgradeCenter]);
 
   async function copyPrompt() {
     try {
@@ -42,46 +79,15 @@ export function AdminUpgradeCenter() {
     }
   }
 
-  function openUpgradeCenter() {
-    const overview = Array.from(document.querySelectorAll<HTMLButtonElement>("aside nav button")).find((button) =>
-      button.textContent?.includes("概览"),
-    );
-    overview?.click();
-
-    let attempts = 0;
-    const reveal = () => {
-      const panel = document.querySelector<HTMLElement>("[data-native-upgrade-center]");
-      if (panel) {
-        panel.scrollIntoView({ behavior: "smooth", block: "start" });
-        if (typeof panel.animate === "function") panel.animate(
-          [
-            { boxShadow: "0 0 0 0 rgba(50,88,255,0)" },
-            { boxShadow: "0 0 0 5px rgba(50,88,255,.18)" },
-            { boxShadow: "0 0 0 0 rgba(50,88,255,0)" },
-          ],
-          { duration: 1200, easing: "ease-out" },
-        );
-        return;
-      }
-      attempts += 1;
-      if (attempts < 30) window.setTimeout(reveal, 100);
-    };
-
-    window.setTimeout(reveal, 60);
+  function openUpgradeGuide() {
+    window.dispatchEvent(new CustomEvent(OPEN_GUIDE_EVENT, { detail: { sectionId: "admin-guide-upgrade" } }));
   }
 
-  const shortcut = (
-    <button type="button" data-admin-upgrade-shortcut onClick={openUpgradeCenter}>
-      程序升级
-    </button>
-  );
-
   const panel = (
-    <section id="program-upgrade-center" data-native-upgrade-center>
+    <section id="program-upgrade-center" data-native-upgrade-center tabIndex={-1} aria-labelledby="program-upgrade-title">
       <style>{`
-        [data-admin-upgrade-shortcut]{padding:0;border:0;background:transparent;color:inherit;font:inherit;font-size:12px;cursor:pointer}
-        [data-admin-upgrade-shortcut]:hover{text-decoration:underline}
         [data-native-upgrade-center]{scroll-margin-top:100px;margin:22px 0 0;padding:clamp(24px,4vw,42px);border:1px solid var(--line,#d9d9d6);background:#fff;color:var(--ink,#101114)}
+        [data-native-upgrade-center]:focus{outline:none}
         [data-native-upgrade-center] header{display:flex;justify-content:space-between;gap:24px;align-items:flex-end}
         [data-native-upgrade-center] .kicker{margin:0 0 10px;color:var(--accent,#3258ff);font-size:9px;font-weight:800;letter-spacing:.18em}
         [data-native-upgrade-center] h2{margin:0;font-size:clamp(30px,4vw,48px);letter-spacing:-.055em}
@@ -97,6 +103,7 @@ export function AdminUpgradeCenter() {
         [data-native-upgrade-center] .note{color:var(--muted,#6d7077);font-size:12px;line-height:1.75}
         [data-native-upgrade-center] .actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:20px}
         [data-native-upgrade-center] button,[data-native-upgrade-center] summary{padding:11px 15px;border:1px solid var(--line,#d9d9d6);border-radius:8px;background:#fff;color:inherit;cursor:pointer;font:inherit}
+        [data-native-upgrade-center] button:focus-visible,[data-native-upgrade-center] summary:focus-visible{outline:3px solid rgba(50,88,255,.22);outline-offset:2px}
         [data-native-upgrade-center] .primary{border-color:var(--accent,#3258ff);background:var(--accent,#3258ff);color:#fff}
         [data-native-upgrade-center] details{width:100%;margin-top:4px}
         [data-native-upgrade-center] .detail{margin-top:12px;padding:16px;border:1px solid #e4e4e0;background:#fafaf8;color:var(--muted,#6d7077);font-size:12px;line-height:1.75}
@@ -113,7 +120,7 @@ export function AdminUpgradeCenter() {
       <header>
         <div>
           <p className="kicker">PROGRAM / UPGRADE</p>
-          <h2>程序升级中心</h2>
+          <h2 id="program-upgrade-title">程序升级中心</h2>
         </div>
         <div className="version">
           <small>当前程序版本</small>
@@ -122,31 +129,32 @@ export function AdminUpgradeCenter() {
       </header>
       <div className="grid">
         <div>
-          <strong>程序可以独立升级</strong>
-          <small>以后更新功能时，不需要重新做一个网站。</small>
+          <strong>沿用当前站点</strong>
+          <small>Worker 与 workers.dev 地址保持不变。</small>
         </div>
         <div>
-          <strong>D1 / KV 不动</strong>
-          <small>原数据库、图片、视频和媒体空间全部保留。</small>
+          <strong>沿用 D1 / KV</strong>
+          <small>数据库、图片、视频和媒体空间完整保留。</small>
         </div>
         <div>
-          <strong>管理员与内容不动</strong>
-          <small>密码、恢复状态、草稿、发布内容和二维码全部保留。</small>
+          <strong>沿用管理员与内容</strong>
+          <small>密码验证、恢复状态、草稿、发布内容和二维码完整保留。</small>
         </div>
       </div>
       <p className="note">
-        升级前 GPT 必须先确认当前 Worker、DB 和 MEDIA_KV 属于这个网站，再只更新程序代码和增量数据库迁移。禁止为了升级创建第二套 Worker、D1 或 KV。
+        GPT 会先核对当前 Worker、DB 和 MEDIA_KV，再更新程序代码与增量数据库迁移。升级过程以“现有资源不变、内容完整保留”为验收标准。
       </p>
       <div className="actions">
         <button className="primary" type="button" onClick={() => void copyPrompt()}>{copyLabel}</button>
+        <button type="button" onClick={openUpgradeGuide}>查看升级步骤</button>
         <details>
           <summary>查看升级说明</summary>
           <div className="detail">
-            <p><strong>两个入口：</strong>后台右上角“程序升级”，或“概览 → 网站空间 → 程序升级中心”。</p>
-            <p><strong>推荐配置：</strong>最低使用 GPT-5.6 Sol，思考程度使用“高”；遇到资源绑定、数据库迁移或版本冲突时使用“超高”。</p>
+            <p><strong>入口：</strong>后台右上角“程序升级”，或“概览 → 网站空间 → 程序升级中心”。</p>
+            <p><strong>推荐配置：</strong>最低使用 GPT-5.6 Sol，思考程度使用“高”；资源绑定、数据库迁移或版本冲突时使用“超高”。</p>
             <p><strong>升级前读取：</strong>README.md、AGENTS.md、deployment/agent-manifest.json、deployment/template-version.json。</p>
             <p><strong>升级后检查：</strong>后台登录、图片读取、视频播放、草稿预览、正式发布、网站空间、使用教程和程序升级按钮。</p>
-            <p><strong>绝不能做：</strong>不能新建第二个 Worker、D1 或 KV，不能覆盖现有资源 ID，不能删除管理员、媒体或内容数据。</p>
+            <p><strong>资源原则：</strong>沿用现有 Worker、D1、KV 与资源 ID，保留管理员、媒体和内容数据。</p>
           </div>
         </details>
       </div>
@@ -155,12 +163,7 @@ export function AdminUpgradeCenter() {
 
   return (
     <>
-      <style>{`
-        [data-admin-upgrade-shortcut]{padding:0;border:0;background:transparent;color:inherit;font:inherit;font-size:12px;cursor:pointer}
-        [data-admin-upgrade-shortcut]:hover{text-decoration:underline}
-      `}</style>
       <span data-program-upgrade-center hidden aria-hidden="true" />
-      {actionHost ? createPortal(shortcut, actionHost) : null}
       {panelHost ? createPortal(panel, panelHost) : null}
     </>
   );
