@@ -2,6 +2,7 @@ import { env } from "cloudflare:workers";
 import { chatGPTSignInPath, chatGPTSignOutPath, getChatGPTUser } from "../chatgpt-auth";
 import { AdminClient } from "./admin-client";
 import { AdminGuideCenter } from "./admin-guide-center";
+import { AdminGuideStepTwo } from "./admin-guide-step-two";
 import { AdminInteractionEnhancements } from "./admin-interaction-enhancements";
 import { AdminUpgradeCenter } from "./admin-upgrade-center";
 import styles from "./admin.module.css";
@@ -18,6 +19,7 @@ export default async function AdminPage() {
       signOutHref={sitesPlatform ? chatGPTSignOutPath("/admin") : null}
     />
     <AdminGuideCenter />
+    <AdminGuideStepTwo />
     <AdminUpgradeCenter />
     <AdminInteractionEnhancements />
   </main>;
