@@ -3,6 +3,7 @@ import { chatGPTSignInPath, chatGPTSignOutPath, getChatGPTUser } from "../chatgp
 import { AdminClient } from "./admin-client";
 import { AdminGuideCenter } from "./admin-guide-center";
 import { AdminGuideStepTwo } from "./admin-guide-step-two";
+import { AdminGuideUiAudit } from "./admin-guide-ui-audit";
 import { AdminInteractionEnhancements } from "./admin-interaction-enhancements";
 import { AdminUpgradeCenter } from "./admin-upgrade-center";
 import styles from "./admin.module.css";
@@ -21,6 +22,7 @@ export default async function AdminPage() {
     <AdminGuideCenter />
     <AdminGuideStepTwo />
     <AdminUpgradeCenter />
+    <AdminGuideUiAudit />
     <AdminInteractionEnhancements />
   </main>;
 }
