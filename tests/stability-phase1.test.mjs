@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const { createDefaultPortfolioDocument } = await import("../app/portfolio/default-document.ts");
 const { validatePortfolioDocument } = await import("../app/portfolio/model.ts");
 
 const [adminClient, heroEditor, projectCover, heroSequence, portfolioExperience, previewCache, adminCss, portfolioCss] = await Promise.all([
@@ -16,8 +15,94 @@ const [adminClient, heroEditor, projectCover, heroSequence, portfolioExperience,
   readFile(new URL("../app/demo/portfolio-demo.module.css", import.meta.url), "utf8"),
 ]);
 
+function media(id, kind = "image") {
+  return { id, label: "", alt: "", kind, visualKey: "frame" };
+}
+
+function textStyle() {
+  return { x: 5, y: 20, width: 50, scale: 1, align: "left", color: "system", fontFamily: "system" };
+}
+
+function documentFixture() {
+  return {
+    schemaVersion: 4,
+    settings: {
+      siteTitle: "学生作品展示",
+      activeTheme: "graphite",
+      expansionMode: "single",
+      coverOverlayMode: "hover",
+      videoWatermarkText: "",
+      videoWatermarkStyle: { fontSize: 18, color: "#ffffff", fontFamily: "system" },
+      customFont: media("site-font", "font"),
+      workHeading: { lead: "作品不是结果。", accent: "它是一次完整思考。" },
+      contact: {
+        eyebrow: "CONTACT",
+        title: "保持联系。",
+        note: "欢迎联系。",
+        layout: "details-left",
+        image: media("contact-image"),
+        eyebrowStyle: textStyle(),
+        titleStyle: textStyle(),
+        detailsStyle: textStyle(),
+        noteStyle: textStyle(),
+      },
+    },
+    hero: {
+      name: "林予安",
+      role: "AI 影像创作者",
+      targetRole: "视觉设计",
+      email: "hello@example.com",
+      phone: "",
+      statement: "把想象变成画面。",
+      availability: "",
+      slides: [{
+        id: "hero-slide-one",
+        media: media("hero-media-one"),
+        contentMode: "system",
+        effect: "halo",
+        animationEnabled: true,
+        layers: [
+          { id: "identity-layer", kind: "identity", x: 3, y: 60, width: 40, scale: 1, align: "left", zIndex: 2, visible: true, color: "system", fontFamily: "system" },
+          { id: "statement-layer", kind: "statement", x: 3, y: 80, width: 40, scale: 1, align: "left", zIndex: 2, visible: true, color: "system", fontFamily: "system" },
+          { id: "facts-layer", kind: "facts", x: 70, y: 70, width: 25, scale: 1, align: "left", zIndex: 3, visible: true, color: "system", fontFamily: "system" },
+        ],
+      }],
+    },
+    themes: [{ id: "graphite", label: "石墨", swatches: ["#0a0a0b", "#f2f1ed", "#a9c7d6"] }],
+    categories: [{
+      id: "category-one",
+      label: "影像",
+      accent: "#9fb4ff",
+      transition: { mode: "default", visible: true, media: media("transition-one") },
+    }],
+    projects: [{
+      id: "project-one",
+      order: 1,
+      categoryId: "category-one",
+      title: "项目一",
+      year: "2026",
+      duration: "00:00",
+      synopsis: "项目简介",
+      challenge: "",
+      solution: "",
+      cover: media("cover-one"),
+      finalVideo: media("video-one", "video"),
+      coverPresentation: {
+        overlayMode: "hover",
+        showTitle: true,
+        showSynopsis: true,
+        showFacts: true,
+        titleStyle: textStyle(),
+        synopsisStyle: textStyle(),
+        factsStyle: textStyle(),
+      },
+      detailBlocks: [],
+    }],
+  };
+}
+
 test("display fields may be blank without weakening structural validation", () => {
-  const document = createDefaultPortfolioDocument();
+  const document = documentFixture();
   document.hero.name = "";
   document.hero.role = "";
   document.hero.targetRole = "";
@@ -39,7 +124,7 @@ test("display fields may be blank without weakening structural validation", () =
 });
 
 test("non-empty optional email and year still require valid formats", () => {
-  const document = createDefaultPortfolioDocument();
+  const document = documentFixture();
   document.hero.email = "not-an-email";
   document.projects[0].year = "26";
   const result = validatePortfolioDocument(document);
