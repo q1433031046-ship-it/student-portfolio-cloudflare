@@ -481,3 +481,48 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/* shared project-cover editing canvas */
+.coverPreviewMode {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  margin: 8px 0 0;
+}
+.coverPreviewMode button {
+  min-height: 34px;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+  cursor: pointer;
+}
+.coverPreviewMode button[data-active="true"] {
+  border-color: var(--accent);
+  background: #eef1ff;
+  color: #2447c6;
+}
+.coverPreviewMode span { margin-left: auto; color: var(--muted); font-size: 10px; }
+.coverLayoutPreview { width: 100%; container-type: inline-size; }
+.coverLayoutPreview .coverPreviewLayer {
+  max-height: 68%;
+  overflow: visible;
+  pointer-events: auto;
+  cursor: move;
+  touch-action: none;
+}
+.coverPreviewLayer[data-selected="true"] {
+  outline: 1px solid #8da4ff;
+  outline-offset: 4px;
+}
+.coverPreviewLayer [data-placeholder="true"] {
+  color: rgba(245,245,243,.58);
+  font-style: normal;
+}
+.coverPreviewLayer > .resizeHandle {
+  pointer-events: auto;
+}
+@media (max-width: 720px) {
+  .coverPreviewMode span { width: 100%; margin-left: 0; }
+}

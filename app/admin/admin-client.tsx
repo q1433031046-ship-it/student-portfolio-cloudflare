@@ -16,6 +16,7 @@ import { createDefaultCoverPresentation, createDefaultHeroLayers } from "../port
 import { HeroLayoutEditor } from "./hero-layout-editor";
 import { MediaCropEditor } from "./media-crop-editor";
 import styles from "./admin.module.css";
+import portfolioStyles from "../demo/portfolio-demo.module.css";
 import { createClientId } from "../lib/client-id";
 import { formatVideoDuration } from "../lib/video-duration";
 import { resolveWatermarkText } from "../portfolio/watermark";
@@ -1085,18 +1086,18 @@ function BlockEditor({ block, index, projectId, setMessage, update, move, remove
 function CoverLayoutPreview({ project, categoryLabel, update, updateStyle }: { project: Project; categoryLabel: string; update: (updater: (project: Project) => Project) => void; updateStyle: (key: "titleStyle" | "synopsisStyle" | "factsStyle", patch: Partial<CoverTextStyle>) => void }) {
   const defaults = createDefaultCoverPresentation();
   const previewSrc = useMediaPreview(project.cover);
+  const [previewMode, setPreviewMode] = useState<"desktop" | "mobile">("desktop");
   const [selected, setSelected] = useState<"titleStyle" | "synopsisStyle" | "factsStyle">("titleStyle");
   const [drag, setDrag] = useState<{ key: "titleStyle" | "synopsisStyle" | "factsStyle"; mode: "move" | "resize"; startX: number; startY: number; width: number; height: number; style: CoverTextStyle } | null>(null);
   const styleFor = (style: CoverTextStyle): React.CSSProperties => ({
-    left: `${style.x}%`,
-    top: `${style.y}%`,
-    width: `${style.width}%`,
-    transform: `translateY(-50%) scale(${style.scale})`,
-    transformOrigin: "left center",
+    "--cover-x": `${style.x}%`,
+    "--cover-y": `${style.y}%`,
+    "--cover-width": `${style.width}%`,
+    "--cover-scale": style.scale,
     textAlign: style.align,
     color: style.color === "system" ? undefined : style.color,
     fontFamily: style.fontFamily === "custom" ? "PortfolioCustom, sans-serif" : undefined,
-  });
+  } as React.CSSProperties);
   function start(event: React.PointerEvent<HTMLElement>, key: "titleStyle" | "synopsisStyle" | "factsStyle", mode: "move" | "resize") {
     event.preventDefault();
     event.stopPropagation();
@@ -1131,21 +1132,53 @@ function CoverLayoutPreview({ project, categoryLabel, update, updateStyle }: { p
       onPointerCancel: stopPointer,
     };
   }
+  const category = categoryLabel.trim();
+  const duration = project.duration !== "00:00" ? project.duration : "";
+  const yearDuration = [project.year.trim(), duration].filter(Boolean).join(" · ");
   return (
-    <div className={styles.coverLayoutPreview} data-cover-canvas style={{ aspectRatio: mediaCropAspect(project.cover, 16 / 9) }}>
-      {previewSrc
-        // eslint-disable-next-line @next/next/no-img-element
-        ? <img src={previewSrc} alt="" style={croppedImageStyle(project.cover)} />
-        : <span className={styles.coverPreviewPlaceholder}>上传项目封面后在这里排版</span>}
-      <i aria-hidden="true" />
-      {project.coverPresentation.showTitle && <section {...layerProps("titleStyle")} className={styles.coverPreviewTitle} style={styleFor(project.coverPresentation.titleStyle ?? defaults.titleStyle)}><small>{categoryLabel}</small><DirectText tag="strong" value={project.title} label="作品名称" onCommit={(title) => update((current) => ({ ...current, title }))} /><i className={styles.resizeHandle} onPointerDown={(event) => start(event, "titleStyle", "resize")} onPointerMove={movePointer} onPointerUp={stopPointer} /></section>}
-      {project.coverPresentation.showSynopsis && <section {...layerProps("synopsisStyle")} className={styles.coverPreviewSynopsis} style={styleFor(project.coverPresentation.synopsisStyle ?? defaults.synopsisStyle)}><small>项目介绍</small><DirectText tag="p" value={project.synopsis} label="作品简介" onCommit={(synopsis) => update((current) => ({ ...current, synopsis }))} /><i className={styles.resizeHandle} onPointerDown={(event) => start(event, "synopsisStyle", "resize")} onPointerMove={movePointer} onPointerUp={stopPointer} /></section>}
-      {project.coverPresentation.showFacts && <section {...layerProps("factsStyle")} className={styles.coverPreviewFacts} style={styleFor(project.coverPresentation.factsStyle ?? defaults.factsStyle)}><span><DirectText value={project.year} label="年份" onCommit={(year) => update((current) => ({ ...current, year }))} /> · {project.duration}</span><DirectText value={project.challenge || "项目难点"} label="项目难点" onCommit={(challenge) => update((current) => ({ ...current, challenge }))} /><DirectText value={project.solution || "解决思路"} label="解决思路" onCommit={(solution) => update((current) => ({ ...current, solution }))} /><i className={styles.resizeHandle} onPointerDown={(event) => start(event, "factsStyle", "resize")} onPointerMove={movePointer} onPointerUp={stopPointer} /></section>}
-    </div>
+    <>
+      <div className={styles.coverPreviewMode} role="group" aria-label="封面预览尺寸">
+        <button type="button" data-active={previewMode === "desktop"} onClick={() => setPreviewMode("desktop")}>桌面 16:9</button>
+        <button type="button" data-active={previewMode === "mobile"} onClick={() => setPreviewMode("mobile")}>手机 4:5</button>
+        <span>此画布与正式前台使用同一套字号、宽度和换行规则。</span>
+      </div>
+      <div
+        className={`${styles.coverLayoutPreview} ${portfolioStyles.projectCover}`}
+        data-cover-canvas
+        data-cover-overlay="fixed"
+        data-cover-preview={previewMode}
+        style={{ aspectRatio: previewMode === "mobile" ? 4 / 5 : mediaCropAspect(project.cover, 16 / 9) }}
+      >
+        <figure className={portfolioStyles.projectArtwork}>
+          {previewSrc
+            // eslint-disable-next-line @next/next/no-img-element
+            ? <img src={previewSrc} alt="" style={croppedImageStyle(project.cover)} />
+            : <span className={styles.coverPreviewPlaceholder}>上传项目封面后在这里排版</span>}
+        </figure>
+        <div className={portfolioStyles.projectCoverInfo}>
+          {project.coverPresentation.showTitle && <section {...layerProps("titleStyle")} className={`${portfolioStyles.projectTitleGroup} ${styles.coverPreviewLayer}`} style={styleFor(project.coverPresentation.titleStyle ?? defaults.titleStyle)}>
+            {category && <span>{category}</span>}
+            <h2><DirectText value={project.title} placeholder="双击填写作品名称" label="作品名称" onCommit={(title) => update((current) => ({ ...current, title }))} /></h2>
+            <i className={styles.resizeHandle} onPointerDown={(event) => start(event, "titleStyle", "resize")} onPointerMove={movePointer} onPointerUp={stopPointer} />
+          </section>}
+          {project.coverPresentation.showSynopsis && <section {...layerProps("synopsisStyle")} className={`${portfolioStyles.projectSynopsis} ${styles.coverPreviewLayer}`} style={styleFor(project.coverPresentation.synopsisStyle ?? defaults.synopsisStyle)}>
+            <span>项目介绍</span>
+            <p><DirectText value={project.synopsis} placeholder="双击填写作品简介" label="作品简介" onCommit={(synopsis) => update((current) => ({ ...current, synopsis }))} /></p>
+            <i className={styles.resizeHandle} onPointerDown={(event) => start(event, "synopsisStyle", "resize")} onPointerMove={movePointer} onPointerUp={stopPointer} />
+          </section>}
+          {project.coverPresentation.showFacts && <dl {...layerProps("factsStyle")} className={`${portfolioStyles.projectFacts} ${styles.coverPreviewLayer}`} style={styleFor(project.coverPresentation.factsStyle ?? defaults.factsStyle)}>
+            <div><dt>年份 / 时长</dt><dd><DirectText value={yearDuration} placeholder="双击填写年份" label="年份" onCommit={(year) => update((current) => ({ ...current, year: year.split("·")[0]?.trim() ?? "" }))} /></dd></div>
+            <div><dt>项目难点</dt><dd><DirectText value={project.challenge} placeholder="双击填写项目难点" label="项目难点" onCommit={(challenge) => update((current) => ({ ...current, challenge }))} /></dd></div>
+            <div><dt>解决思路</dt><dd><DirectText value={project.solution} placeholder="双击填写解决思路" label="解决思路" onCommit={(solution) => update((current) => ({ ...current, solution }))} /></dd></div>
+            <i className={styles.resizeHandle} onPointerDown={(event) => start(event, "factsStyle", "resize")} onPointerMove={movePointer} onPointerUp={stopPointer} />
+          </dl>}
+        </div>
+      </div>
+    </>
   );
 }
 
-function DirectText({ value, label, onCommit, tag = "span" }: { value: string; label: string; onCommit: (value: string) => void; tag?: "span" | "strong" | "p" | "small" }) {
+function DirectText({ value, placeholder = "", label, onCommit, tag = "span" }: { value: string; placeholder?: string; label: string; onCommit: (value: string) => void; tag?: "span" | "strong" | "p" | "small" }) {
   const [editing, setEditing] = useState(false);
   const ref = useRef<HTMLElement | null>(null);
   useEffect(() => {
@@ -1164,6 +1197,7 @@ function DirectText({ value, label, onCommit, tag = "span" }: { value: string; l
     role: "textbox",
     "aria-label": `双击修改${label}`,
     "data-editing": editing,
+    "data-placeholder": !value && !editing,
     onDoubleClick: (event: React.MouseEvent<HTMLElement>) => { event.preventDefault(); event.stopPropagation(); setEditing(true); },
     onPointerDown: (event: React.PointerEvent<HTMLElement>) => { if (editing) event.stopPropagation(); },
     onBlur: (event: React.FocusEvent<HTMLElement>) => { setEditing(false); onCommit(event.currentTarget.textContent?.trim() ?? ""); },
@@ -1174,7 +1208,7 @@ function DirectText({ value, label, onCommit, tag = "span" }: { value: string; l
       }
       if (editing) event.stopPropagation();
     },
-    children: value,
+    children: editing ? value : value || placeholder,
   };
   if (tag === "strong") return <strong {...props} />;
   if (tag === "p") return <p {...props} />;
