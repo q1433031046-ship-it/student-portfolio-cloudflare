@@ -1,0 +1,58 @@
+name: Apply Project Cover Layout Parity
+
+on:
+  push:
+    branches:
+      - upgrade/stability-footer-draft
+    paths:
+      - scripts/apply-cover-layout-unification.py
+      - tests/cover-layout-parity.test.mjs
+      - .github/workflows/apply-cover-layout.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout development branch
+        uses: actions/checkout@v4
+        with:
+          ref: upgrade/stability-footer-draft
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.0'
+          cache: npm
+
+      - name: Apply project-cover parity patch
+        run: python scripts/apply-cover-layout-unification.py
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Full build and tests
+        run: npm test
+
+      - name: Lint
+        run: npm run lint
+
+      - name: TypeScript
+        run: ./node_modules/.bin/tsc --noEmit
+
+      - name: Commit verified project-cover changes
+        run: |
+          if git diff --quiet; then
+            echo "No generated changes to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app tests
+          git commit -m "[skip ci] Unify administrator and public project-cover layouts"
+          git push origin HEAD:upgrade/stability-footer-draft
