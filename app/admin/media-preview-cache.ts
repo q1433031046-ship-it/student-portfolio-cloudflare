@@ -54,13 +54,17 @@ export function rememberLocalMediaPreview(asset: Pick<MediaAsset, "id" | "key">,
 
 export function useMediaPreview(asset: Pick<MediaAsset, "id" | "key" | "src">) {
   const [preview, setPreview] = useState(() => currentPreview(asset));
+  const assetId = asset.id;
+  const assetKey = asset.key;
+  const assetSrc = asset.src;
 
   useEffect(() => {
-    const update = () => setPreview(currentPreview(asset));
+    const snapshot = { id: assetId, key: assetKey, src: assetSrc };
+    const update = () => setPreview(currentPreview(snapshot));
     update();
     listeners.add(update);
-    return () => listeners.delete(update);
-  }, [asset.id, asset.key, asset.src]);
+    return () => { listeners.delete(update); };
+  }, [assetId, assetKey, assetSrc]);
 
   return preview;
 }

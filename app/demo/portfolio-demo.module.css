@@ -1349,3 +1349,24 @@
     animation: none !important;
   }
 }
+
+/* authored multiline output */
+.heroLayer h1,
+.heroLayer p,
+.heroLayer dd,
+.projectTitleGroup h2,
+.projectSynopsis p,
+.projectFacts dd,
+.blockCopy h4,
+.blockCopy p,
+.textBlock h4,
+.textBlock div p,
+.galleryBlock h4,
+.fullMediaBlock > p,
+.contactTextLayer h2,
+.contactTextLayer small,
+.footer strong,
+.footer p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

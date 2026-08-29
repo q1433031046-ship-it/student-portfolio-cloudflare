@@ -469,3 +469,15 @@
 @media (prefers-reduced-motion: reduce) {
   .adminShell *, .adminShell *::before, .adminShell *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
+
+/* authored multiline text */
+.coverPreviewTitle strong,
+.coverPreviewSynopsis p,
+.coverPreviewFacts,
+.contactTextLayer,
+.layoutLayer,
+.wideField textarea,
+.blockCard textarea {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

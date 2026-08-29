@@ -435,13 +435,13 @@ export function validatePortfolioDocument(input: unknown): ValidationResult {
     validateMedia(settings.customFont, "settings.customFont", "font", new Set<string>(), errors);
     const workHeading = expectRecord(settings.workHeading, "settings.workHeading", errors);
     if (workHeading) {
-      validateText(workHeading.lead, "settings.workHeading.lead", 1, 100, errors);
-      validateText(workHeading.accent, "settings.workHeading.accent", 1, 100, errors);
+      validateText(workHeading.lead, "settings.workHeading.lead", 0, 100, errors);
+      validateText(workHeading.accent, "settings.workHeading.accent", 0, 100, errors);
     }
     const contact = expectRecord(settings.contact, "settings.contact", errors);
     if (contact) {
       validateText(contact.eyebrow, "settings.contact.eyebrow", 0, 60, errors);
-      validateText(contact.title, "settings.contact.title", 1, 100, errors);
+      validateText(contact.title, "settings.contact.title", 0, 100, errors);
       validateText(contact.note, "settings.contact.note", 0, 300, errors);
       if (!isStringIn(contact.layout, CONTACT_LAYOUTS)) errors.push("settings.contact.layout 无效");
       validateMedia(contact.image, "settings.contact.image", "image", new Set<string>(), errors);
@@ -517,7 +517,7 @@ function normalizeSchemaFourPresentation(candidate: Record<string, unknown>): Re
   const settings = isRecord(candidate.settings)
     ? {
         ...candidate.settings,
-        siteTitle: typeof candidate.settings.siteTitle === "string" ? candidate.settings.siteTitle : "学生作品展示",
+        siteTitle: typeof candidate.settings.siteTitle === "string" && candidate.settings.siteTitle.trim() ? candidate.settings.siteTitle : "学生作品展示",
         coverOverlayMode: isStringIn(candidate.settings.coverOverlayMode, COVER_OVERLAY_MODES) ? candidate.settings.coverOverlayMode : "hover",
         customFont: normalizeAsset(candidate.settings.customFont),
         contact: normalizeContactConfig(candidate.settings.contact),
@@ -609,14 +609,14 @@ export function findPublishedMedia(
 }
 
 function validateHero(hero: Record<string, unknown>, errors: string[]) {
-  validateText(hero.name, "hero.name", 1, 60, errors);
-  validateText(hero.role, "hero.role", 1, 80, errors);
-  validateText(hero.targetRole, "hero.targetRole", 1, 120, errors);
-  validateText(hero.email, "hero.email", 3, 160, errors);
-  if (typeof hero.email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(hero.email)) errors.push("hero.email 格式无效");
+  validateText(hero.name, "hero.name", 0, 60, errors);
+  validateText(hero.role, "hero.role", 0, 80, errors);
+  validateText(hero.targetRole, "hero.targetRole", 0, 120, errors);
+  validateText(hero.email, "hero.email", 0, 160, errors);
+  if (typeof hero.email !== "string" || (hero.email.length > 0 && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(hero.email))) errors.push("hero.email 格式无效");
   validateText(hero.phone, "hero.phone", 0, 30, errors);
   if (typeof hero.phone !== "string" || (hero.phone.length > 0 && !/^[0-9+()\-\s]{5,30}$/u.test(hero.phone))) errors.push("hero.phone 格式无效");
-  validateText(hero.statement, "hero.statement", 1, 260, errors);
+  validateText(hero.statement, "hero.statement", 0, 260, errors);
   validateText(hero.availability, "hero.availability", 0, 100, errors);
   const slides = expectArray(hero.slides, "hero.slides", errors, 1, 12);
   const slideIds = new Set<string>();
@@ -670,7 +670,7 @@ function validateCategory(value: unknown, index: number, ids: Set<string>, error
   const category = expectRecord(value, `categories[${index}]`, errors);
   if (!category) return;
   validateId(category.id, `categories[${index}].id`, ids, errors);
-  validateText(category.label, `categories[${index}].label`, 1, 40, errors);
+  validateText(category.label, `categories[${index}].label`, 0, 40, errors);
   if (!isColor(category.accent)) errors.push(`categories[${index}].accent 必须是十六进制颜色`);
   const transition = expectRecord(category.transition, `categories[${index}].transition`, errors);
   if (transition) {
@@ -694,10 +694,10 @@ function validateProject(
   if (typeof project.categoryId !== "string" || !categoryIds.has(project.categoryId)) {
     errors.push(`projects[${index}].categoryId 未引用有效分类`);
   }
-  validateText(project.title, `projects[${index}].title`, 1, 100, errors);
-  if (typeof project.year !== "string" || !/^20\d{2}$/.test(project.year)) errors.push(`projects[${index}].year 无效`);
+  validateText(project.title, `projects[${index}].title`, 0, 100, errors);
+  if (typeof project.year !== "string" || (project.year.length > 0 && !/^20\d{2}$/.test(project.year))) errors.push(`projects[${index}].year 无效`);
   if (typeof project.duration !== "string" || !/^\d{1,3}:[0-5]\d$/.test(project.duration)) errors.push(`projects[${index}].duration 无效`);
-  validateText(project.synopsis, `projects[${index}].synopsis`, 1, 1200, errors);
+  validateText(project.synopsis, `projects[${index}].synopsis`, 0, 1200, errors);
   validateText(project.challenge, `projects[${index}].challenge`, 0, 1200, errors);
   validateText(project.solution, `projects[${index}].solution`, 0, 1200, errors);
   const mediaIds = new Set<string>();
@@ -729,19 +729,19 @@ function validateBlock(value: unknown, path: string, ids: Set<string>, mediaIds:
   }
   if (block.type === "text") {
     validateText(block.eyebrow, `${path}.eyebrow`, 0, 80, errors);
-    validateText(block.title, `${path}.title`, 1, 120, errors);
-    validateText(block.body, `${path}.body`, 1, 4000, errors);
+    validateText(block.title, `${path}.title`, 0, 120, errors);
+    validateText(block.body, `${path}.body`, 0, 4000, errors);
   }
   if (block.type === "media-text") {
     validateMedia(block.media, `${path}.media`, "image", mediaIds, errors);
     if (block.side !== "left" && block.side !== "right") errors.push(`${path}.side 无效`);
     validateText(block.eyebrow, `${path}.eyebrow`, 0, 80, errors);
-    validateText(block.title, `${path}.title`, 1, 120, errors);
-    validateText(block.body, `${path}.body`, 1, 4000, errors);
+    validateText(block.title, `${path}.title`, 0, 120, errors);
+    validateText(block.body, `${path}.body`, 0, 4000, errors);
   }
   if (block.type === "gallery") {
     validateText(block.eyebrow, `${path}.eyebrow`, 0, 80, errors);
-    validateText(block.title, `${path}.title`, 1, 120, errors);
+    validateText(block.title, `${path}.title`, 0, 120, errors);
     if (!isStringIn(block.orientation, GALLERY_ORIENTATIONS)) errors.push(`${path}.orientation 无效`);
     const items = expectArray(block.items, `${path}.items`, errors, 1, 4);
     items?.forEach((item, itemIndex) => validateMedia(item, `${path}.items[${itemIndex}]`, "image", mediaIds, errors));

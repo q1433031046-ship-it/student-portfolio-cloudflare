@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { createDefaultCoverPresentation, type CategoryConfig, type CoverTextStyle, type Project } from "./model";
 import { croppedImageStyle, mediaCropAspect } from "./media-crop";
 import styles from "../demo/portfolio-demo.module.css";
@@ -21,35 +22,48 @@ export function ProjectCover({
   const titleStyle = presentation.titleStyle ?? defaults.titleStyle;
   const synopsisStyle = presentation.synopsisStyle ?? defaults.synopsisStyle;
   const factsStyle = presentation.factsStyle ?? defaults.factsStyle;
+  const title = project.title.trim();
+  const categoryLabel = category.label.trim();
+  const synopsis = project.synopsis.trim();
+  const challenge = project.challenge.trim();
+  const solution = project.solution.trim();
+  const duration = project.duration !== "00:00" ? project.duration : "";
+  const yearDuration = [project.year.trim(), duration].filter(Boolean).join(" · ");
+  const accessibleTitle = title || "未命名作品";
+  const showTitle = presentation.showTitle && Boolean(title || categoryLabel);
+  const showSynopsis = presentation.showSynopsis && Boolean(synopsis);
+  const showFacts = presentation.showFacts && Boolean(yearDuration || challenge || solution);
+
   return (
     <div className={styles.projectCover} data-cover-overlay={presentation.overlayMode} style={{ aspectRatio: mediaCropAspect(project.cover, 16 / 9) }}>
       <ProjectArtwork project={project} />
       <button
         className={styles.coverToggle}
         type="button"
-        aria-label={`${isOpen ? "收起" : "展开"}《${project.title}》项目详情`}
+        aria-label={`${isOpen ? "收起" : "展开"}《${accessibleTitle}》项目详情`}
         aria-expanded={isOpen}
         aria-controls={detailId}
         onClick={onToggle}
       />
       <div className={styles.projectCoverInfo}>
-        {presentation.showTitle && <div className={styles.projectTitleGroup} style={coverTextStyle(titleStyle)}>
-          <span>{category.label}</span><h2>{project.title}</h2>
+        {showTitle && <div className={styles.projectTitleGroup} style={coverTextStyle(titleStyle)}>
+          {categoryLabel && <span>{categoryLabel}</span>}
+          {title && <h2>{title}</h2>}
         </div>}
-        {presentation.showSynopsis && <div className={styles.projectSynopsis} style={coverTextStyle(synopsisStyle)}>
+        {showSynopsis && <div className={styles.projectSynopsis} style={coverTextStyle(synopsisStyle)}>
           <span>项目介绍</span>
-          <p>{project.synopsis}</p>
+          <p>{synopsis}</p>
         </div>}
-        {presentation.showFacts && <dl className={styles.projectFacts} style={coverTextStyle(factsStyle)}>
-          <div><dt>年份 / 时长</dt><dd>{project.year} · {project.duration}</dd></div>
-          <div><dt>项目难点</dt><dd>{project.challenge || "—"}</dd></div>
-          <div><dt>解决思路</dt><dd>{project.solution || "—"}</dd></div>
+        {showFacts && <dl className={styles.projectFacts} style={coverTextStyle(factsStyle)}>
+          {yearDuration && <div><dt>年份 / 时长</dt><dd>{yearDuration}</dd></div>}
+          {challenge && <div><dt>项目难点</dt><dd>{challenge}</dd></div>}
+          {solution && <div><dt>解决思路</dt><dd>{solution}</dd></div>}
         </dl>}
         <button
           className={styles.projectPlay}
           type="button"
           data-playback-trigger={`${project.id}:final`}
-          aria-label={`播放《${project.title}》视频`}
+          aria-label={`播放《${accessibleTitle}》视频`}
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => { event.stopPropagation(); onPlay(event.currentTarget); }}
         >
@@ -76,7 +90,7 @@ function ProjectArtwork({ project }: { project: Project }) {
   return <figure className={styles.projectArtwork} data-visual={project.cover.visualKey}><span /></figure>;
 }
 
-function coverTextStyle(style: CoverTextStyle): React.CSSProperties {
+function coverTextStyle(style: CoverTextStyle): CSSProperties {
   return {
     "--cover-x": `${style.x}%`,
     "--cover-y": `${style.y}%`,
@@ -85,5 +99,5 @@ function coverTextStyle(style: CoverTextStyle): React.CSSProperties {
     textAlign: style.align,
     color: style.color === "system" ? undefined : style.color,
     fontFamily: style.fontFamily === "custom" ? "PortfolioCustom, sans-serif" : undefined,
-  } as React.CSSProperties;
+  } as CSSProperties;
 }

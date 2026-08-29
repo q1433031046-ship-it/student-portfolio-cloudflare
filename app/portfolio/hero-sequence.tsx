@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import type { HeroConfig, HeroLayer, HeroSlide } from "./model";
 import { croppedImageStyle, mediaCropAspect } from "./media-crop";
 import styles from "../demo/portfolio-demo.module.css";
@@ -23,6 +23,7 @@ export function HeroSequence({
   projectCount: number;
 }) {
   const monogram = Array.from(hero.name.trim()).slice(0, 2).join("") || "PF";
+  const contactValue = hero.email.trim() || hero.phone.trim();
   return (
     <>
       <header className={styles.siteHeader}>
@@ -40,11 +41,11 @@ export function HeroSequence({
         </div>
         <nav aria-label="页面导航">
           <a href="#works" onClick={(event) => { if (!entered) { event.preventDefault(); onEnter(); } }}>作品</a>
-          <button className={styles.contactAction} type="button" onClick={onContact}>
-            <span>联系</span><strong>{hero.email}</strong>
-          </button>
+          {contactValue && <button className={styles.contactAction} type="button" onClick={onContact}>
+            <span>联系</span><strong>{contactValue}</strong>
+          </button>}
         </nav>
-        <span>{hero.availability}</span>
+        {hero.availability.trim() && <span>{hero.availability}</span>}
       </header>
       <div className={styles.heroSequence} data-entered={entered}>
         {hero.slides.map((slide, index) => (
@@ -90,7 +91,7 @@ function HeroArtwork({ slide, projectCount, yearRange }: { slide: HeroSlide; pro
         : <div className={styles.heroFallback} data-visual={slide.media.visualKey}><span /></div>}
       <span className={styles.heroHalo} />
       <span className={styles.heroScan} />
-      <span className={styles.heroCoordinate}>{String(projectCount).padStart(2, "0")} WORKS<br />{yearRange}</span>
+      <span className={styles.heroCoordinate}>{String(projectCount).padStart(2, "0")} WORKS{yearRange ? <><br />{yearRange}</> : null}</span>
     </div>
   );
 }
@@ -98,27 +99,35 @@ function HeroArtwork({ slide, projectCount, yearRange }: { slide: HeroSlide; pro
 function HeroLayers({ hero, slide, yearRange }: { hero: HeroConfig; slide: HeroSlide; yearRange: string }) {
   return (
     <div className={styles.heroLayers}>
-      {slide.layers.filter((layer) => layer.visible).map((layer) => (
-        <section
-          key={layer.id}
-          className={styles.heroLayer}
-          data-kind={layer.kind}
-          style={layerStyle(layer)}
-        >
-          {layer.kind === "identity" && <><p>PORTFOLIO · {yearRange}</p><h1>{hero.name}</h1></>}
-          {layer.kind === "statement" && <p>{hero.statement}</p>}
-          {layer.kind === "facts" && (
-            <dl>
-              <div><dt>身份</dt><dd>{hero.role}</dd></div>
-              <div><dt>方向</dt><dd>{hero.targetRole}</dd></div>
-              <div><dt>邮箱</dt><dd><a href={`mailto:${hero.email}`}>{hero.email}</a></dd></div>
-              {hero.phone && <div><dt>电话</dt><dd><a href={`tel:${phoneHref(hero.phone)}`}>{hero.phone}</a></dd></div>}
-            </dl>
-          )}
-        </section>
-      ))}
+      {slide.layers.filter((layer) => layer.visible).map((layer) => {
+        const content = heroLayerContent(hero, layer, yearRange);
+        if (!content) return null;
+        return (
+          <section
+            key={layer.id}
+            className={styles.heroLayer}
+            data-kind={layer.kind}
+            style={layerStyle(layer)}
+          >{content}</section>
+        );
+      })}
     </div>
   );
+}
+
+function heroLayerContent(hero: HeroConfig, layer: HeroLayer, yearRange: string): ReactNode {
+  if (layer.kind === "identity") {
+    if (!hero.name.trim()) return null;
+    return <><p>PORTFOLIO{yearRange ? ` · ${yearRange}` : ""}</p><h1>{hero.name}</h1></>;
+  }
+  if (layer.kind === "statement") return hero.statement.trim() ? <p>{hero.statement}</p> : null;
+  const facts = [
+    hero.role.trim() ? <div key="role"><dt>身份</dt><dd>{hero.role}</dd></div> : null,
+    hero.targetRole.trim() ? <div key="target"><dt>方向</dt><dd>{hero.targetRole}</dd></div> : null,
+    hero.email.trim() ? <div key="email"><dt>邮箱</dt><dd><a href={`mailto:${hero.email}`}>{hero.email}</a></dd></div> : null,
+    hero.phone.trim() ? <div key="phone"><dt>电话</dt><dd><a href={`tel:${phoneHref(hero.phone)}`}>{hero.phone}</a></dd></div> : null,
+  ].filter(Boolean);
+  return facts.length ? <dl>{facts}</dl> : null;
 }
 
 function layerStyle(layer: HeroLayer): CSSProperties {

@@ -6,6 +6,11 @@ const PROGRAM_VERSION = "1.0.0";
 const UPGRADE_PROMPT = "请把我的学生作品集网站升级到模板最新版本。先读取 AGENTS.md、deployment/agent-manifest.json、deployment/template-version.json 和 UPGRADE-GUIDE.md。升级只允许更新程序代码和增量数据库迁移，必须保留当前 Worker、workers.dev 地址、D1 DB、MEDIA_KV、管理员账号、Secrets、图片、视频、草稿、已发布内容、二维码和访问记录。不要创建新的 D1、KV 或 Worker，也不要把模板仓库中的资源 ID 覆盖到我的站点。先检查并确认目标站点和现有资源，再执行升级；需要账号官方授权时再叫我，任何密码、一次性部署口令和系统恢复码都由我本人在官方页面输入，不要向我索取。升级完成后请验证后台登录、图片、视频、草稿预览、正式发布和网站空间统计。";
 
 const fieldLabels: Array<[RegExp, string]> = [
+  [/detailBlocks\[\d+\]\.body/u, "正文"],
+  [/detailBlocks\[\d+\]\.caption/u, "图注"],
+  [/detailBlocks\[\d+\]\.eyebrow/u, "眉题"],
+  [/detailBlocks\[\d+\]\.title/u, "标题"],
+  [/projects\[\d+\]\.title/u, "作品名称"],
   [/hero\.name/u, "姓名"],
   [/hero\.role/u, "职业标题"],
   [/hero\.targetRole/u, "求职方向"],
@@ -66,11 +71,10 @@ export function AdminInteractionEnhancements() {
         revealTarget(lastUploadGroup);
         return;
       }
-      const target = locateValidationProblem(reason);
-      if (target) {
+      locateValidationProblem(reason, (target) => {
         lastProblemTarget = target;
         revealTarget(target);
-      }
+      });
     };
 
     const observer = new MutationObserver(enhance);
@@ -82,7 +86,7 @@ export function AdminInteractionEnhancements() {
 
     const focusAfterDialog = (event: Event) => {
       const button = event.target instanceof Element && event.target.tagName === "BUTTON" ? event.target : null;
-      if (!button || button.textContent?.trim() !== "返回继续处理" || !lastProblemTarget) return;
+      if (!button || !["返回继续处理", "定位并修改"].includes(button.textContent?.trim() ?? "") || !lastProblemTarget) return;
       const target = lastProblemTarget;
       window.setTimeout(() => revealTarget(target, true), 30);
     };
@@ -280,24 +284,16 @@ function applyHeroMode(select: SelectLike, shouldScroll: boolean) {
   });
 }
 
-function locateValidationProblem(reason: string): Element | null {
+function locateValidationProblem(reason: string, onLocated: (target: Element) => void) {
   const view = validationView(reason);
   if (view) {
-    const navButton = Array.from(document.querySelectorAll("nav button"))
+    const navButton = Array.from(document.querySelectorAll("aside nav button"))
       .find((button) => button.textContent?.includes(view));
     clickElement(navButton);
   }
 
   const projectIndexMatch = reason.match(/projects\[(\d+)\]/u);
-  if (projectIndexMatch) {
-    const index = Number(projectIndexMatch[1]);
-    window.requestAnimationFrame(() => {
-      const contentButtons = Array.from(document.querySelectorAll("button"))
-        .filter((button) => /^\d{2}/u.test(button.textContent?.trim() ?? "") && button.querySelector("strong"));
-      clickElement(contentButtons[index]);
-    });
-  }
-
+  const blockIndexMatch = reason.match(/detailBlocks\[(\d+)\]/u);
   let fieldLabel = "";
   for (const [pattern, label] of fieldLabels) {
     if (pattern.test(reason)) {
@@ -305,18 +301,34 @@ function locateValidationProblem(reason: string): Element | null {
       break;
     }
   }
-  if (!fieldLabel) return document.querySelector("section");
 
-  const findField = () => Array.from(document.querySelectorAll("label"))
-    .find((label) => fieldText(label).includes(fieldLabel));
-  const immediate = findField();
-  if (immediate) return immediate;
+  const locateField = () => {
+    if (projectIndexMatch) {
+      const index = Number(projectIndexMatch[1]);
+      const projectButtons = Array.from(document.querySelectorAll("button"))
+        .filter((button) => /^\d{2}/u.test(button.textContent?.trim() ?? "") && button.querySelector("strong"));
+      clickElement(projectButtons[index]);
+    }
 
-  window.setTimeout(() => {
-    const delayed = findField();
-    if (delayed) revealTarget(delayed, true);
-  }, 40);
-  return null;
+    window.setTimeout(() => {
+      const blockScope = blockIndexMatch
+      ? Array.from(document.querySelectorAll("article[data-block-index]"))
+        .find((article) => {
+          const prefix = `${String(Number(blockIndexMatch[1]) + 1).padStart(2, "0")} ·`;
+          return article.querySelector(":scope > header > span")?.textContent?.trim().startsWith(prefix);
+        }) ?? null
+      : null;
+    const labels = blockScope
+      ? Array.from(blockScope.querySelectorAll("label"))
+      : Array.from(document.querySelectorAll("label"));
+    const target = fieldLabel
+      ? labels.find((label) => fieldText(label).includes(fieldLabel))
+      : blockScope ?? document.querySelector("section");
+      if (target) onLocated(target);
+    }, projectIndexMatch ? 100 : 30);
+  };
+
+  window.setTimeout(locateField, view ? 60 : 0);
 }
 
 function validationView(reason: string) {
