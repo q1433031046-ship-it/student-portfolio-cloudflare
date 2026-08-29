@@ -37,10 +37,18 @@ jobs:
           python /tmp/stage1-patch.py
           python - <<'PY'
           from pathlib import Path
-          path = Path('tests/owner-onboarding.test.mjs')
-          text = path.read_text()
-          text = text.replace('assert.match(adminClient, /一次性部署口令/u);', 'assert.match(adminClient, /固定16位初始化口令/u);')
-          path.write_text(text)
+          test_path = Path('tests/owner-onboarding.test.mjs')
+          test_text = test_path.read_text()
+          test_text = test_text.replace('assert.match(adminClient, /一次性部署口令/u);', 'assert.match(adminClient, /固定16位初始化口令/u);')
+          test_path.write_text(test_text)
+
+          media_path = Path('app/api/media/[...path]/route.ts')
+          media_text = media_path.read_text()
+          media_text = media_text.replace(
+              '  const kind = record.content_type === "video/mp4"',
+              '  const kind: "image" | "video" | "font" | null = record.content_type === "video/mp4"',
+          )
+          media_path.write_text(media_text)
           PY
 
       - name: Production build and all tests
