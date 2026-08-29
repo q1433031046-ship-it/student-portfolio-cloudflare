@@ -1,7 +1,7 @@
 import { getPurposeSecret } from "./app-secret";
 
-export function getAnalyticsHashKey() {
-  try { return getPurposeSecret("analytics"); }
+export async function getAnalyticsHashKey() {
+  try { return await getPurposeSecret("analytics"); }
   catch { return null; }
 }
 
@@ -32,7 +32,7 @@ export async function deriveRequestContext(request: Request): Promise<RequestCon
   const cf = (request as Request & { cf?: RequestCf }).cf;
   const userAgent = request.headers.get("user-agent") ?? "";
   const ip = request.headers.get("cf-connecting-ip")?.trim() ?? "";
-  const hashKey = getAnalyticsHashKey();
+  const hashKey = await getAnalyticsHashKey();
   const networkHash = ip && hashKey ? await hmacIdentifier(ip, hashKey) : null;
   const client = parseUserAgent(userAgent);
   const botScore = cf?.botManagement?.score;
