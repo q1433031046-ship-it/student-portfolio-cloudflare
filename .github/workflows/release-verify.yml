@@ -8,12 +8,15 @@ on:
       - "README.md"
       - "AGENTS.md"
       - "deployment/**"
+      - "app/api/version/route.ts"
       - "app/admin/admin-guide-center.tsx"
       - "app/admin/admin-guide-ui-audit.tsx"
+      - "app/admin/admin-update-notifier.tsx"
       - "app/admin/admin-upgrade-center.tsx"
       - "app/admin/page.tsx"
       - "tests/agent-deployment-package.test.mjs"
       - "tests/tutorial-ui-audit.test.mjs"
+      - "tests/update-notifier.test.mjs"
 
 permissions:
   contents: read

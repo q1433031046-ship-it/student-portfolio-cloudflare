@@ -27,7 +27,7 @@ jobs:
         run: npm ci
 
       - name: Admin and guide regression checks
-        run: node --experimental-strip-types --test tests/admin-regressions.test.mjs tests/media-crop.test.mjs tests/hero-layout.test.mjs tests/agent-deployment-package.test.mjs tests/tutorial-ui-audit.test.mjs
+        run: node --experimental-strip-types --test tests/admin-regressions.test.mjs tests/media-crop.test.mjs tests/hero-layout.test.mjs tests/agent-deployment-package.test.mjs tests/tutorial-ui-audit.test.mjs tests/update-notifier.test.mjs
 
       - name: Lint changed admin surfaces
-        run: npx eslint app/admin/admin-client.tsx app/admin/admin-guide-center.tsx app/admin/admin-guide-ui-audit.tsx app/admin/admin-upgrade-center.tsx app/admin/admin-interaction-enhancements.tsx app/admin/media-crop-editor.tsx app/admin/page.tsx
+        run: npx eslint app/admin/admin-client.tsx app/admin/admin-guide-center.tsx app/admin/admin-guide-ui-audit.tsx app/admin/admin-update-notifier.tsx app/admin/admin-upgrade-center.tsx app/admin/admin-interaction-enhancements.tsx app/admin/media-crop-editor.tsx app/admin/page.tsx app/api/version/route.ts

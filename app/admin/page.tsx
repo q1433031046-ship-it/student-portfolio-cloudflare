@@ -4,6 +4,7 @@ import { AdminClient } from "./admin-client";
 import { AdminGuideCenter } from "./admin-guide-center";
 import { AdminGuideUiAudit } from "./admin-guide-ui-audit";
 import { AdminInteractionEnhancements } from "./admin-interaction-enhancements";
+import { AdminUpdateNotifier } from "./admin-update-notifier";
 import { AdminUpgradeCenter } from "./admin-upgrade-center";
 import styles from "./admin.module.css";
 
@@ -21,6 +22,7 @@ export default async function AdminPage() {
     <AdminGuideCenter />
     <AdminUpgradeCenter />
     <AdminGuideUiAudit />
+    <AdminUpdateNotifier />
     <AdminInteractionEnhancements />
   </main>;
 }
