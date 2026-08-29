@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { createDefaultPortfolioDocument } from "../../portfolio/default-document";
-import { getInitialAdminCode, getPurposeSecret } from "./app-secret";
+import { PROGRAM_VERSION } from "../../lib/program-version";
+import { getInitialAdminCode } from "./app-secret";
 import { getPortfolioDb } from "./portfolio-store";
 
 const CREDENTIAL_ID = "default";
@@ -10,14 +11,26 @@ const COOKIE_NAME = "__Host-portfolio_admin_session";
 const SESSION_SECONDS = 12 * 60 * 60;
 const MAX_FAILURES = 5;
 const LOCK_SECONDS = 15 * 60;
+const AUTH_VERSION = 2;
+const PBKDF2_ITERATIONS = 180_000;
 
 type CredentialRow = {
   password_hash: string;
   password_salt: string;
   recovery_hash: string;
   recovery_salt: string;
+  auth_version: number;
+  confirmed_program_version: string | null;
   failed_attempts: number;
   locked_until: string | null;
+};
+
+type SessionRecord = {
+  token: string;
+  tokenHash: string;
+  createdAt: string;
+  expiresAt: string;
+  userAgentHash: string | null;
 };
 
 export type LocalAdminSession = {
@@ -25,16 +38,38 @@ export type LocalAdminSession = {
   user: typeof OWNER_HANDLE;
 };
 
+export type LocalCredentialState = {
+  exists: boolean;
+  authVersion: number | null;
+  confirmedProgramVersion: string | null;
+  currentProgramVersion: string;
+  upgradeRequired: boolean;
+};
+
 export function isSitesAuthPlatform() {
   return String(Reflect.get(env, "AUTH_PLATFORM")) === "sites";
 }
 
-export async function localCredentialsExist() {
+export function programResetRequired(confirmedProgramVersion: string | null, currentProgramVersion = PROGRAM_VERSION) {
+  return confirmedProgramVersion !== currentProgramVersion;
+}
+
+export async function getLocalCredentialState(): Promise<LocalCredentialState> {
   const row = await getPortfolioDb()
-    .prepare("SELECT id FROM admin_credentials WHERE id = ? LIMIT 1")
+    .prepare("SELECT auth_version, confirmed_program_version FROM admin_credentials WHERE id = ? LIMIT 1")
     .bind(CREDENTIAL_ID)
-    .first<{ id: string }>();
-  return Boolean(row);
+    .first<{ auth_version: number; confirmed_program_version: string | null }>();
+  return {
+    exists: Boolean(row),
+    authVersion: row ? Number(row.auth_version ?? 1) : null,
+    confirmedProgramVersion: row?.confirmed_program_version ?? null,
+    currentProgramVersion: PROGRAM_VERSION,
+    upgradeRequired: Boolean(row && programResetRequired(row.confirmed_program_version ?? null)),
+  };
+}
+
+export async function localCredentialsExist() {
+  return (await getLocalCredentialState()).exists;
 }
 
 export async function createLocalAdministrator(input: {
@@ -42,54 +77,76 @@ export async function createLocalAdministrator(input: {
   password: string;
   request: Request;
 }) {
-  validatePassword(input.password);
+  const password = normalizePassword(input.password);
   const configuredCode = getInitialAdminCode();
   if (!await constantTimeEqual(input.initialCode.trim(), configuredCode)) {
-    throw new AuthError("一次性部署口令不正确", 401);
+    throw new AuthError("一次性部署口令不正确，请复制指南中的固定16位口令", 401);
   }
-  if (await constantTimeEqual(input.password, configuredCode)) {
+  if (await constantTimeEqual(password, configuredCode)) {
     throw new AuthError("管理员密码不能与一次性部署口令相同", 400);
   }
   if (await localCredentialsExist()) {
-    throw new AuthError("管理员已经初始化，请直接登录", 409);
+    throw new AuthError("管理员已经初始化，请使用刚才设置的密码登录", 409);
   }
 
   const passwordSalt = randomToken(18);
   const recoverySalt = randomToken(18);
   const recoveryCode = createRecoveryCode();
-  const [passwordHash, recoveryHash] = await Promise.all([
-    protectedHash("password", input.password, passwordSalt),
-    protectedHash("recovery", normalizeRecoveryCode(recoveryCode), recoverySalt),
+  const [passwordHash, recoveryHash, session] = await Promise.all([
+    credentialHashV2("password", password, passwordSalt),
+    credentialHashV2("recovery", normalizeRecoveryCode(recoveryCode), recoverySalt),
+    createSessionRecord(input.request),
   ]);
   const now = new Date().toISOString();
   const draft = JSON.stringify(createDefaultPortfolioDocument());
   const db = getPortfolioDb();
-  await db.batch([
-    db.prepare(`INSERT INTO admin_credentials (
-      id, password_hash, password_salt, recovery_hash, recovery_salt,
-      failed_attempts, initialized_at, password_changed_at, recovery_code_created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`)
-      .bind(CREDENTIAL_ID, passwordHash, passwordSalt, recoveryHash, recoverySalt, now, now, now, now),
-    db.prepare("INSERT OR IGNORE INTO site_ownership (id, owner_email, auth_provider, bound_at, onboarding_email_sent_at, onboarding_email_id) VALUES (?, ?, 'password', ?, ?, 'local-password')")
-      .bind(OWNER_ID, OWNER_HANDLE, now, now),
-    db.prepare("INSERT OR IGNORE INTO portfolio_documents (id, owner_email, revision, draft_json, updated_at) VALUES (?, ?, 1, ?, ?)")
-      .bind(OWNER_ID, OWNER_HANDLE, draft, now),
-  ]);
-  const session = await createSession(input.request);
-  return { recoveryCode, sessionCookie: session };
+  try {
+    await db.batch([
+      db.prepare(`INSERT INTO admin_credentials (
+        id, password_hash, password_salt, recovery_hash, recovery_salt,
+        auth_version, confirmed_program_version, failed_attempts, initialized_at,
+        password_changed_at, recovery_code_created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`)
+        .bind(
+          CREDENTIAL_ID, passwordHash, passwordSalt, recoveryHash, recoverySalt,
+          AUTH_VERSION, PROGRAM_VERSION, now, now, now, now,
+        ),
+      db.prepare("INSERT OR IGNORE INTO site_ownership (id, owner_email, auth_provider, bound_at, onboarding_email_sent_at, onboarding_email_id) VALUES (?, ?, 'password', ?, ?, 'local-password')")
+        .bind(OWNER_ID, OWNER_HANDLE, now, now),
+      db.prepare("INSERT OR IGNORE INTO portfolio_documents (id, owner_email, revision, draft_json, updated_at) VALUES (?, ?, 1, ?, ?)")
+        .bind(OWNER_ID, OWNER_HANDLE, draft, now),
+      db.prepare("INSERT INTO admin_sessions (token_hash, created_at, expires_at, user_agent_hash) VALUES (?, ?, ?, ?)")
+        .bind(session.tokenHash, session.createdAt, session.expiresAt, session.userAgentHash),
+    ]);
+  } catch (error) {
+    if (isConstraintError(error)) throw new AuthError("管理员已经初始化，请使用刚才设置的密码登录", 409);
+    throw error;
+  }
+  return { recoveryCode, sessionCookie: sessionCookie(session.token) };
 }
 
-export async function loginWithPassword(password: string, request: Request) {
+export async function loginWithPassword(inputPassword: string, request: Request) {
   const row = await readCredentials();
   if (!row) throw new AuthError("网站尚未完成管理员初始化", 428);
+  if (programResetRequired(row.confirmed_program_version)) {
+    throw new AuthError("网站已经升级，请使用最新系统恢复码重置一次密码", 428);
+  }
   enforceLock(row);
-  const valid = await verifyProtectedHash("password", password, row.password_salt, row.password_hash);
+  const password = row.auth_version >= AUTH_VERSION ? normalizePassword(inputPassword) : inputPassword;
+  const valid = row.auth_version >= AUTH_VERSION
+    ? await verifyCredentialV2("password", password, row.password_salt, row.password_hash)
+    : await verifyLegacyCredential("password", password, row.password_salt, row.password_hash);
   if (!valid) {
     await recordLoginFailure(row.failed_attempts);
     throw new AuthError("管理员密码不正确", 401);
   }
   await clearLoginFailures();
-  return createSession(request);
+  const session = await createSessionRecord(request);
+  await getPortfolioDb()
+    .prepare("INSERT INTO admin_sessions (token_hash, created_at, expires_at, user_agent_hash) VALUES (?, ?, ?, ?)")
+    .bind(session.tokenHash, session.createdAt, session.expiresAt, session.userAgentHash)
+    .run();
+  return sessionCookie(session.token);
 }
 
 export async function resetPasswordWithRecovery(input: {
@@ -97,71 +154,90 @@ export async function resetPasswordWithRecovery(input: {
   password: string;
   request: Request;
 }) {
-  validatePassword(input.password);
+  const password = normalizePassword(input.password);
   const row = await readCredentials();
   if (!row) throw new AuthError("网站尚未完成管理员初始化", 428);
   enforceLock(row);
-  const valid = await verifyProtectedHash(
-    "recovery",
-    normalizeRecoveryCode(input.recoveryCode),
-    row.recovery_salt,
-    row.recovery_hash,
-  );
+  const recoveryValue = normalizeRecoveryCode(input.recoveryCode);
+  const valid = row.auth_version >= AUTH_VERSION
+    ? await verifyCredentialV2("recovery", recoveryValue, row.recovery_salt, row.recovery_hash)
+    : await verifyLegacyCredential("recovery", recoveryValue, row.recovery_salt, row.recovery_hash);
   if (!valid) {
     await recordLoginFailure(row.failed_attempts);
     throw new AuthError("系统恢复码不正确", 401);
   }
-  if (await constantTimeEqual(input.password, getInitialAdminCode())) {
+  if (await constantTimeEqual(password, getInitialAdminCode())) {
     throw new AuthError("新密码不能与一次性部署口令相同", 400);
   }
 
   const passwordSalt = randomToken(18);
   const recoverySalt = randomToken(18);
   const recoveryCode = createRecoveryCode();
-  const [passwordHash, recoveryHash] = await Promise.all([
-    protectedHash("password", input.password, passwordSalt),
-    protectedHash("recovery", normalizeRecoveryCode(recoveryCode), recoverySalt),
+  const [passwordHash, recoveryHash, session] = await Promise.all([
+    credentialHashV2("password", password, passwordSalt),
+    credentialHashV2("recovery", normalizeRecoveryCode(recoveryCode), recoverySalt),
+    createSessionRecord(input.request),
   ]);
   const now = new Date().toISOString();
   const db = getPortfolioDb();
   await db.batch([
     db.prepare(`UPDATE admin_credentials SET
       password_hash = ?, password_salt = ?, recovery_hash = ?, recovery_salt = ?,
-      failed_attempts = 0, locked_until = NULL, password_changed_at = ?,
-      recovery_code_created_at = ?, updated_at = ? WHERE id = ?`)
-      .bind(passwordHash, passwordSalt, recoveryHash, recoverySalt, now, now, now, CREDENTIAL_ID),
+      auth_version = ?, confirmed_program_version = ?, failed_attempts = 0,
+      locked_until = NULL, password_changed_at = ?, recovery_code_created_at = ?,
+      updated_at = ? WHERE id = ?`)
+      .bind(
+        passwordHash, passwordSalt, recoveryHash, recoverySalt, AUTH_VERSION,
+        PROGRAM_VERSION, now, now, now, CREDENTIAL_ID,
+      ),
     db.prepare("DELETE FROM admin_sessions"),
+    db.prepare("INSERT INTO admin_sessions (token_hash, created_at, expires_at, user_agent_hash) VALUES (?, ?, ?, ?)")
+      .bind(session.tokenHash, session.createdAt, session.expiresAt, session.userAgentHash),
   ]);
-  const sessionCookie = await createSession(input.request);
-  return { recoveryCode, sessionCookie };
+  return { recoveryCode, sessionCookie: sessionCookie(session.token) };
 }
 
 export async function authorizeLocalAdmin(request: Request): Promise<LocalAdminSession | null> {
   const token = readCookie(request.headers.get("cookie"), COOKIE_NAME);
   if (!token || !/^[A-Za-z0-9_-]{40,100}$/u.test(token)) return null;
-  const tokenHash = await protectedHash("session", token, "v1");
-  const row = await getPortfolioDb()
-    .prepare("SELECT expires_at FROM admin_sessions WHERE token_hash = ? LIMIT 1")
-    .bind(tokenHash)
-    .first<{ expires_at: string }>();
-  if (!row || Date.parse(row.expires_at) <= Date.now()) {
-    if (row) await getPortfolioDb().prepare("DELETE FROM admin_sessions WHERE token_hash = ?").bind(tokenHash).run();
-    return null;
+  const credentials = await readCredentials();
+  if (!credentials || programResetRequired(credentials.confirmed_program_version)) return null;
+
+  const hashes = [await sessionHashV2(token)];
+  if (credentials.auth_version < AUTH_VERSION) {
+    try { hashes.push(await legacyProtectedHash("session", token, "v1")); }
+    catch { /* legacy secret no longer available */ }
   }
-  return { kind: "password", user: OWNER_HANDLE };
+  for (const tokenHash of hashes) {
+    const row = await getPortfolioDb()
+      .prepare("SELECT expires_at FROM admin_sessions WHERE token_hash = ? LIMIT 1")
+      .bind(tokenHash)
+      .first<{ expires_at: string }>();
+    if (!row) continue;
+    if (Date.parse(row.expires_at) <= Date.now()) {
+      await getPortfolioDb().prepare("DELETE FROM admin_sessions WHERE token_hash = ?").bind(tokenHash).run();
+      continue;
+    }
+    return { kind: "password", user: OWNER_HANDLE };
+  }
+  return null;
 }
 
 export async function logoutLocalAdmin(request: Request) {
   const token = readCookie(request.headers.get("cookie"), COOKIE_NAME);
   if (token) {
-    const tokenHash = await protectedHash("session", token, "v1");
-    await getPortfolioDb().prepare("DELETE FROM admin_sessions WHERE token_hash = ?").bind(tokenHash).run();
+    const hashes = [await sessionHashV2(token)];
+    try { hashes.push(await legacyProtectedHash("session", token, "v1")); }
+    catch { /* legacy secret not available */ }
+    for (const tokenHash of hashes) {
+      await getPortfolioDb().prepare("DELETE FROM admin_sessions WHERE token_hash = ?").bind(tokenHash).run();
+    }
   }
   return expiredSessionCookie();
 }
 
-export function sessionResponseHeaders(sessionCookie: string) {
-  return { "Cache-Control": "no-store, max-age=0", "Set-Cookie": sessionCookie };
+export function sessionResponseHeaders(sessionCookieValue: string) {
+  return { "Cache-Control": "no-store, max-age=0", "Set-Cookie": sessionCookieValue };
 }
 
 export function expiredSessionCookie() {
@@ -169,12 +245,24 @@ export function expiredSessionCookie() {
 }
 
 export function validatePassword(password: string) {
-  if (password.length < 10 || password.length > 128) {
+  normalizePassword(password);
+}
+
+export function normalizePassword(password: string) {
+  const normalized = password.normalize("NFC");
+  if (normalized.length < 10 || normalized.length > 128) {
     throw new AuthError("密码需要10至128个字符", 400);
   }
-  if (!/[A-Za-z\p{Script=Han}]/u.test(password) || !/\d/u.test(password)) {
+  if (/^\s|\s$/u.test(normalized)) {
+    throw new AuthError("密码开头和结尾不能有空格", 400);
+  }
+  if (/[\u0000-\u001f\u007f\u200b-\u200f\u202a-\u202e\u2060\ufeff]/u.test(normalized)) {
+    throw new AuthError("密码中包含不可见字符，请重新输入", 400);
+  }
+  if (!/[A-Za-z\p{Script=Han}]/u.test(normalized) || !/\d/u.test(normalized)) {
     throw new AuthError("密码至少需要包含文字和数字", 400);
   }
+  return normalized;
 }
 
 export class AuthError extends Error {
@@ -186,23 +274,29 @@ export class AuthError extends Error {
   }
 }
 
-async function createSession(request: Request) {
+async function createSessionRecord(request: Request): Promise<SessionRecord> {
   const token = randomToken(32);
-  const tokenHash = await protectedHash("session", token, "v1");
   const now = new Date();
   const expiresAt = new Date(now.getTime() + SESSION_SECONDS * 1000);
   const userAgent = request.headers.get("user-agent") ?? "";
-  const userAgentHash = userAgent ? await protectedHash("user-agent", userAgent, "v1") : null;
-  await getPortfolioDb()
-    .prepare("INSERT INTO admin_sessions (token_hash, created_at, expires_at, user_agent_hash) VALUES (?, ?, ?, ?)")
-    .bind(tokenHash, now.toISOString(), expiresAt.toISOString(), userAgentHash)
-    .run();
+  return {
+    token,
+    tokenHash: await sessionHashV2(token),
+    createdAt: now.toISOString(),
+    expiresAt: expiresAt.toISOString(),
+    userAgentHash: userAgent ? await digestText(`user-agent\n${userAgent}`) : null,
+  };
+}
+
+function sessionCookie(token: string) {
   return `${COOKIE_NAME}=${token}; Path=/; Max-Age=${SESSION_SECONDS}; HttpOnly; Secure; SameSite=Strict`;
 }
 
 async function readCredentials() {
   return getPortfolioDb()
-    .prepare("SELECT password_hash, password_salt, recovery_hash, recovery_salt, failed_attempts, locked_until FROM admin_credentials WHERE id = ? LIMIT 1")
+    .prepare(`SELECT password_hash, password_salt, recovery_hash, recovery_salt,
+      auth_version, confirmed_program_version, failed_attempts, locked_until
+      FROM admin_credentials WHERE id = ? LIMIT 1`)
     .bind(CREDENTIAL_ID)
     .first<CredentialRow>();
 }
@@ -231,10 +325,36 @@ async function clearLoginFailures() {
     .run();
 }
 
-async function protectedHash(purpose: string, value: string, salt: string) {
+async function credentialHashV2(purpose: "password" | "recovery", value: string, salt: string) {
+  const material = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(value),
+    "PBKDF2",
+    false,
+    ["deriveBits"],
+  );
+  const bits = await crypto.subtle.deriveBits({
+    name: "PBKDF2",
+    hash: "SHA-256",
+    iterations: PBKDF2_ITERATIONS,
+    salt: new TextEncoder().encode(`student-portfolio\n${purpose}\n${salt}`),
+  }, material, 256);
+  return `p2.${PBKDF2_ITERATIONS}.${base64Url(new Uint8Array(bits))}`;
+}
+
+async function verifyCredentialV2(purpose: "password" | "recovery", value: string, salt: string, expected: string) {
+  const computed = await credentialHashV2(purpose, value, salt);
+  return constantTimeEqual(computed, expected);
+}
+
+async function verifyLegacyCredential(purpose: "password" | "recovery", value: string, salt: string, expected: string) {
+  return constantTimeEqual(await legacyProtectedHash(purpose, value, salt), expected);
+}
+
+async function legacyProtectedHash(purpose: string, value: string, salt: string) {
   const key = await crypto.subtle.importKey(
     "raw",
-    new TextEncoder().encode(getPurposeSecret("auth")),
+    new TextEncoder().encode(getInitialAdminCode()),
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign"],
@@ -247,8 +367,13 @@ async function protectedHash(purpose: string, value: string, salt: string) {
   return base64Url(new Uint8Array(digest));
 }
 
-async function verifyProtectedHash(purpose: string, value: string, salt: string, expected: string) {
-  return constantTimeEqual(await protectedHash(purpose, value, salt), expected);
+async function sessionHashV2(token: string) {
+  return `s2.${await digestText(`session\n${token}`)}`;
+}
+
+async function digestText(value: string) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return base64Url(new Uint8Array(digest));
 }
 
 async function constantTimeEqual(left: string, right: string) {
@@ -300,4 +425,9 @@ function readCookie(header: string | null, name: string) {
     if (key === name) return value.join("=");
   }
   return null;
+}
+
+function isConstraintError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /constraint|unique|primary key/i.test(message);
 }
