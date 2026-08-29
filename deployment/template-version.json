@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
   "program": "student-portfolio-cloudflare",
-  "version": "1.1.2",
+  "version": "1.1.3",
   "releasedAt": "2026-08-29",
   "importance": "recommended",
   "releaseNotes": [
-    "程序升级指令统一加强现有资源、免费方案、账号凭证和正式数据保护。",
-    "后台程序版本统一读取版本清单，不再显示过期的硬编码版本号。",
-    "登录后台后自动检查主模板版本，发现新版本时在程序升级按钮显示小红点。"
+    "部署和升级前先用无害的只读检查判断 GitHub、Cloudflare 连接是否仍然有效。",
+    "有效连接直接复用；只有官方连接明确要求时才授权一次。",
+    "授权后从中断步骤继续并核对已有资源，避免重复创建仓库、Worker、D1 或 MEDIA_KV。"
   ],
   "portfolioDocumentSchemaVersion": 4,
   "templateRepository": "https://github.com/q1433031046-ship-it/student-portfolio-cloudflare",

@@ -7,6 +7,7 @@ test("ships a machine-readable agent deployment contract", async () => {
   const manifest = JSON.parse(
     await readFile("deployment/agent-manifest.json", "utf8"),
   );
+  assert.equal(manifest.schemaVersion, 3);
   assert.equal(manifest.project.target, "cloudflare-workers");
   assert.equal(manifest.project.defaultHostname, "workers.dev");
   assert.equal(manifest.project.initialContent, "empty");
@@ -20,6 +21,11 @@ test("ships a machine-readable agent deployment contract", async () => {
   assert.equal(manifest.authentication.recoveryMethod, "single-use-rotating-system-code");
   assert.equal(manifest.media.videoMaxBytes, 50 * 1024 * 1024);
   assert.equal(manifest.media.storageLimitBytes, 800 * 1024 * 1024);
+  assert.equal(manifest.authorizationFlow.preflight, "harmless-read-only-check");
+  assert.equal(manifest.authorizationFlow.reuseValidConnections, true);
+  assert.equal(manifest.authorizationFlow.maximumAutomaticAuthorizationAttempts, 1);
+  assert.equal(manifest.authorizationFlow.resumeInterruptedStep, true);
+  assert.equal(manifest.authorizationFlow.restartDeploymentAfterAuthorization, false);
   assert.ok(manifest.liveTests.length >= 10);
 });
 
@@ -83,6 +89,9 @@ test("tells deployment agents to use account authorization without collecting pa
   assert.match(instructions, /Do not ask the owner to type shell commands/i);
   assert.match(instructions, /Never request a Cloudflare password/i);
   assert.match(instructions, /recovery code/i);
+  assert.match(instructions, /harmless read-only action/i);
+  assert.match(instructions, /Reuse every connection that succeeds/i);
+  assert.match(instructions, /resume the exact interrupted step/i);
   assert.match(instructions, /resume/i);
   assert.match(instructions, /Do not expose a public `\/guide` route/i);
 });

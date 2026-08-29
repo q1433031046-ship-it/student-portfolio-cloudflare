@@ -18,6 +18,8 @@ const DEPLOY_PROMPT = `我要部署“学生作品展示”网站。请全程一
 4. 如果账号里已有其他网站，请为本次网站规划新的仓库、Worker、D1 和 MEDIA_KV，保持资源完全独立。
 5. 如果同一个 GPT 正在帮助不同学生，请以当前浏览器里的 GitHub / Cloudflare 登录身份为准。
 
+在要求我授权前，先分别对当前 GitHub 和 Cloudflare 连接执行一次无害的只读检查。只读检查成功就复用现有连接，不要再次打开授权页面。只有官方连接明确返回 Connect、Reconnect、授权已过期或权限不足时，才让我在官方页面授权一次。授权后重新执行同一只读检查，并从刚才中断的步骤继续；不要重新开始部署，不要重复创建仓库、Worker、D1 或 MEDIA_KV。若授权页面连续再次出现，立即停止并核对账号、目标站点和已经创建的资源。
+
 账号和命名确认完成后，再带我打开官方 Deploy to Cloudflare：
 ${DEPLOY_URL}
 
@@ -278,10 +280,13 @@ export function AdminGuideCenter() {
           <section className="guide" id="admin-guide-deploy">
             <GuideHeader eyebrow="03 / DEPLOY" title="Cloudflare 一键部署：逐步操作" />
             <div className="callout safe"><strong>免费方案边界</strong><p>媒体使用 MEDIA_KV，不需要启用 R2。页面要求开通 R2、付费套餐或订阅时，先停止并把完整页面截图交给 GPT 核对。</p></div>
+            <div className="callout"><strong>防止反复授权</strong><p>先做 GitHub 和 Cloudflare 官方连接的只读检查；检查成功直接复用。仅在明确要求 Connect、Reconnect、授权过期或权限不足时授权一次，随后从中断步骤继续。</p></div>
             <div className="steps">
               <div className="step"><strong>确认 GitHub 和 Cloudflare</strong><p>核对当前学生自己的账号，以及这是第几个网站。</p></div>
+              <div className="step"><strong>先检查连接是否有效</strong><p>由 GPT 运行无害的只读检查；成功后不要再次登录或授权。</p></div>
               <div className="step"><strong>打开官方部署入口</strong><p><a href={DEPLOY_URL} target="_blank" rel="noreferrer"><b>Deploy to Cloudflare</b></a> 会复制模板并准备站点资源。</p></div>
-              <div className="step"><strong>完成 GitHub 授权</strong><p>确认 GitHub 用户名后点击 Authorize Cloudflare。</p></div>
+              <div className="step"><strong>仅在需要时授权一次</strong><p>确认 GitHub 用户名后完成官方授权，再用同一只读检查确认连接。</p></div>
+              <div className="step"><strong>从中断步骤继续</strong><p>不要从头部署，不要重复创建仓库、Worker、D1 或 MEDIA_KV。</p></div>
               <div className="step"><strong>按原方式登录 Cloudflare</strong><p>使用创建账号时的 Google、GitHub、Apple 或邮箱密码方式。</p></div>
               <div className="step"><strong>填写唯一项目名称</strong><p>推荐 <code>student-portfolio-姓名拼音-01</code>；后续网站使用 <code>-02</code>、<code>-03</code>。</p></div>
               <div className="step"><strong>确认独立资源</strong><p>D1 绑定名为 DB，KV 绑定名为 MEDIA_KV；需要选择时使用 Create new。</p></div>
@@ -409,6 +414,7 @@ export function AdminGuideCenter() {
             <div className="grid">
               <article className="card"><h3>为什么会直接进入后台</h3><p>浏览器仍在 12 小时登录期内；安全退出后可重新验证密码门禁。</p></article>
               <article className="card"><h3>Cloudflare 登录方式提示</h3><p>改用创建账号时的 Google、GitHub、Apple 或邮箱密码方式。</p></article>
+              <article className="card"><h3>授权页面反复出现</h3><p>停止重复点击；先只读检查连接，核对账号和已有资源，再从中断步骤继续。</p></article>
               <article className="card"><h3>项目名称重复</h3><p>新站名称使用 -02 / -03，并创建独立资源。</p></article>
               <article className="card"><h3>构建没有成功</h3><p>查看日志底部红色错误，修复当前项目并沿用已创建资源。</p></article>
               <article className="card"><h3>图片上传没有完成</h3><p>检查格式和大小，最长边建议控制在 2560 像素以内。</p></article>
