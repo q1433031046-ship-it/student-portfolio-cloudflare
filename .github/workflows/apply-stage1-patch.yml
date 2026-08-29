@@ -50,6 +50,7 @@ jobs:
           )
           media_path.write_text(media_text)
           PY
+          git restore --source=HEAD -- .github/workflows/verify.yml
 
       - name: Production build and all tests
         run: npm test
@@ -64,7 +65,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git rm .github/workflows/apply-stage1-patch.yml scripts/.stage1-patch.part1 scripts/.stage1-patch.part2 scripts/.stage1-patch.part3 scripts/.stage1-patch.part4
           git add -A
+          git reset .github/workflows/apply-stage1-patch.yml scripts/.stage1-patch.part1 scripts/.stage1-patch.part2 scripts/.stage1-patch.part3 scripts/.stage1-patch.part4
           git commit -m "Refactor authentication and stabilize cover previews"
           git push origin HEAD:release/v1.2.0-prep-20260829
