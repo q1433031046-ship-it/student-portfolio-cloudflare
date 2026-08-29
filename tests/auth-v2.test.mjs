@@ -34,7 +34,8 @@ test("new administrators use the fixed setup code and remain valid without it", 
   assert.match(login.headers.get("set-cookie"), /HttpOnly/u);
 
   const row = database.prepare("SELECT auth_scheme, security_version FROM admin_credentials WHERE id = 'default'").get();
-  assert.deepEqual(row, { auth_scheme: "v2", security_version: PROGRAM_VERSION });
+  assert.equal(row.auth_scheme, "v2");
+  assert.equal(row.security_version, PROGRAM_VERSION);
   resetEnv();
 });
 
@@ -87,7 +88,8 @@ test("legacy credentials require the latest recovery code once and migrate to v2
   const login = await loginRoute.POST(jsonRequest("https://portfolio.example/api/admin/login", { password: newPassword }));
   assert.equal(login.status, 200);
   const row = database.prepare("SELECT auth_scheme, security_version FROM admin_credentials WHERE id = 'default'").get();
-  assert.deepEqual(row, { auth_scheme: "v2", security_version: PROGRAM_VERSION });
+  assert.equal(row.auth_scheme, "v2");
+  assert.equal(row.security_version, PROGRAM_VERSION);
   resetEnv();
 });
 
