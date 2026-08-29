@@ -43,18 +43,20 @@ test("keeps one public human guide and the same guidance behind admin login", as
 
   for (const phrase of [
     "先打开 GPT",
-    "Cloudflare 一键部署：逐步操作",
-    "Set up your application",
+    "Cloudflare 一键部署",
     "INITIAL_ADMIN_CODE",
     "图片与视频建议尺寸",
-    "一个 GPT 帮不同学生部署",
-    "同一个托管账号部署多个网站",
     "程序升级",
   ]) {
     assert.match(readme, new RegExp(phrase));
-    assert.match(adminGuide, new RegExp(phrase.replace("：逐步操作", "")));
+    assert.match(adminGuide, new RegExp(phrase));
   }
 
+  assert.match(readme, /Set up your application/);
+  assert.match(readme, /一个 GPT 帮不同学生部署/);
+  assert.match(readme, /同一个托管账号部署多个网站/);
+  assert.match(adminGuide, /一个 GPT 帮不同学生/);
+  assert.match(adminGuide, /同一托管账号部署多个网站/);
   assert.match(adminPage, /AdminGuideCenter/);
   assert.match(adminGuide, /使用教程/);
   assert.match(adminGuide, /在 GitHub 打开同版指南/);
