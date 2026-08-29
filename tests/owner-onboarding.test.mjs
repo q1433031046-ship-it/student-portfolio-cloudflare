@@ -118,7 +118,7 @@ test("admin UI exposes deployment-code setup, recovery and website-space status"
     readFile(new URL("../app/api/admin/access/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/admin/media/[projectId]/[slot]/route.ts", import.meta.url), "utf8"),
   ]);
-  assert.match(adminClient, /一次性部署口令/u);
+  assert.match(adminClient, /固定16位初始化口令/u);
   assert.match(adminClient, /管理员密码/u);
   assert.match(adminClient, /系统恢复码/u);
   assert.match(adminClient, /网站空间/u);
@@ -137,6 +137,7 @@ async function createDatabase() {
     "0003_careful_justice.sql",
     "0004_owner_email_onboarding.sql",
     "0005_password_auth_kv_media.sql",
+    "0006_auth_v2_runtime_secrets.sql",
   ]) {
     const sql = await readFile(new URL(`../drizzle/${name}`, import.meta.url), "utf8");
     database.exec(sql.replaceAll("--> statement-breakpoint", ""));

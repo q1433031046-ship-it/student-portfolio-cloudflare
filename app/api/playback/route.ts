@@ -33,7 +33,7 @@ export async function POST(request: Request) {
     }
 
     const expiresAt = Math.floor(Date.now() / 1000) + 3600;
-    const signature = await signPlaybackGrant(mediaKey, expiresAt, getMediaSigningKey());
+    const signature = await signPlaybackGrant(mediaKey, expiresAt, await getMediaSigningKey());
     await safeRecordEvent({
       request, eventType: "play_request", path: new URL(request.url).pathname,
       projectId: body.projectId, mediaVersion: body.version, context: requestContext,

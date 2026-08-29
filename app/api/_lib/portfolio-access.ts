@@ -60,7 +60,7 @@ export async function getAccessConfiguration(origin: string): Promise<AccessConf
     getAccessPolicy(),
     getPortfolioDb().prepare("SELECT id, label, enabled, max_uses, used_count, expires_at, created_at, updated_at, last_used_at, created_by FROM portfolio_access_passes ORDER BY created_at DESC").all<AccessPassRow>(),
   ]);
-  const secret = getAccessSigningKey();
+  const secret = await getAccessSigningKey();
   const passes = await Promise.all((rows.results ?? []).map(async (row) => {
     const pass = mapPass(row);
     const token = await createAccessToken(pass.id, secret);
@@ -127,7 +127,7 @@ export async function checkPortfolioAccess(request: Request): Promise<AccessDeci
 
   const rawCookie = readCookie(request.headers.get("cookie"), PORTFOLIO_ACCESS_COOKIE);
   if (!rawCookie) return { allowed: false, restricted: true, reason: "required" };
-  const session = await verifyAccessSession(rawCookie, getAccessSigningKey());
+  const session = await verifyAccessSession(rawCookie, await getAccessSigningKey());
   if (!session) return { allowed: false, restricted: true, reason: "expired" };
   const pass = await getPass(session.passId);
   if (!pass || !isAccessPassSessionValid(pass)) return { allowed: false, restricted: true, reason: "revoked" };
@@ -135,7 +135,7 @@ export async function checkPortfolioAccess(request: Request): Promise<AccessDeci
 }
 
 export async function redeemAccessPass(request: Request, token: string) {
-  const secret = getAccessSigningKey();
+  const secret = await getAccessSigningKey();
   const passId = await verifyAccessToken(token, secret);
   if (!passId) return { ok: false as const, reason: "二维码无效" };
 
@@ -256,7 +256,7 @@ function unavailableReason(pass: AccessPass | null) {
   return "二维码暂时不可用";
 }
 
-function getAccessSigningKey() {
+async function getAccessSigningKey() {
   return getPurposeSecret("access");
 }
 

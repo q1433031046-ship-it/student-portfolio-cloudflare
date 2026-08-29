@@ -1,6 +1,6 @@
 import { getPurposeSecret } from "./app-secret";
 
-export function getMediaSigningKey() {
+export async function getMediaSigningKey() {
   return getPurposeSecret("media");
 }
 

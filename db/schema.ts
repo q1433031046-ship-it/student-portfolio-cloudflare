@@ -56,11 +56,20 @@ export const adminCredentials = sqliteTable("admin_credentials", {
   passwordSalt: text("password_salt").notNull(),
   recoveryHash: text("recovery_hash").notNull(),
   recoverySalt: text("recovery_salt").notNull(),
+  authVersion: integer("auth_version").notNull().default(1),
+  confirmedProgramVersion: text("confirmed_program_version"),
   failedAttempts: integer("failed_attempts").notNull().default(0),
   lockedUntil: text("locked_until"),
   initializedAt: text("initialized_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   passwordChangedAt: text("password_changed_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   recoveryCodeCreatedAt: text("recovery_code_created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const systemSecrets = sqliteTable("system_secrets", {
+  purpose: text("purpose").primaryKey(),
+  secretValue: text("secret_value").notNull(),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 

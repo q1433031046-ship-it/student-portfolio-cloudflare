@@ -11,7 +11,7 @@ export async function POST(request: Request) {
     if (!isRecord(body) || typeof body.eventType !== "string" || !PUBLIC_EVENT_TYPES.has(body.eventType)) return new Response(null, { status: 400 });
     if (typeof body.path !== "string" || !body.path.startsWith("/") || body.path.length > 300) return new Response(null, { status: 400 });
     if (typeof body.sessionId !== "string" || !/^[a-zA-Z0-9_-]{20,100}$/u.test(body.sessionId)) return new Response(null, { status: 400 });
-    if (!getAnalyticsHashKey()) return new Response(null, { status: 202, headers: { "Cache-Control": "no-store" } });
+    if (!await getAnalyticsHashKey()) return new Response(null, { status: 202, headers: { "Cache-Control": "no-store" } });
     const projectId = typeof body.projectId === "string" && /^[a-zA-Z0-9][a-zA-Z0-9_-]{1,79}$/.test(body.projectId) ? body.projectId : null;
     const mediaVersion = body.mediaVersion === "final" ? body.mediaVersion : null;
     await recordPortfolioEvent({ request, eventType: body.eventType, path: body.path, projectId, mediaVersion, sessionId: body.sessionId });

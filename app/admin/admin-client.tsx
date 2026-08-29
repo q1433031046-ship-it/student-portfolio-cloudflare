@@ -21,13 +21,17 @@ import { formatVideoDuration } from "../lib/video-duration";
 import { resolveWatermarkText } from "../portfolio/watermark";
 import { croppedImageStyle, fitCropToAspect, fullMediaCrop, mediaCropAspect, validAspect } from "../portfolio/media-crop";
 import { AccessManager, type AccessPayload } from "./access-manager";
+import { PROGRAM_VERSION, RECOMMENDED_INITIAL_ADMIN_CODE } from "../lib/program-version";
 
 type View = "overview" | "identity" | "categories" | "projects" | "contact" | "publish" | "records";
 type Operation = "idle" | "saving" | "previewing" | "publishing";
 type OperationError = { title: string; reason: string; solution: string };
 type SetupPayload = {
-  state: "initial_setup" | "ready";
+  state: "initial_setup" | "upgrade_required" | "ready";
   identity: string | null;
+  currentProgramVersion?: string;
+  confirmedProgramVersion?: string | null;
+  upgradeRequired?: boolean;
 };
 type AdminPayload = {
   identity: { email: string; provider: string };
@@ -97,9 +101,11 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
   const [access, setAccess] = useState<AccessPayload | null>(null);
   const [storage, setStorage] = useState<StoragePayload | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
-  const [state, setState] = useState<"loading" | "initial_setup" | "recovery_code" | "ready" | "unauthenticated" | "recover" | "error">("loading");
-  const [initialCode, setInitialCode] = useState("");
+  const [state, setState] = useState<"loading" | "initial_setup" | "upgrade_required" | "recovery_code" | "ready" | "unauthenticated" | "recover" | "error">("loading");
+  const [initialCode, setInitialCode] = useState(RECOMMENDED_INITIAL_ADMIN_CODE);
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [upgradeFromVersion, setUpgradeFromVersion] = useState<string | null>(null);
   const [passwordAgain, setPasswordAgain] = useState("");
   const [recoveryInput, setRecoveryInput] = useState("");
   const [issuedRecoveryCode, setIssuedRecoveryCode] = useState<string | null>(null);
@@ -120,7 +126,13 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
   const load = useCallback(async () => {
     setState("loading");
     try {
-      const setupResponse = await fetch("/api/admin/setup", { credentials: "same-origin", cache: "no-store" });
+      let setupResponse: Response | null = null;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        setupResponse = await fetchWithTimeout("/api/admin/setup", { credentials: "same-origin", cache: "no-store" }, 12_000);
+        if (setupResponse.status !== 401 || attempt === 2) break;
+        await wait(250 * (attempt + 1));
+      }
+      if (!setupResponse) throw new Error("管理员状态暂时无法读取");
       if (setupResponse.status === 401) {
         setState("unauthenticated");
         setMessage("请输入管理员密码");
@@ -129,19 +141,26 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
       const setupBody = await setupResponse.json() as SetupPayload & { error?: string };
       if (!setupResponse.ok) throw new Error(setupBody.error || "管理员绑定状态读取失败");
       if (setupBody.state === "initial_setup") {
+        setInitialCode(RECOMMENDED_INITIAL_ADMIN_CODE);
         setState("initial_setup");
-        setMessage("使用部署时填写的一次性口令初始化管理员");
+        setMessage("复制固定16位口令后创建管理员");
+        return;
+      }
+      if (setupBody.state === "upgrade_required") {
+        setUpgradeFromVersion(setupBody.confirmedProgramVersion ?? null);
+        setState("upgrade_required");
+        setMessage("本次升级需要使用最新恢复码重置一次密码");
         return;
       }
 
       const [response, accessResponse, storageResponse] = await Promise.all([
-        fetch("/api/admin/portfolio", { credentials: "same-origin", cache: "no-store" }),
-        fetch("/api/admin/access", { credentials: "same-origin", cache: "no-store" }),
-        fetch("/api/admin/storage", { credentials: "same-origin", cache: "no-store" }),
+        fetchWithTimeout("/api/admin/portfolio", { credentials: "same-origin", cache: "no-store" }, 15_000),
+        fetchWithTimeout("/api/admin/access", { credentials: "same-origin", cache: "no-store" }, 15_000),
+        fetchWithTimeout("/api/admin/storage", { credentials: "same-origin", cache: "no-store" }, 15_000),
       ]);
       if (response.status === 401) {
         setState("unauthenticated");
-        setMessage("登录后才可以编辑与发布作品集");
+        setMessage("登录状态没有建立，请重新输入管理员密码");
         return;
       }
       const body = await response.json() as AdminPayload & { error?: string };
@@ -171,24 +190,48 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
       return;
     }
     setSetupBusy(true);
-    setMessage("正在创建管理员和系统恢复码…");
+    setMessage("第1步/4：正在验证固定部署口令…");
     try {
-      const response = await fetch("/api/admin/setup", {
+      await wait(80);
+      setMessage("第2步/4：正在创建网站管理员…");
+      const response = await fetchWithTimeout("/api/admin/setup", {
         method: "POST",
         credentials: "same-origin",
         cache: "no-store",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ initialCode, password }),
-      });
+      }, 20_000);
+      setMessage("第3步/4：正在生成系统恢复码…");
       const body = await response.json() as { state?: string; recoveryCode?: string; error?: string };
       if (!response.ok || !body.recoveryCode) throw new Error(body.error || "管理员初始化暂时无法完成");
+      setMessage("第4步/4：正在建立12小时登录状态…");
       setIssuedRecoveryCode(body.recoveryCode);
-      setInitialCode("");
+      setInitialCode(RECOMMENDED_INITIAL_ADMIN_CODE);
       setPassword("");
       setPasswordAgain("");
       setState("recovery_code");
-      setMessage("请立即保存系统恢复码");
+      setMessage("请立即下载并保存最新系统恢复码");
     } catch (error) {
+      try {
+        const status = await fetchWithTimeout("/api/admin/setup", { credentials: "same-origin", cache: "no-store" }, 8_000);
+        if (status.status === 401) {
+          setState("unauthenticated");
+          notify("管理员可能已经创建成功，请使用刚才设置的密码登录");
+          return;
+        }
+        if (status.ok) {
+          const payload = await status.json() as SetupPayload;
+          if (payload.state === "upgrade_required") {
+            setState("upgrade_required");
+            notify("管理员已经创建，请使用最新系统恢复码完成升级确认");
+            return;
+          }
+          if (payload.state === "ready") {
+            await load();
+            return;
+          }
+        }
+      } catch { }
       setState("initial_setup");
       notify(errorMessage(error));
     } finally {
@@ -207,10 +250,14 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
         body: JSON.stringify({ password }),
       });
       setPassword("");
+      setMessage("密码正确，正在确认登录状态…");
+      await wait(120);
       await load();
     } catch (error) {
-      setState("unauthenticated");
-      notify(errorMessage(error));
+      const message = errorMessage(error);
+      if (/升级|恢复码/u.test(message)) setState("upgrade_required");
+      else setState("unauthenticated");
+      notify(message);
     } finally {
       setSetupBusy(false);
     }
@@ -222,8 +269,9 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
       notify("两次输入的新密码不一致");
       return;
     }
+    const upgrading = state === "upgrade_required";
     setSetupBusy(true);
-    setMessage("正在校验恢复码并重置密码…");
+    setMessage(upgrading ? "正在完成本次版本安全确认…" : "正在校验恢复码并重置密码…");
     try {
       const result = await api<{ ok: boolean; recoveryCode: string }>("/api/admin/recover", {
         method: "POST",
@@ -235,9 +283,9 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
       setPassword("");
       setPasswordAgain("");
       setState("recovery_code");
-      setMessage("旧恢复码已作废，请保存新的系统恢复码");
+      setMessage("旧恢复码已经作废，请下载并保存新恢复码");
     } catch (error) {
-      setState("recover");
+      setState(upgrading ? "upgrade_required" : "recover");
       notify(errorMessage(error));
     } finally {
       setSetupBusy(false);
@@ -384,11 +432,12 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
   if (state === "loading") return <StatePanel label="LOADING" title="正在打开控制台" detail={message} />;
   if (state === "unauthenticated") {
     if (!signInHref) return (
-      <StatePanel label="ADMIN ACCESS" title="输入管理员密码" detail="密码只用于这个网站，不需要邮箱，也不会发送验证码。">
+      <StatePanel label="ADMIN ACCESS" title="输入管理员密码" detail="后台是整个网站的控制台。密码正确后，这台浏览器会保持登录12小时。">
         <form className={styles.authForm} onSubmit={(event) => { event.preventDefault(); void login(); }}>
-          <label><span>管理员密码</span><input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+          <label><span>管理员密码</span><input type={showPassword ? "text" : "password"} autoComplete="current-password" autoCapitalize="none" spellCheck={false} value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+          <PasswordVisibility shown={showPassword} setShown={setShowPassword} />
           <button className={styles.primaryAction} type="submit" disabled={setupBusy}>{setupBusy ? "正在验证…" : "进入后台 →"}</button>
-          <button className={styles.textAction} type="button" onClick={() => { setPassword(""); setState("recover"); }}>忘记密码，使用系统恢复码</button>
+          <button className={styles.textAction} type="button" onClick={() => { setPassword(""); setState("recover"); }}>忘记密码，使用最新系统恢复码</button>
         </form>
       </StatePanel>
     );
@@ -400,36 +449,45 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
   }
   if (state === "initial_setup") {
     return (
-      <StatePanel
-        label="FIRST SETUP"
-        title="创建网站管理员"
-        detail="输入部署页面里填写的一次性口令，再设置以后登录后台使用的密码。一次性口令成功使用后不能再直接登录。"
-      >
+      <StatePanel label="FIRST SETUP" title="创建网站管理员" detail="固定16位口令只用于第一次创建管理员。创建成功后，日常登录只使用你自己设置的管理员密码。">
         <form className={styles.authForm} onSubmit={(event) => { event.preventDefault(); void completeSetup(); }}>
-          <label><span>一次性部署口令</span><input type="password" autoComplete="one-time-code" value={initialCode} onChange={(event) => setInitialCode(event.target.value)} /><small>部署时设置的至少16位英文字母和数字组合</small></label>
-          <label><span>管理员密码</span><input type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} /><small>10至128位，至少包含文字和数字</small></label>
-          <label><span>再次输入密码</span><input type="password" autoComplete="new-password" value={passwordAgain} onChange={(event) => setPasswordAgain(event.target.value)} /></label>
-          <button className={styles.primaryAction} type="submit" disabled={setupBusy}>{setupBusy ? "正在创建…" : "创建管理员 →"}</button>
+          <label><span>固定16位初始化口令</span><input type={showPassword ? "text" : "password"} autoComplete="one-time-code" autoCapitalize="none" spellCheck={false} value={initialCode} onChange={(event) => setInitialCode(event.target.value)} /><small>指南统一口令：{RECOMMENDED_INITIAL_ADMIN_CODE}</small></label>
+          <label><span>管理员密码</span><input type={showPassword ? "text" : "password"} autoComplete="new-password" autoCapitalize="none" spellCheck={false} value={password} onChange={(event) => setPassword(event.target.value)} /><small>10至128位，包含文字和数字；开头和结尾不要留空格</small></label>
+          <label><span>再次输入密码</span><input type={showPassword ? "text" : "password"} autoComplete="new-password" autoCapitalize="none" spellCheck={false} value={passwordAgain} onChange={(event) => setPasswordAgain(event.target.value)} /><small>{passwordAgain ? password === passwordAgain ? "两次密码一致" : "两次密码暂不一致" : "请再次输入"}</small></label>
+          <PasswordVisibility shown={showPassword} setShown={setShowPassword} />
+          <button className={styles.primaryAction} type="submit" disabled={setupBusy}>{setupBusy ? message : "创建管理员 →"}</button>
         </form>
       </StatePanel>
     );
   }
-  if (state === "recover") return (
-    <StatePanel label="PASSWORD RECOVERY" title="使用系统恢复码" detail="恢复成功后，旧恢复码会立即作废，系统会再生成一份新的恢复码。">
+  if (state === "upgrade_required") return (
+    <StatePanel label="SECURITY UPDATE" title="升级后重置一次密码" detail={`网站已更新到 v${PROGRAM_VERSION}${upgradeFromVersion ? `（原版本 ${upgradeFromVersion}）` : ""}。请输入目前最新的系统恢复码，设置新密码；完成后旧恢复码立即作废，并生成一份新的恢复码。`}>
       <form className={styles.authForm} onSubmit={(event) => { event.preventDefault(); void recoverPassword(); }}>
-        <label><span>系统恢复码</span><input type="text" autoCapitalize="characters" autoComplete="off" value={recoveryInput} onChange={(event) => setRecoveryInput(event.target.value)} /></label>
-        <label><span>新管理员密码</span><input type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
-        <label><span>再次输入新密码</span><input type="password" autoComplete="new-password" value={passwordAgain} onChange={(event) => setPasswordAgain(event.target.value)} /></label>
+        <label><span>当前最新系统恢复码</span><input type="text" autoCapitalize="characters" autoComplete="off" spellCheck={false} value={recoveryInput} onChange={(event) => setRecoveryInput(event.target.value)} /><small>使用上一次保存的最新恢复码，不是16位初始化口令</small></label>
+        <label><span>新管理员密码</span><input type={showPassword ? "text" : "password"} autoComplete="new-password" autoCapitalize="none" spellCheck={false} value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+        <label><span>再次输入新密码</span><input type={showPassword ? "text" : "password"} autoComplete="new-password" autoCapitalize="none" spellCheck={false} value={passwordAgain} onChange={(event) => setPasswordAgain(event.target.value)} /><small>{passwordAgain ? password === passwordAgain ? "两次密码一致" : "两次密码暂不一致" : "请再次输入"}</small></label>
+        <PasswordVisibility shown={showPassword} setShown={setShowPassword} />
+        <button className={styles.primaryAction} type="submit" disabled={setupBusy}>{setupBusy ? "正在重置并迁移…" : "完成升级安全确认 →"}</button>
+      </form>
+    </StatePanel>
+  );
+  if (state === "recover") return (
+    <StatePanel label="PASSWORD RECOVERY" title="使用系统恢复码" detail="恢复码每成功使用一次，旧码立即作废，系统会生成一份新的恢复码。下一次只认新码。">
+      <form className={styles.authForm} onSubmit={(event) => { event.preventDefault(); void recoverPassword(); }}>
+        <label><span>当前最新系统恢复码</span><input type="text" autoCapitalize="characters" autoComplete="off" spellCheck={false} value={recoveryInput} onChange={(event) => setRecoveryInput(event.target.value)} /></label>
+        <label><span>新管理员密码</span><input type={showPassword ? "text" : "password"} autoComplete="new-password" autoCapitalize="none" spellCheck={false} value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+        <label><span>再次输入新密码</span><input type={showPassword ? "text" : "password"} autoComplete="new-password" autoCapitalize="none" spellCheck={false} value={passwordAgain} onChange={(event) => setPasswordAgain(event.target.value)} /></label>
+        <PasswordVisibility shown={showPassword} setShown={setShowPassword} />
         <button className={styles.primaryAction} type="submit" disabled={setupBusy}>{setupBusy ? "正在重置…" : "重置密码 →"}</button>
         <button className={styles.textAction} type="button" onClick={() => { setPassword(""); setPasswordAgain(""); setState("unauthenticated"); }}>返回密码登录</button>
       </form>
     </StatePanel>
   );
   if (state === "recovery_code" && issuedRecoveryCode) return (
-    <StatePanel label="RECOVERY CODE" title="立即保存恢复码" detail="系统以后不会再次显示这份恢复码。密码和恢复码同时丢失时，网站无法自行找回。">
-      <div className={styles.recoveryCard}><span>系统恢复码</span><strong>{issuedRecoveryCode}</strong><small>一次性使用 · 请离线保存</small></div>
+    <StatePanel label="RECOVERY CODE" title="立即保存新的恢复码" detail="旧恢复码已经作废。下面这份是当前唯一有效的恢复码：忘记密码和下一次版本升级都会用到它。">
+      <div className={styles.recoveryCard}><span>当前最新系统恢复码</span><strong>{issuedRecoveryCode}</strong><small>一次性使用 · 使用后自动生成新码 · 请离线保存</small></div>
       <div className={styles.recoveryActions}>
-        <button className={styles.primaryAction} type="button" onClick={saveRecoveryCode}>下载恢复码</button>
+        <button className={styles.primaryAction} type="button" onClick={saveRecoveryCode}>下载最新恢复码</button>
         <button className={styles.textAction} type="button" onClick={() => void load()}>我已妥善保存，进入后台 →</button>
       </div>
     </StatePanel>
@@ -492,6 +550,10 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
       </div>
     </>
   );
+}
+
+function PasswordVisibility({ shown, setShown }: { shown: boolean; setShown: (shown: boolean) => void }) {
+  return <label className={styles.passwordVisibility}><input type="checkbox" checked={shown} onChange={(event) => setShown(event.target.checked)} /><span>{shown ? "隐藏密码" : "显示密码，检查大小写和空格"}</span></label>;
 }
 
 function Overview({ data, portfolio, access, storage, setAccess, change, onNavigate, setMessage }: { data: AdminPayload; portfolio: PortfolioDocument; access: AccessPayload; storage: StoragePayload; setAccess: (next: AccessPayload) => void; change: (mutator: (document: PortfolioDocument) => PortfolioDocument) => void; onNavigate: (view: View) => void; setMessage: (message: string) => void }) {
@@ -1117,8 +1179,12 @@ function DirectText({ value, label, onCommit, tag = "span" }: { value: string; l
     "data-editing": editing,
     onDoubleClick: (event: React.MouseEvent<HTMLElement>) => { event.preventDefault(); event.stopPropagation(); setEditing(true); },
     onPointerDown: (event: React.PointerEvent<HTMLElement>) => { if (editing) event.stopPropagation(); },
-    onBlur: (event: React.FocusEvent<HTMLElement>) => { setEditing(false); onCommit(event.currentTarget.textContent?.trim() ?? ""); },
-    onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => { if (editing && event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); } if (editing) event.stopPropagation(); },
+    onBlur: (event: React.FocusEvent<HTMLElement>) => { setEditing(false); onCommit(normalizeMultilineText(event.currentTarget.innerText)); },
+    onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => {
+      if (editing && event.key === "Enter" && (event.ctrlKey || event.metaKey)) { event.preventDefault(); event.currentTarget.blur(); }
+      if (editing && event.key === "Escape") { event.preventDefault(); event.currentTarget.blur(); }
+      if (editing) event.stopPropagation();
+    },
     children: value,
   };
   if (tag === "strong") return <strong {...props} />;
@@ -1146,6 +1212,13 @@ function MediaUpload({ projectId, slot, title, asset, cropAspect = 16 / 9, freeC
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [previewSrc, setPreviewSrc] = useState<string | undefined>(asset.src);
+  const ownedPreviewUrl = useRef<string | null>(null);
+  useEffect(() => {
+    if (!ownedPreviewUrl.current) setPreviewSrc(asset.src);
+  }, [asset.key, asset.src]);
+  useEffect(() => () => {
+    if (ownedPreviewUrl.current) URL.revokeObjectURL(ownedPreviewUrl.current);
+  }, []);
   async function upload(file: File) {
     setUploading(true);
     setMessage(`正在上传 ${file.name}…`);
@@ -1203,7 +1276,11 @@ function MediaUpload({ projectId, slot, title, asset, cropAspect = 16 / 9, freeC
           body: "{}",
         });
       }
-      if (asset.kind === "image") setPreviewSrc(URL.createObjectURL(uploadFile));
+      if (asset.kind === "image") {
+        if (ownedPreviewUrl.current) URL.revokeObjectURL(ownedPreviewUrl.current);
+        ownedPreviewUrl.current = URL.createObjectURL(uploadFile);
+        setPreviewSrc(ownedPreviewUrl.current);
+      }
       const nextCrop = sourceAspectRatio
         ? freeCrop ? fullMediaCrop() : fitCropToAspect(sourceAspectRatio, cropAspect)
         : asset.crop;
@@ -1364,6 +1441,7 @@ function createBlock(type: ProjectBlock["type"]): ProjectBlock {
   return { id, type, caption: "图片说明", media: emptyMedia("image") };
 }
 function moveItem<T extends { id: string }>(items: T[], id: string, direction: -1 | 1) { const index = items.findIndex((item) => item.id === id); const target = index + direction; if (index < 0 || target < 0 || target >= items.length) return items; const next = [...items]; [next[index], next[target]] = [next[target], next[index]]; return next; }
+function normalizeMultilineText(value: string) { return value.replaceAll("\r", "").replace(/\n{3,}/gu, "\n\n").trim(); }
 function clamp(value: number, min: number, max: number) { return Math.max(min, Math.min(max, Math.round(value * 10) / 10)); }
 function blockLabel(type: ProjectBlock["type"]) { return ({ text: "文字", "media-text": "图文混排", gallery: "图片组", "full-media": "通栏图片" } as const)[type]; }
 function eventLabel(type: string) { return ({ page_view: "访问页面", project_open: "展开作品", play_request: "申请播放", play_error: "播放失败" } as Record<string, string>)[type] ?? type; }
@@ -1423,4 +1501,17 @@ async function uploadChunkWithRetry(path: string, chunk: Blob) {
   }
   throw lastError instanceof Error ? lastError : new Error("上传分片失败");
 }
-async function api<T>(input: string, init?: RequestInit): Promise<T> { const response = await fetch(input, { ...init, credentials: "same-origin", cache: "no-store" }); const body = await response.json().catch(() => ({})) as T & { error?: string; details?: string[] }; if (!response.ok) throw new Error(body.details?.[0] || body.error || `请求失败（${response.status}）`); return body; }
+async function fetchWithTimeout(input: string, init: RequestInit = {}, timeoutMs = 20_000) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error("网络响应超时，请检查网络；系统会保留已经完成的操作");
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+async function wait(milliseconds: number) { await new Promise((resolve) => window.setTimeout(resolve, milliseconds)); }
+async function api<T>(input: string, init?: RequestInit): Promise<T> { const response = await fetchWithTimeout(input, { ...init, credentials: "same-origin", cache: "no-store" }); const body = await response.json().catch(() => ({})) as T & { error?: string; details?: string[] }; if (!response.ok) throw new Error(body.error || body.details?.[0] || `请求失败（${response.status}）`); return body; }

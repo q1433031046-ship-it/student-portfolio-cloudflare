@@ -171,9 +171,10 @@ function InlineEditable({ value, ariaLabel, onCommit, tag = "span" }: { value: s
     "data-editing": editing,
     onDoubleClick: (event: React.MouseEvent<HTMLElement>) => { event.preventDefault(); event.stopPropagation(); setEditing(true); },
     onPointerDown: (event: React.PointerEvent<HTMLElement>) => { if (editing) event.stopPropagation(); },
-    onBlur: (event: React.FocusEvent<HTMLElement>) => { setEditing(false); onCommit(event.currentTarget.textContent?.trim() ?? ""); },
+    onBlur: (event: React.FocusEvent<HTMLElement>) => { setEditing(false); onCommit(event.currentTarget.innerText.replaceAll("\r", "").replace(/\n{3,}/gu, "\n\n").trim()); },
     onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => {
-      if (editing && event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); }
+      if (editing && event.key === "Enter" && (event.ctrlKey || event.metaKey)) { event.preventDefault(); event.currentTarget.blur(); }
+      if (editing && event.key === "Escape") { event.preventDefault(); event.currentTarget.blur(); }
       if (editing) event.stopPropagation();
     },
     children: value,

@@ -24,7 +24,7 @@ export async function recordPortfolioEvent(input: {
   const riskLevel = input.forcedRisk?.level ?? context.riskLevel;
   const riskReason = input.forcedRisk?.reason ?? context.riskReason;
   const action = input.action ?? "allow";
-  const hashKey = getAnalyticsHashKey();
+  const hashKey = await getAnalyticsHashKey();
   const identifier = input.sessionId ?? context.networkHash;
   const dedupeKey = hashKey && identifier ? await buildEventDedupeKey({
     sessionId: identifier,

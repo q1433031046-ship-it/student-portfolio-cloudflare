@@ -567,6 +567,7 @@
   position: relative;
   overflow: hidden;
   aspect-ratio: 16 / 9;
+  container-type: inline-size;
   background: #08090b;
   color: #f5f5f3;
   isolation: isolate;
@@ -584,16 +585,16 @@
 .projectCover:hover .projectCoverInfo,
 .projectCover:has(:focus-visible) .projectCoverInfo { opacity: 1; visibility: visible; transform: translateY(0); }
 .projectCover[data-cover-overlay="fixed"] .projectCoverInfo { opacity: 1; visibility: visible; transform: translateY(0); }
-.projectTitleGroup { position: absolute; top: var(--cover-y, clamp(28px, 8%, 76px)); left: var(--cover-x, clamp(24px, 3.4vw, 52px)); width: min(var(--cover-width, 62%), 760px); max-width: calc(100% - 48px); transform: translateY(-50%) scale(var(--cover-scale, 1)); transform-origin: left center; }
+.projectTitleGroup { position: absolute; top: var(--cover-y, clamp(28px, 8%, 76px)); left: var(--cover-x, clamp(24px, 3.4vw, 52px)); width: var(--cover-width, 62%); max-width: calc(100% - var(--cover-x, 3%)); transform: translateY(-50%) scale(var(--cover-scale, 1)); transform-origin: left center; }
 .projectTitleGroup > span, .projectSynopsis > span { color: var(--project-accent); font-size: 9px; font-weight: 700; letter-spacing: .14em; }
-.projectTitleGroup h2 { margin: 20px 0 0; font-size: clamp(58px, 7vw, 112px); font-weight: 540; line-height: .84; letter-spacing: -.075em; }
-.projectSynopsis { position: absolute; top: var(--cover-y, 63%); left: var(--cover-x, clamp(24px, 3.4vw, 52px)); width: min(var(--cover-width, 42%), 440px); max-width: calc(100% - 48px); padding: 16px 0 0; border-top: 1px solid rgba(255,255,255,.34); transform: translateY(-50%) scale(var(--cover-scale, 1)); transform-origin: left center; }
-.projectSynopsis p { margin: 13px 0 0; color: rgba(245,245,243,.75); font-size: 12px; line-height: 1.75; }
+.projectTitleGroup h2 { margin: clamp(8px, 1.25cqw, 20px) 0 0; white-space: pre-line; overflow-wrap: anywhere; font-size: clamp(28px, 7cqw, 112px); font-weight: 540; line-height: .84; letter-spacing: -.075em; }
+.projectSynopsis { position: absolute; top: var(--cover-y, 63%); left: var(--cover-x, clamp(24px, 3.4vw, 52px)); width: var(--cover-width, 42%); max-width: calc(100% - var(--cover-x, 3%)); padding: 16px 0 0; border-top: 1px solid rgba(255,255,255,.34); transform: translateY(-50%) scale(var(--cover-scale, 1)); transform-origin: left center; }
+.projectSynopsis p { margin: clamp(6px, .8cqw, 13px) 0 0; color: rgba(245,245,243,.75); white-space: pre-line; overflow-wrap: anywhere; font-size: clamp(9px, .78cqw, 14px); line-height: 1.75; }
 .projectFacts { position: absolute; top: var(--cover-y, 78%); left: var(--cover-x, clamp(24px, 3.4vw, 52px)); width: min(var(--cover-width, 72%), calc(100% - 48px)); max-width: calc(100% - 48px); margin: 0; display: grid; grid-template-columns: .55fr 1fr 1fr; border-top: 1px solid rgba(255,255,255,.3); transform: translateY(-50%) scale(var(--cover-scale, 1)); transform-origin: left center; }
 .projectFacts div { min-width: 0; padding: 14px 14px 0 0; }
 .projectFacts div + div { padding-left: 14px; border-left: 1px solid rgba(255,255,255,.22); }
 .projectFacts dt { color: var(--project-accent); font-size: 8px; letter-spacing: .12em; }
-.projectFacts dd { margin: 8px 0 0; color: rgba(245,245,243,.72); font-size: 10px; line-height: 1.55; display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+.projectFacts dd { margin: 8px 0 0; color: rgba(245,245,243,.72); white-space: pre-line; overflow-wrap: anywhere; font-size: 10px; line-height: 1.55; display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
 .projectPlay { position: absolute; z-index: 8; right: clamp(24px, 3.4vw, 52px); bottom: clamp(24px, 3.4vw, 52px); min-height: 56px; padding: 6px 9px 6px 7px; display: inline-flex; align-items: center; gap: 11px; border: 1px solid rgba(255,255,255,.42); border-radius: 999px; background: rgba(8,8,10,.46); color: white; font-size: 10px; letter-spacing: .08em; pointer-events: auto; cursor: pointer; backdrop-filter: blur(16px); transition: background-color 200ms ease, color 200ms ease, transform 200ms ease; }
 .projectPlay span { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 50%; background: white; color: #050506; }
 .projectPlay svg { width: 17px; height: 17px; }
@@ -1349,3 +1350,5 @@
     animation: none !important;
   }
 }
+
+.heroLayer h1,.heroLayer p,.heroLayer dd,.contactTextLayer h2,.contactTextLayer small,.workHeading h2,.blockCopy h4,.blockCopy p,.textBlock h4,.textBlock p,.galleryBlock h4,.fullMediaBlock>p,.footer strong,.footer p { white-space:pre-line;overflow-wrap:anywhere; }

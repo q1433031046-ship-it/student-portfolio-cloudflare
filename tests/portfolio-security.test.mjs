@@ -154,6 +154,7 @@ test("streams chunked MP4 ranges and serves ten complete viewers", async () => {
   let kvReads = 0;
   env.AUTH_PLATFORM = "password";
   env.INITIAL_ADMIN_CODE = randomTestSecret();
+  env.MEDIA_SIGNING_KEY = randomTestSecret();
   env.MEDIA_KV = {
     async get(key) {
       kvReads += 1;
@@ -181,7 +182,7 @@ test("streams chunked MP4 ranges and serves ten complete viewers", async () => {
     },
   });
   const expiresAt = Math.floor(Date.now() / 1000) + 300;
-  const signature = await signPlaybackGrant(objectKey, expiresAt, env.INITIAL_ADMIN_CODE);
+  const signature = await signPlaybackGrant(objectKey, expiresAt, env.MEDIA_SIGNING_KEY);
   const url = `https://portfolio.example/api/media/${objectKey}?exp=${expiresAt}&sig=${signature}`;
 
   const range = await mediaRoute.GET(new Request(url, { headers: { Range: "bytes=2-7" } }), {
@@ -203,6 +204,7 @@ test("streams chunked MP4 ranges and serves ten complete viewers", async () => {
   delete env.MEDIA_KV;
   delete env.AUTH_PLATFORM;
   delete env.INITIAL_ADMIN_CODE;
+  delete env.MEDIA_SIGNING_KEY;
 });
 
 function mediaD1(rows) {
