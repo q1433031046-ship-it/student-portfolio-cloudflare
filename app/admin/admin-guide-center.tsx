@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { PROGRAM_VERSION, UPGRADE_PROMPT } from "./admin-upgrade-content";
 
 const CENTRAL_GUIDE_URL = "https://github.com/q1433031046-ship-it/student-portfolio-cloudflare#readme";
 const DEPLOY_URL = "https://deploy.workers.cloudflare.com/?url=https://github.com/q1433031046-ship-it/student-portfolio-cloudflare";
@@ -25,12 +26,6 @@ ${DEPLOY_URL}
 以下信息始终由我本人在官方页面输入，不进入聊天：GitHub 密码、Cloudflare 密码、管理员密码、INITIAL_ADMIN_CODE、系统恢复码、浏览器 Cookie、长期 API Token。
 
 首次部署完成后继续带我进入 /admin：使用一次性部署口令创建管理员密码、保存系统恢复码，并检查图片上传、MP4 播放、草稿预览、正式发布、二维码访问、网站空间、使用教程和程序升级中心。`;
-
-const UPGRADE_PROMPT = `请把我的“学生作品展示”网站升级到模板最新版本。先确认当前要升级的具体网站、Worker、D1 DB 和 MEDIA_KV，再读取 README.md、AGENTS.md、deployment/agent-manifest.json 和 deployment/template-version.json。
-
-升级必须沿用现有 Worker、workers.dev 地址、D1、MEDIA_KV 和 Secrets，只更新程序代码与增量数据库迁移，并完整保留管理员、图片、视频、草稿、已发布内容、二维码和访问记录。检测到创建第二套 Worker、D1 或 KV 的步骤时，请停止并说明原因。
-
-升级完成后检查后台登录、图片读取、视频播放、草稿预览、正式发布、网站空间、使用教程和程序升级按钮。`;
 
 const toolbarStyles = `
 [data-admin-tools]{display:flex;align-items:center;gap:8px}
@@ -215,7 +210,7 @@ export function AdminGuideCenter() {
       </header>
 
       <section className="hero">
-        <p className="eyebrow">ADMIN GUIDE / V1.1.1</p>
+        <p className="eyebrow">ADMIN GUIDE / V{PROGRAM_VERSION}</p>
         <h1 id="admin-guide-title">先找到要做的事，<br/>再按步骤完成。</h1>
         <p>教程按“部署、编辑、发布、升级”四条主线整理。安全信息集中在一处说明，操作步骤保持短句和单一动作。</p>
         <div className="quickGrid">
@@ -404,6 +399,7 @@ export function AdminGuideCenter() {
           <section className="guide" id="admin-guide-upgrade">
             <GuideHeader eyebrow="12 / UPGRADE" title="程序升级" />
             <p>升级沿用当前 Worker、地址、D1、MEDIA_KV、Secrets、管理员和全部内容，只更新程序代码与增量数据库迁移。</p>
+            <div className="callout"><strong>新版本提醒</strong><p>登录后台时自动检查主模板版本；发现新版本后，右上角“程序升级”显示小红点，升级中心显示版本差异和更新内容。该提醒只在后台内显示，不是短信或邮件推送。</p></div>
             <div className="prompt"><pre>{UPGRADE_PROMPT}</pre><button type="button" onClick={() => void copy(UPGRADE_PROMPT, "upgrade")}>{upgradeCopy}</button></div>
             <div className="inlineActions"><button className="primary" type="button" onClick={openUpgradeCenter}>定位后台升级中心</button></div>
           </section>
