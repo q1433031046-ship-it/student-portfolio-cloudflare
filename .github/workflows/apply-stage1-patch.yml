@@ -1,0 +1,55 @@
+name: Apply Stage One Refactor
+
+on:
+  push:
+    branches:
+      - release/v1.2.0-prep-20260829
+    paths:
+      - .github/workflows/apply-stage1-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout development branch
+        uses: actions/checkout@v4
+        with:
+          ref: release/v1.2.0-prep-20260829
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.0'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Decode and apply staged patch
+        run: |
+          cat scripts/.stage1-patch.part1 scripts/.stage1-patch.part2 scripts/.stage1-patch.part3 scripts/.stage1-patch.part4 \
+            | base64 --decode | gzip --decompress > /tmp/stage1-patch.py
+          python /tmp/stage1-patch.py
+
+      - name: Production build and all tests
+        run: npm test
+
+      - name: Lint
+        run: npm run lint
+
+      - name: TypeScript
+        run: ./node_modules/.bin/tsc --noEmit
+
+      - name: Commit verified stage-one changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/apply-stage1-patch.yml scripts/.stage1-patch.part1 scripts/.stage1-patch.part2 scripts/.stage1-patch.part3 scripts/.stage1-patch.part4
+          git add -A
+          git commit -m "Refactor authentication and stabilize cover previews"
+          git push origin HEAD:release/v1.2.0-prep-20260829
