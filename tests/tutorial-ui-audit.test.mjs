@@ -33,7 +33,13 @@ test("no-negative-echo audit keeps only the final tutorial flow", async () => {
     "程序升级",
   ]) assert.match(readme, new RegExp(phrase));
 
+  assert.match(readme, /默认公开；也可以在后台启用二维码限制访问/);
+  assert.doesNotMatch(readme, /同版教程|同版的操作说明|\/guide/);
+
   assert.match(guide, /使用教程/);
+  assert.match(guide, /默认公开，也可以在后台启用二维码限制访问/);
+  assert.doesNotMatch(guide, /同版指南|模板不再提供公开/);
+
   assert.match(stepTwo, /在 ChatGPT 里具体怎么点/);
   assert.match(adminPage, /AdminGuideUiAudit/);
   assert.match(audit, /GitHub 完整指南/);
