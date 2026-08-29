@@ -31,6 +31,19 @@ jobs:
           node-version: '22.13.0'
           cache: npm
 
+      - name: Fix patch helper escaping
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/apply-stability-phase1.py')
+          content = path.read_text(encoding='utf-8')
+          old = 'updated, count = re.subn(pattern, replacement, content, count=1, flags=re.S)'
+          new = 'updated, count = re.subn(pattern, lambda _match: replacement, content, count=1, flags=re.S)'
+          if old not in content:
+              raise SystemExit('patch helper target not found')
+          path.write_text(content.replace(old, new, 1), encoding='utf-8')
+          PY
+
       - name: Apply deterministic patch
         run: python scripts/apply-stability-phase1.py
 
