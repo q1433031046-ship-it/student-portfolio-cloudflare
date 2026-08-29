@@ -10,9 +10,11 @@ on:
       - "deployment/**"
       - "app/admin/admin-guide-center.tsx"
       - "app/admin/admin-guide-step-two.tsx"
+      - "app/admin/admin-guide-ui-audit.tsx"
       - "app/admin/admin-upgrade-center.tsx"
       - "app/admin/page.tsx"
       - "tests/agent-deployment-package.test.mjs"
+      - "tests/tutorial-ui-audit.test.mjs"
 
 permissions:
   contents: read
