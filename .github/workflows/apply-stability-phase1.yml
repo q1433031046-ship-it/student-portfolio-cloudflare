@@ -1,0 +1,59 @@
+name: Apply Stability Phase One
+
+on:
+  push:
+    branches:
+      - upgrade/stability-footer-draft
+    paths:
+      - scripts/apply-stability-phase1.py
+      - app/admin/media-preview-cache.ts
+      - tests/stability-phase1.test.mjs
+      - .github/workflows/apply-stability-phase1.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout development branch
+        uses: actions/checkout@v4
+        with:
+          ref: upgrade/stability-footer-draft
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.0'
+          cache: npm
+
+      - name: Apply deterministic patch
+        run: python scripts/apply-stability-phase1.py
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Full build and tests
+        run: npm test
+
+      - name: Lint
+        run: npm run lint
+
+      - name: TypeScript
+        run: ./node_modules/.bin/tsc --noEmit
+
+      - name: Commit verified phase one changes
+        run: |
+          if git diff --quiet; then
+            echo "No generated changes to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app tests
+          git commit -m "[skip ci] Apply verified phase one stability fixes"
+          git push origin HEAD:upgrade/stability-footer-draft
