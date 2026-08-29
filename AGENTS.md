@@ -1,6 +1,14 @@
 # Agent-assisted Cloudflare deployment
 
-This repository is a public deployment template for non-technical site owners. Read `deployment/agent-manifest.json`, `START-HERE.md`, `docs/guides/student-cloudflare-setup.md`, and `UPGRADE-GUIDE.md` before changing, deploying, or upgrading it.
+This repository is a public deployment template for non-technical site owners.
+
+## Canonical documentation
+
+- Human-facing guide: `README.md`
+- Machine-readable deployment contract: `deployment/agent-manifest.json`
+- Version and upgrade policy: `deployment/template-version.json`
+
+Do not send users to multiple setup documents. The repository README is the only public student guide. After deployment, the same operational guidance is available from the password-protected administrator interface.
 
 The user flow is GPT-first: verify account context first, then direct the user to the official Deploy to Cloudflare button. The deployment provisions a Worker, D1 database, and Workers KV namespace and configures Workers Builds.
 
@@ -13,6 +21,7 @@ The user flow is GPT-first: verify account context first, then direct the user t
 - Initialize the administrator once with the `INITIAL_ADMIN_CODE` secret, then use a site password.
 - Generate a system recovery code after initialization and after each password recovery. Display each recovery code once and store only its keyed hash.
 - Local-password sessions last 12 hours. Five failed password attempts lock login for 15 minutes. Explicit logout revokes the active session.
+- Do not expose a public `/guide` route. Pre-deployment guidance is served by GitHub; post-deployment guidance is opened only after an administrator signs in.
 
 ## GPT and account isolation
 
@@ -24,7 +33,7 @@ Before every new deployment, explicitly resolve:
 2. the GitHub account currently signed in in the browser;
 3. the Cloudflare account currently signed in in the browser;
 4. whether this Cloudflare account already contains another copy of this portfolio;
-5. the intended new repository and Worker names.
+5. the intended new repository, Worker, D1, and KV names.
 
 If the browser is still signed in to a previous student's GitHub or Cloudflare account, stop and ask the user to switch the official account first. Never continue based only on the ChatGPT account identity.
 
@@ -44,21 +53,34 @@ Never request a Cloudflare password. Never request a GitHub password, browser co
 
 ## Deployment workflow
 
-1. Confirm account isolation and target site identity before opening the deploy link.
-2. Verify the Node.js version from `package.json#engines`; run `npm ci`, `npm test`, `npm run lint`, and `./node_modules/.bin/tsc --noEmit` when performing a release or final package validation.
-3. For a new site, open the Deploy to Cloudflare link and let the owner approve official authorization. Confirm the deployment creates or binds resources named `DB` and `MEDIA_KV` for this site only.
-4. Ensure `INITIAL_ADMIN_CODE` is configured as a secret, has at least 16 characters, and contains ASCII letters and digits. The owner enters it on an official or hidden-input surface.
-5. Confirm all D1 migrations, including `0005_password_auth_kv_media.sql`, were applied.
-6. Open `/admin`. The owner enters the deployment code once and creates a password, then downloads and safely stores the recovery code.
-7. Verify an unauthenticated admin visit requires a password, explicit logout revokes the session, and the 12-hour session behavior is understood.
-8. Execute the live verification list in the manifest, including storage reporting, program upgrade center, range playback, seeking, password recovery, and media behavior.
-9. Report the deployed URL, resource names, test outcomes, and any remaining account-owned action.
+1. Read `README.md`, `deployment/agent-manifest.json`, and `deployment/template-version.json`.
+2. Confirm account isolation and target site identity before opening the deploy link.
+3. Verify the Node.js version from `package.json#engines`; run `npm ci`, `npm test`, `npm run lint`, and `./node_modules/.bin/tsc --noEmit` when performing a release or final package validation.
+4. For a new site, open the Deploy to Cloudflare link and let the owner approve official authorization.
+5. Confirm the deployment creates or binds resources named `DB` and `MEDIA_KV` for this site only. If the UI asks the user to choose a resource, use a newly created resource rather than another site's existing D1 or KV.
+6. Keep the production branch as `main`, build command as `npm run build`, deploy command as `npm run deploy`, and root directory as the UI default unless the repository configuration explicitly changes.
+7. Ensure `INITIAL_ADMIN_CODE` is configured as a secret, has at least 16 characters, and contains ASCII letters and digits. The owner enters it on an official or hidden-input surface.
+8. Confirm all D1 migrations, including `0005_password_auth_kv_media.sql`, were applied.
+9. Open `/admin`. The owner enters the deployment code once and creates a password, then downloads and safely stores the recovery code.
+10. Verify an unauthenticated admin visit requires a password, explicit logout revokes the session, and the 12-hour session behavior is understood.
+11. Confirm the password-protected administrator UI contains the “使用教程” entry and that no public `/guide` route is shipped.
+12. Execute the live verification list in the manifest, including storage reporting, program upgrade center, range playback, seeking, password recovery, and media behavior.
+13. Report the deployed URL, resource names, test outcomes, and any remaining account-owned action.
+
+## Upgrade workflow
+
+1. Read `README.md`, this file, `deployment/agent-manifest.json`, and `deployment/template-version.json`.
+2. Resolve the exact existing Worker, D1, and `MEDIA_KV` before changing code.
+3. Preserve all current resource identifiers, secrets, administrator state, media, drafts, published content, access passes, analytics, and audit records.
+4. Apply only program changes and forward-only database migrations.
+5. Use `npm run cloudflare:deploy` for an existing installation unless the repository explicitly defines a newer upgrade command.
+6. Never create a second Worker, D1, or KV merely to perform an upgrade.
+7. Re-run the critical live checks after deployment.
 
 ## Safety and recovery
 
 - Do not copy content or media from another site unless the owner explicitly requests it.
-- Preserve D1 and `MEDIA_KV` during program updates. Use `npm run cloudflare:deploy` for an existing installation.
-- Before deleting a Worker, D1 database, KV namespace, or media, resolve the exact target and obtain explicit owner approval.
+- Before deleting a Worker, D1 database, KV namespace, repository, or media, resolve the exact target and obtain explicit owner approval.
 - If deployment stops after resources are created, inspect and resume those resources instead of creating duplicates.
 - Losing both the administrator password and the latest recovery code requires an operator-assisted credential reset in D1. Do not weaken authentication to work around that condition.
 - For mainland-China audiences, verify the final `workers.dev` address on the owner's actual mobile and broadband networks.

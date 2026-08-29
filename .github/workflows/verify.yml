@@ -26,8 +26,8 @@ jobs:
       - name: Install
         run: npm ci
 
-      - name: Admin regression checks
-        run: node --experimental-strip-types --test tests/admin-regressions.test.mjs tests/media-crop.test.mjs tests/hero-layout.test.mjs
+      - name: Admin and guide regression checks
+        run: node --experimental-strip-types --test tests/admin-regressions.test.mjs tests/media-crop.test.mjs tests/hero-layout.test.mjs tests/agent-deployment-package.test.mjs
 
       - name: Lint changed admin surfaces
-        run: npx eslint app/admin/admin-client.tsx app/admin/media-crop-editor.tsx app/admin/admin-interaction-enhancements.tsx
+        run: npx eslint app/admin/admin-client.tsx app/admin/admin-guide-center.tsx app/admin/admin-upgrade-center.tsx app/admin/admin-interaction-enhancements.tsx app/admin/media-crop-editor.tsx app/admin/page.tsx

@@ -5,6 +5,9 @@
   "releasedAt": "2026-08-29",
   "portfolioDocumentSchemaVersion": 4,
   "templateRepository": "https://github.com/q1433031046-ship-it/student-portfolio-cloudflare",
+  "humanGuide": "README.md",
+  "adminGuide": "password-protected administrator interface",
+  "publicGuideRoute": null,
   "upgradePolicy": {
     "existingInstallCommand": "npm run cloudflare:deploy",
     "preserveExistingCloudflareResources": true,
@@ -19,9 +22,9 @@
       "access passes, analytics and audit records"
     ],
     "readBeforeUpgrade": [
+      "README.md",
       "AGENTS.md",
       "deployment/agent-manifest.json",
-      "UPGRADE-GUIDE.md",
       "deployment/template-version.json"
     ]
   }

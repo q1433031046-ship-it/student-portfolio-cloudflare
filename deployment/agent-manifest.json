@@ -7,6 +7,12 @@
     "defaultHostname": "workers.dev",
     "initialContent": "empty"
   },
+  "documentation": {
+    "publicPreDeploymentGuide": "README.md",
+    "postDeploymentGuide": "password-protected administrator interface",
+    "publicGuideRoute": null,
+    "studentFacingFiles": ["README.md"]
+  },
   "runtime": {
     "node": ">=22.13.0",
     "config": "wrangler.jsonc",
@@ -55,6 +61,8 @@
     "password recovery revokes prior sessions and rotates the recovery code",
     "draft save and preview do not change the public portfolio",
     "the overview footer reports used and remaining website space",
+    "the administrator header exposes the password-protected guide entry after login",
+    "the public /guide route is absent",
     "image upload renders successfully",
     "a 50 MB MP4 uploads in 4 MiB chunks",
     "video range requests support playback and seeking",
