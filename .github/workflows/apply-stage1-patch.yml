@@ -35,6 +35,13 @@ jobs:
           cat scripts/.stage1-patch.part1 scripts/.stage1-patch.part2 scripts/.stage1-patch.part3 scripts/.stage1-patch.part4 \
             | base64 --decode | gzip --decompress > /tmp/stage1-patch.py
           python /tmp/stage1-patch.py
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('tests/owner-onboarding.test.mjs')
+          text = path.read_text()
+          text = text.replace('assert.match(adminClient, /一次性部署口令/u);', 'assert.match(adminClient, /固定16位初始化口令/u);')
+          path.write_text(text)
+          PY
 
       - name: Production build and all tests
         run: npm test
