@@ -126,7 +126,9 @@ export function AdminUpdateNotifier() {
   }, []);
 
   useEffect(() => {
-    if (adminReady && !status && !checking) void checkVersion();
+    if (!adminReady || status || checking) return;
+    const timer = window.setTimeout(() => void checkVersion(), 0);
+    return () => window.clearTimeout(timer);
   }, [adminReady, status, checking, checkVersion]);
 
   useEffect(() => {
