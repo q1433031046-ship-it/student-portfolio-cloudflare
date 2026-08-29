@@ -38,7 +38,15 @@ test("no-negative-echo audit keeps one final tutorial flow", async () => {
 
   assert.match(readme, /安全边界/);
   assert.match(readme, /完整复制部署引导语/);
+  assert.match(readme, /不需要启用 R2/);
+  assert.match(readme, /桌面 16:9/);
+  assert.match(readme, /手机 4:5/);
+  assert.match(readme, /媒体已上传，等待草稿保存/);
   assert.match(guide, /在 ChatGPT 里具体怎么点/);
+  assert.match(guide, /不需要启用 R2/);
+  assert.match(guide, /桌面 16:9/);
+  assert.match(guide, /手机 4:5/);
+  assert.match(guide, /媒体已上传，等待草稿保存/);
   assert.match(guide, /data-admin-tools/);
   assert.match(guide, /portfolio:open-upgrade/);
   assert.match(upgrade, /addEventListener\(OPEN_UPGRADE_EVENT/);

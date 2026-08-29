@@ -215,7 +215,7 @@ export function AdminGuideCenter() {
       </header>
 
       <section className="hero">
-        <p className="eyebrow">ADMIN GUIDE / V1.0.0</p>
+        <p className="eyebrow">ADMIN GUIDE / V1.1.1</p>
         <h1 id="admin-guide-title">先找到要做的事，<br/>再按步骤完成。</h1>
         <p>教程按“部署、编辑、发布、升级”四条主线整理。安全信息集中在一处说明，操作步骤保持短句和单一动作。</p>
         <div className="quickGrid">
@@ -282,6 +282,7 @@ export function AdminGuideCenter() {
 
           <section className="guide" id="admin-guide-deploy">
             <GuideHeader eyebrow="03 / DEPLOY" title="Cloudflare 一键部署：逐步操作" />
+            <div className="callout safe"><strong>免费方案边界</strong><p>媒体使用 MEDIA_KV，不需要启用 R2。页面要求开通 R2、付费套餐或订阅时，先停止并把完整页面截图交给 GPT 核对。</p></div>
             <div className="steps">
               <div className="step"><strong>确认 GitHub 和 Cloudflare</strong><p>核对当前学生自己的账号，以及这是第几个网站。</p></div>
               <div className="step"><strong>打开官方部署入口</strong><p><a href={DEPLOY_URL} target="_blank" rel="noreferrer"><b>Deploy to Cloudflare</b></a> 会复制模板并准备站点资源。</p></div>
@@ -323,7 +324,7 @@ export function AdminGuideCenter() {
               <article className="card"><h3>联系</h3><p>邮箱、电话、联系图片、左右排版和画布文字位置。</p></article>
               <article className="card"><h3>首图与文字</h3><p>多张首图、纯图片 / 系统排版 / 自由排版、主题、字体和个人定位。</p></article>
               <article className="card"><h3>作品分类</h3><p>分类名称、颜色、顺序和 8:1 过渡条。</p></article>
-              <article className="card"><h3>作品</h3><p>项目资料、16:9 封面、MP4、封面文字和四类内容块。</p></article>
+              <article className="card"><h3>作品</h3><p>项目资料、16:9 封面、MP4、封面文字、桌面 / 手机双预览和四类内容块。</p></article>
               <article className="card"><h3>发布</h3><p>检查必要媒体并生成公开快照。</p></article>
               <article className="card"><h3>记录</h3><p>访问、播放请求、播放错误和管理操作。</p></article>
               <article className="card"><h3>帮助工具</h3><p>右上角“使用教程”和“程序升级”用于查阅说明与定位升级中心。</p></article>
@@ -357,7 +358,9 @@ export function AdminGuideCenter() {
               <li>项目封面、图文、图片组和通栏图按各自比例裁切。</li>
               <li>首图支持自由裁切。</li>
               <li>文字可在真实画布中拖动，双击文字可直接修改。</li>
+              <li>项目封面依次检查“桌面 16:9”和“手机 4:5”，确认字号、位置与换行。</li>
               <li>封面与联系模块会即时显示排版结果。</li>
+              <li>出现“媒体已上传，等待草稿保存”时，本地预览会保留；先保存草稿，再点“重新检查”。</li>
             </ul>
           </section>
 
@@ -368,6 +371,7 @@ export function AdminGuideCenter() {
               <li>保存草稿更新后台版本，公开前台保持当前内容。</li>
               <li>快速预览打开管理员草稿版本。</li>
               <li>正式发布生成公开快照，访客看到新内容。</li>
+              <li>每次上传或替换图片后先保存草稿，再切换作品或后台栏目。</li>
               <li>左下角显示“有未保存修改”时，保存后再离开。</li>
             </ul>
           </section>
@@ -412,6 +416,7 @@ export function AdminGuideCenter() {
               <article className="card"><h3>项目名称重复</h3><p>新站名称使用 -02 / -03，并创建独立资源。</p></article>
               <article className="card"><h3>构建没有成功</h3><p>查看日志底部红色错误，修复当前项目并沿用已创建资源。</p></article>
               <article className="card"><h3>图片上传没有完成</h3><p>检查格式和大小，最长边建议控制在 2560 像素以内。</p></article>
+              <article className="card"><h3>图片等待保存或预览读取失败</h3><p>先保存草稿，再点“重新检查”；不要重复上传同一张图。</p></article>
               <article className="card"><h3>视频上传没有完成</h3><p>确认是 H.264 / AAC MP4 且小于 50 MB。</p></article>
               <article className="card"><h3>快速预览没有打开</h3><p>允许当前站点打开弹出窗口。</p></article>
               <article className="card"><h3>保存后前台仍是旧内容</h3><p>进入“发布”生成公开快照，再刷新前台。</p></article>
@@ -421,7 +426,7 @@ export function AdminGuideCenter() {
           <section className="guide" id="admin-guide-checks">
             <GuideHeader eyebrow="14 / CHECK" title="最终验收清单" />
             <ul className="checks">
-              <li>仓库、Worker 属于当前学生。</li><li>D1 / KV 为本网站独立资源。</li><li>前台和后台可打开。</li><li>恢复码已离线保存。</li><li>安全退出后重新进入要密码。</li><li>首图、联系图、封面裁切正常。</li><li>图片组与通栏图正常。</li><li>MP4 可播放和拖动。</li><li>保存草稿不改变前台。</li><li>快速预览可打开。</li><li>发布后前台更新。</li><li>二维码规则正常。</li><li>网站空间统计正常。</li><li>使用教程可打开。</li><li>程序升级可定位并复制指令。</li>
+              <li>仓库、Worker 属于当前学生。</li><li>D1 / KV 为本网站独立资源。</li><li>前台和后台可打开。</li><li>恢复码已离线保存。</li><li>安全退出后重新进入要密码。</li><li>首图、联系图、封面裁切正常。</li><li>封面桌面 16:9 / 手机 4:5 排版一致。</li><li>上传后未保存并切换栏目仍能预览。</li><li>图片组与通栏图正常。</li><li>MP4 可播放和拖动。</li><li>10 个独立访问会话同时播放正常。</li><li>保存草稿不改变前台。</li><li>快速预览可打开。</li><li>发布后前台更新。</li><li>二维码规则正常。</li><li>网站空间统计正常。</li><li>使用教程可打开。</li><li>程序升级可定位并复制指令。</li><li>大陆手机流量和常用宽带访问正常。</li>
             </ul>
           </section>
         </div>

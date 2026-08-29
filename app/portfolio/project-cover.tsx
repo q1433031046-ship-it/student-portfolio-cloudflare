@@ -1,5 +1,6 @@
-import { createDefaultCoverPresentation, type CategoryConfig, type CoverTextStyle, type Project } from "./model";
-import { croppedImageStyle, mediaCropAspect } from "./media-crop";
+import type { CategoryConfig, Project } from "./model";
+import { croppedImageStyle, croppedImageStyleForAspect } from "./media-crop";
+import { ProjectCoverText } from "./project-cover-text";
 import styles from "../demo/portfolio-demo.module.css";
 
 export function ProjectCover({
@@ -17,12 +18,8 @@ export function ProjectCover({
 }) {
   const detailId = `${project.id}-details`;
   const presentation = project.coverPresentation;
-  const defaults = createDefaultCoverPresentation();
-  const titleStyle = presentation.titleStyle ?? defaults.titleStyle;
-  const synopsisStyle = presentation.synopsisStyle ?? defaults.synopsisStyle;
-  const factsStyle = presentation.factsStyle ?? defaults.factsStyle;
   return (
-    <div className={styles.projectCover} data-cover-overlay={presentation.overlayMode} style={{ aspectRatio: mediaCropAspect(project.cover, 16 / 9) }}>
+    <div className={styles.projectCover} data-cover-overlay={presentation.overlayMode}>
       <ProjectArtwork project={project} />
       <button
         className={styles.coverToggle}
@@ -33,18 +30,7 @@ export function ProjectCover({
         onClick={onToggle}
       />
       <div className={styles.projectCoverInfo}>
-        {presentation.showTitle && <div className={styles.projectTitleGroup} style={coverTextStyle(titleStyle)}>
-          <span>{category.label}</span><h2>{project.title}</h2>
-        </div>}
-        {presentation.showSynopsis && <div className={styles.projectSynopsis} style={coverTextStyle(synopsisStyle)}>
-          <span>项目介绍</span>
-          <p>{project.synopsis}</p>
-        </div>}
-        {presentation.showFacts && <dl className={styles.projectFacts} style={coverTextStyle(factsStyle)}>
-          <div><dt>年份 / 时长</dt><dd>{project.year} · {project.duration}</dd></div>
-          <div><dt>项目难点</dt><dd>{project.challenge || "—"}</dd></div>
-          <div><dt>解决思路</dt><dd>{project.solution || "—"}</dd></div>
-        </dl>}
+        <ProjectCoverText project={project} categoryLabel={category.label} accent={category.accent} />
         <button
           className={styles.projectPlay}
           type="button"
@@ -69,21 +55,11 @@ function ProjectArtwork({ project }: { project: Project }) {
     return (
       <figure className={styles.projectArtwork}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={project.cover.src} alt={project.cover.alt} style={croppedImageStyle(project.cover)} />
+        <img className={styles.projectArtworkDesktop} src={project.cover.src} alt={project.cover.alt} style={croppedImageStyle(project.cover)} />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img className={styles.projectArtworkMobile} src={project.cover.src} alt="" aria-hidden="true" style={croppedImageStyleForAspect(project.cover, 4 / 5)} />
       </figure>
     );
   }
   return <figure className={styles.projectArtwork} data-visual={project.cover.visualKey}><span /></figure>;
-}
-
-function coverTextStyle(style: CoverTextStyle): React.CSSProperties {
-  return {
-    "--cover-x": `${style.x}%`,
-    "--cover-y": `${style.y}%`,
-    "--cover-width": `${style.width}%`,
-    "--cover-scale": style.scale,
-    textAlign: style.align,
-    color: style.color === "system" ? undefined : style.color,
-    fontFamily: style.fontFamily === "custom" ? "PortfolioCustom, sans-serif" : undefined,
-  } as React.CSSProperties;
 }

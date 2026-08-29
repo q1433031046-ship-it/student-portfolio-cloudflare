@@ -2,12 +2,14 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-test("version metadata advertises the first automatic update-notification release", async () => {
+test("version metadata advertises the v1.1.1 cover preview patch", async () => {
   const manifest = JSON.parse(await readFile("deployment/template-version.json", "utf8"));
-  assert.equal(manifest.version, "1.1.0");
+  assert.equal(manifest.version, "1.1.1");
   assert.equal(manifest.importance, "recommended");
   assert.ok(Array.isArray(manifest.releaseNotes));
   assert.ok(manifest.releaseNotes.length >= 3);
+  assert.match(manifest.releaseNotes.join("\n"), /桌面 16:9/u);
+  assert.match(manifest.releaseNotes.join("\n"), /未保存草稿/u);
 });
 
 test("version endpoint compares the installed version with the canonical GitHub template", async () => {

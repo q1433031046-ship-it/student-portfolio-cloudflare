@@ -19,7 +19,8 @@ import styles from "./admin.module.css";
 import { createClientId } from "../lib/client-id";
 import { formatVideoDuration } from "../lib/video-duration";
 import { resolveWatermarkText } from "../portfolio/watermark";
-import { croppedImageStyle, fitCropToAspect, fullMediaCrop, mediaCropAspect, validAspect } from "../portfolio/media-crop";
+import { croppedImageStyle, croppedImageStyleForAspect, fitCropToAspect, fullMediaCrop, validAspect } from "../portfolio/media-crop";
+import { ProjectCoverText, type CoverLayerKey, type CoverTextKey, type CoverViewport } from "../portfolio/project-cover-text";
 import { AccessManager, type AccessPayload } from "./access-manager";
 
 type View = "overview" | "identity" | "categories" | "projects" | "contact" | "publish" | "records";
@@ -859,6 +860,7 @@ function ProjectEditor({
         <div className={styles.projectForm}>
           {!selectedProject ? <p className={styles.emptyState}>新建一个作品后开始编辑。</p> : (
             <ProjectForm
+              key={selectedProject.id}
               project={selectedProject}
               categories={portfolio.categories}
               update={(updater) => updateProject(selectedProject.id, updater)}
@@ -875,6 +877,7 @@ function ProjectEditor({
 }
 
 function ProjectForm({ project, categories, update, remove, move, setMessage, customFontReady }: { project: Project; categories: CategoryConfig[]; update: (updater: (project: Project) => Project) => void; remove: () => void; move: (direction: -1 | 1) => void; setMessage: (message: string) => void; customFontReady: boolean }) {
+  const [coverPreviewSrc, setCoverPreviewSrc] = useState<string | undefined>(project.cover.src);
   function field(name: keyof Project, value: string) { update((current) => ({ ...current, [name]: value })); }
   function setAsset(slot: "cover" | "finalVideo", asset: MediaAsset) { update((current) => ({ ...current, [slot]: asset })); }
   function setAssetCrop(slot: "cover" | "finalVideo", crop: MediaCrop, sourceAspectRatio: number) { update((current) => ({ ...current, [slot]: { ...current[slot], crop, sourceAspectRatio } })); }
@@ -904,7 +907,7 @@ function ProjectForm({ project, categories, update, remove, move, setMessage, cu
       </div>
       <SectionTitle index="MEDIA" title="封面与成稿视频" />
       <div className={styles.mediaGrid}>
-        <MediaUpload projectId={project.id} slot="cover" title="项目封面" asset={project.cover} cropAspect={16 / 9} setMessage={setMessage} onUploaded={(asset) => setAsset("cover", asset)} onCropChange={(crop, sourceAspectRatio) => setAssetCrop("cover", crop, sourceAspectRatio)} />
+        <MediaUpload projectId={project.id} slot="cover" title="项目封面" asset={project.cover} cropAspect={16 / 9} setMessage={setMessage} onUploaded={(asset) => setAsset("cover", asset)} onCropChange={(crop, sourceAspectRatio) => setAssetCrop("cover", crop, sourceAspectRatio)} onPreviewChange={setCoverPreviewSrc} />
         <div className={styles.videoUploadColumn}>
           <MediaUpload projectId={project.id} slot="final" title="成稿视频" asset={project.finalVideo} setMessage={setMessage} onUploaded={(asset, metadata) => { setAsset("finalVideo", asset); if (metadata?.durationSeconds) update((current) => ({ ...current, duration: formatVideoDuration(metadata.durationSeconds as number) })); }} />
           <p className={styles.durationReadout}><span>视频时长</span><strong>{project.duration}</strong></p>
@@ -945,7 +948,14 @@ function ProjectForm({ project, categories, update, remove, move, setMessage, cu
       </div>
       <div className={styles.coverStyleEditor}>
         <div className={styles.coverStyleHeader}><span>封面文字排版</span><small>下方设置会立即显示在真实封面预览中。</small></div>
-        <CoverLayoutPreview project={project} categoryLabel={categories.find((category) => category.id === project.categoryId)?.label ?? "作品"} update={update} updateStyle={updateCoverStyle} />
+        <CoverLayoutPreview
+          project={project}
+          previewSrc={coverPreviewSrc}
+          categoryLabel={categories.find((category) => category.id === project.categoryId)?.label ?? "作品"}
+          categoryAccent={categories.find((category) => category.id === project.categoryId)?.accent ?? "#9fb4ff"}
+          update={update}
+          updateStyle={updateCoverStyle}
+        />
         {([
           ["titleStyle", "标题"],
           ["synopsisStyle", "项目介绍"],
@@ -1034,21 +1044,12 @@ function BlockEditor({ block, index, projectId, setMessage, update, move, remove
   );
 }
 
-function CoverLayoutPreview({ project, categoryLabel, update, updateStyle }: { project: Project; categoryLabel: string; update: (updater: (project: Project) => Project) => void; updateStyle: (key: "titleStyle" | "synopsisStyle" | "factsStyle", patch: Partial<CoverTextStyle>) => void }) {
+function CoverLayoutPreview({ project, previewSrc, categoryLabel, categoryAccent, update, updateStyle }: { project: Project; previewSrc?: string; categoryLabel: string; categoryAccent: string; update: (updater: (project: Project) => Project) => void; updateStyle: (key: CoverLayerKey, patch: Partial<CoverTextStyle>) => void }) {
   const defaults = createDefaultCoverPresentation();
-  const [selected, setSelected] = useState<"titleStyle" | "synopsisStyle" | "factsStyle">("titleStyle");
-  const [drag, setDrag] = useState<{ key: "titleStyle" | "synopsisStyle" | "factsStyle"; mode: "move" | "resize"; startX: number; startY: number; width: number; height: number; style: CoverTextStyle } | null>(null);
-  const styleFor = (style: CoverTextStyle): React.CSSProperties => ({
-    left: `${style.x}%`,
-    top: `${style.y}%`,
-    width: `${style.width}%`,
-    transform: `translateY(-50%) scale(${style.scale})`,
-    transformOrigin: "left center",
-    textAlign: style.align,
-    color: style.color === "system" ? undefined : style.color,
-    fontFamily: style.fontFamily === "custom" ? "PortfolioCustom, sans-serif" : undefined,
-  });
-  function start(event: React.PointerEvent<HTMLElement>, key: "titleStyle" | "synopsisStyle" | "factsStyle", mode: "move" | "resize") {
+  const [selected, setSelected] = useState<CoverLayerKey>("titleStyle");
+  const [viewport, setViewport] = useState<Exclude<CoverViewport, "responsive">>("desktop");
+  const [drag, setDrag] = useState<{ key: CoverLayerKey; mode: "move" | "resize"; startX: number; startY: number; width: number; height: number; style: CoverTextStyle } | null>(null);
+  function start(event: React.PointerEvent<HTMLElement>, key: CoverLayerKey, mode: "move" | "resize") {
     event.preventDefault();
     event.stopPropagation();
     const canvas = event.currentTarget.closest<HTMLElement>("[data-cover-canvas]");
@@ -1073,26 +1074,65 @@ function CoverLayoutPreview({ project, categoryLabel, update, updateStyle }: { p
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
     setDrag(null);
   }
-  function layerProps(key: "titleStyle" | "synopsisStyle" | "factsStyle") {
+  function layerProps(key: CoverLayerKey) {
     return {
       "data-selected": selected === key,
+      role: "button",
+      tabIndex: 0,
+      "aria-label": `移动${key === "titleStyle" ? "标题" : key === "synopsisStyle" ? "项目介绍" : "项目信息"}`,
       onPointerDown: (event: React.PointerEvent<HTMLElement>) => start(event, key, "move"),
       onPointerMove: movePointer,
       onPointerUp: stopPointer,
       onPointerCancel: stopPointer,
     };
   }
+  function renderText(key: CoverTextKey, value: string) {
+    if (key === "title") return <DirectText value={value} label="作品名称" onCommit={(title) => update((current) => ({ ...current, title }))} />;
+    if (key === "synopsis") return <DirectText value={value} label="作品简介" onCommit={(synopsis) => update((current) => ({ ...current, synopsis }))} />;
+    if (key === "year") return <DirectText value={value} label="年份" onCommit={(year) => update((current) => ({ ...current, year }))} />;
+    if (key === "challenge") return <DirectText value={value === "—" ? "项目难点" : value} label="项目难点" onCommit={(challenge) => update((current) => ({ ...current, challenge }))} />;
+    return <DirectText value={value === "—" ? "解决思路" : value} label="解决思路" onCommit={(solution) => update((current) => ({ ...current, solution }))} />;
+  }
+  function renderResizeHandle(key: CoverLayerKey) {
+    return <i
+      className={styles.resizeHandle}
+      aria-hidden="true"
+      onPointerDown={(event) => start(event, key, "resize")}
+      onPointerMove={movePointer}
+      onPointerUp={stopPointer}
+      onPointerCancel={stopPointer}
+    />;
+  }
   return (
-    <div className={styles.coverLayoutPreview} data-cover-canvas style={{ aspectRatio: mediaCropAspect(project.cover, 16 / 9) }}>
-      {project.cover.src
-        // eslint-disable-next-line @next/next/no-img-element
-        ? <img src={project.cover.src} alt="" style={croppedImageStyle(project.cover)} />
-        : <span className={styles.coverPreviewPlaceholder}>上传项目封面后在这里排版</span>}
-      <i aria-hidden="true" />
-      {project.coverPresentation.showTitle && <section {...layerProps("titleStyle")} className={styles.coverPreviewTitle} style={styleFor(project.coverPresentation.titleStyle ?? defaults.titleStyle)}><small>{categoryLabel}</small><DirectText tag="strong" value={project.title} label="作品名称" onCommit={(title) => update((current) => ({ ...current, title }))} /><i className={styles.resizeHandle} onPointerDown={(event) => start(event, "titleStyle", "resize")} onPointerMove={movePointer} onPointerUp={stopPointer} /></section>}
-      {project.coverPresentation.showSynopsis && <section {...layerProps("synopsisStyle")} className={styles.coverPreviewSynopsis} style={styleFor(project.coverPresentation.synopsisStyle ?? defaults.synopsisStyle)}><small>项目介绍</small><DirectText tag="p" value={project.synopsis} label="作品简介" onCommit={(synopsis) => update((current) => ({ ...current, synopsis }))} /><i className={styles.resizeHandle} onPointerDown={(event) => start(event, "synopsisStyle", "resize")} onPointerMove={movePointer} onPointerUp={stopPointer} /></section>}
-      {project.coverPresentation.showFacts && <section {...layerProps("factsStyle")} className={styles.coverPreviewFacts} style={styleFor(project.coverPresentation.factsStyle ?? defaults.factsStyle)}><span><DirectText value={project.year} label="年份" onCommit={(year) => update((current) => ({ ...current, year }))} /> · {project.duration}</span><DirectText value={project.challenge || "项目难点"} label="项目难点" onCommit={(challenge) => update((current) => ({ ...current, challenge }))} /><DirectText value={project.solution || "解决思路"} label="解决思路" onCommit={(solution) => update((current) => ({ ...current, solution }))} /><i className={styles.resizeHandle} onPointerDown={(event) => start(event, "factsStyle", "resize")} onPointerMove={movePointer} onPointerUp={stopPointer} /></section>}
-    </div>
+    <>
+      <div className={styles.coverPreviewToolbar} role="group" aria-label="封面预览尺寸">
+        <span>预览尺寸</span>
+        <button type="button" data-selected={viewport === "desktop"} onClick={() => setViewport("desktop")}>桌面 16:9</button>
+        <button type="button" data-selected={viewport === "mobile"} onClick={() => setViewport("mobile")}>手机 4:5</button>
+      </div>
+      <div
+        className={styles.coverLayoutPreview}
+        data-cover-canvas
+        data-cover-viewport={viewport}
+        style={{ aspectRatio: viewport === "mobile" ? 4 / 5 : 16 / 9 }}
+      >
+        {previewSrc
+          // eslint-disable-next-line @next/next/no-img-element
+          ? <img src={previewSrc} alt="" style={viewport === "mobile" ? croppedImageStyleForAspect(project.cover, 4 / 5) : croppedImageStyle(project.cover)} />
+          : <span className={styles.coverPreviewPlaceholder}>上传项目封面后在这里排版</span>}
+        <i aria-hidden="true" />
+        <ProjectCoverText
+          project={project}
+          categoryLabel={categoryLabel}
+          accent={categoryAccent}
+          viewport={viewport}
+          editor
+          layerProps={layerProps}
+          renderText={renderText}
+          renderResizeHandle={renderResizeHandle}
+        />
+      </div>
+    </>
   );
 }
 
@@ -1142,10 +1182,88 @@ function CoverStyleControls({ label, style, customFontReady, onChange }: { label
   );
 }
 
-function MediaUpload({ projectId, slot, title, asset, cropAspect = 16 / 9, freeCrop = false, setMessage, onUploaded, onCropChange }: { projectId: string; slot: "hero" | "transition" | "cover" | "final" | "detail" | "font" | "contact"; title: string; asset: MediaAsset; cropAspect?: number; freeCrop?: boolean; setMessage: (message: string) => void; onUploaded: (asset: MediaAsset, metadata?: { durationSeconds?: number }) => void; onCropChange?: (crop: MediaCrop, sourceAspectRatio: number) => void }) {
+function MediaUpload({ projectId, slot, title, asset, cropAspect = 16 / 9, freeCrop = false, setMessage, onUploaded, onCropChange, onPreviewChange }: { projectId: string; slot: "hero" | "transition" | "cover" | "final" | "detail" | "font" | "contact"; title: string; asset: MediaAsset; cropAspect?: number; freeCrop?: boolean; setMessage: (message: string) => void; onUploaded: (asset: MediaAsset, metadata?: { durationSeconds?: number }) => void; onCropChange?: (crop: MediaCrop, sourceAspectRatio: number) => void; onPreviewChange?: (source?: string) => void }) {
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [previewSrc, setPreviewSrc] = useState<string | undefined>(asset.src);
+  const [previewStatus, setPreviewStatus] = useState<"idle" | "checking" | "ready" | "waiting" | "error">(asset.src ? "ready" : "idle");
+  const localPreviewRef = useRef<string | null>(null);
+  const previewCheckRef = useRef(0);
+
+  const updatePreview = useCallback((source?: string) => {
+    setPreviewSrc(source);
+    onPreviewChange?.(source);
+  }, [onPreviewChange]);
+
+  const checkServerPreview = useCallback((source: string) => {
+    if (typeof window === "undefined") return;
+    const checkId = previewCheckRef.current + 1;
+    previewCheckRef.current = checkId;
+    setPreviewStatus("checking");
+    const image = new window.Image();
+    image.onload = () => {
+      if (previewCheckRef.current !== checkId) return;
+      updatePreview(source);
+      setPreviewStatus("ready");
+    };
+    image.onerror = () => {
+      if (previewCheckRef.current !== checkId) return;
+      const local = localPreviewRef.current;
+      if (local) updatePreview(local);
+      setPreviewStatus(local ? "waiting" : "error");
+    };
+    image.src = `${source}${source.includes("?") ? "&" : "?"}adminPreview=${Date.now()}`;
+  }, [updatePreview]);
+
+  useEffect(() => {
+    if (asset.kind !== "image") return;
+    if (!asset.src) {
+      if (!localPreviewRef.current) {
+        updatePreview(undefined);
+        setPreviewStatus("idle");
+      }
+      return;
+    }
+    if (localPreviewRef.current) {
+      checkServerPreview(asset.src);
+      return;
+    }
+    updatePreview(asset.src);
+    setPreviewStatus("ready");
+  }, [asset.kind, asset.src, checkServerPreview, updatePreview]);
+
+  useEffect(() => {
+    const local = localPreviewRef.current;
+    if (!local || previewSrc === local) return;
+    URL.revokeObjectURL(local);
+    localPreviewRef.current = null;
+  }, [previewSrc]);
+
+  useEffect(() => () => {
+    previewCheckRef.current += 1;
+    if (localPreviewRef.current) URL.revokeObjectURL(localPreviewRef.current);
+    localPreviewRef.current = null;
+  }, []);
+
+  function setLocalPreview(file: File) {
+    const previous = localPreviewRef.current;
+    const local = URL.createObjectURL(file);
+    localPreviewRef.current = local;
+    updatePreview(local);
+    setPreviewStatus("checking");
+    if (previous) URL.revokeObjectURL(previous);
+  }
+
+  function handlePreviewError() {
+    const local = localPreviewRef.current;
+    if (local && previewSrc !== local) {
+      updatePreview(local);
+      setPreviewStatus("waiting");
+      return;
+    }
+    setPreviewStatus("error");
+  }
+
   async function upload(file: File) {
     setUploading(true);
     setMessage(`正在上传 ${file.name}…`);
@@ -1203,7 +1321,7 @@ function MediaUpload({ projectId, slot, title, asset, cropAspect = 16 / 9, freeC
           body: "{}",
         });
       }
-      if (asset.kind === "image") setPreviewSrc(URL.createObjectURL(uploadFile));
+      if (asset.kind === "image") setLocalPreview(uploadFile);
       const nextCrop = sourceAspectRatio
         ? freeCrop ? fullMediaCrop() : fitCropToAspect(sourceAspectRatio, cropAspect)
         : asset.crop;
@@ -1260,7 +1378,12 @@ function MediaUpload({ projectId, slot, title, asset, cropAspect = 16 / 9, freeC
         asset.crop?.y ?? "y",
         asset.crop?.width ?? "w",
         asset.crop?.height ?? "h",
-      ].join(":")} asset={asset} previewSrc={previewSrc} fixedAspect={freeCrop ? undefined : cropAspect} onConfirm={onCropChange} />}
+      ].join(":")} asset={asset} previewSrc={previewSrc} fixedAspect={freeCrop ? undefined : cropAspect} onPreviewLoad={() => {
+        if (previewStatus === "error" && previewSrc) setPreviewStatus(previewSrc === localPreviewRef.current ? "waiting" : "ready");
+      }} onPreviewError={handlePreviewError} onConfirm={onCropChange} />}
+      {asset.kind === "image" && previewStatus === "checking" && <p className={styles.mediaPreviewState} data-state="checking">媒体已上传，正在确认后台预览…</p>}
+      {asset.kind === "image" && previewStatus === "waiting" && <p className={styles.mediaPreviewState} data-state="waiting"><span>媒体已上传，等待草稿保存；当前保留本地预览。</span>{asset.src && <button type="button" onClick={() => checkServerPreview(asset.src as string)}>重新检查</button>}</p>}
+      {asset.kind === "image" && previewStatus === "error" && <p className={styles.mediaPreviewState} data-state="error"><span>图片预览暂时无法读取，请保存草稿后重试。</span>{asset.src && <button type="button" onClick={() => checkServerPreview(asset.src as string)}>重试预览</button>}</p>}
     </div>
   );
 }

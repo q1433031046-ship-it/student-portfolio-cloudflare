@@ -205,6 +205,56 @@ test("streams chunked MP4 ranges and serves ten complete viewers", async () => {
   delete env.INITIAL_ADMIN_CODE;
 });
 
+test("authenticated admins can preview uploaded images before saving the draft", async () => {
+  const objectKey = "portfolio/project-one/cover-unsaved.webp";
+  const document = createDefaultPortfolioDocument();
+  const serialized = JSON.stringify(document);
+  const bytes = new TextEncoder().encode("WEBP").buffer;
+
+  env.AUTH_PLATFORM = "sites";
+  env.MEDIA_KV = {
+    async get(key) {
+      return key === `${objectKey}::chunk:0000` ? bytes : null;
+    },
+  };
+  env.DB = mediaD1({
+    portfolio: {
+      id: "default",
+      owner_email: "owner@example.com",
+      revision: 1,
+      draft_json: serialized,
+      published_json: serialized,
+      updated_at: "2026-08-29T00:00:00.000Z",
+      published_at: "2026-08-29T00:00:00.000Z",
+    },
+    media: {
+      id: "media-unsaved",
+      object_key: objectKey,
+      content_type: "image/webp",
+      byte_size: 4,
+      storage_backend: "kv",
+      chunk_size: 4,
+      chunk_count: 1,
+    },
+  });
+
+  const admin = await mediaRoute.GET(new Request(`https://portfolio.example/api/media/${objectKey}`, {
+    headers: { "oai-authenticated-user-email": "owner@example.com" },
+  }), { params: Promise.resolve({ path: objectKey.split("/") }) });
+  assert.equal(admin.status, 200);
+  assert.equal(await admin.text(), "WEBP");
+  assert.match(admin.headers.get("cache-control") ?? "", /no-store/u);
+
+  const publicResponse = await mediaRoute.GET(new Request(`https://portfolio.example/api/media/${objectKey}`), {
+    params: Promise.resolve({ path: objectKey.split("/") }),
+  });
+  assert.equal(publicResponse.status, 404);
+
+  delete env.DB;
+  delete env.MEDIA_KV;
+  delete env.AUTH_PLATFORM;
+});
+
 function mediaD1(rows) {
   return {
     prepare(sql) {
