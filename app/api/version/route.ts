@@ -26,7 +26,7 @@ export async function GET() {
   const currentVersion = localVersion.version;
   let latestVersion = currentVersion;
   let latestReleasedAt = localVersion.releasedAt;
-  let importance: VersionManifest["importance"] = localVersion.importance;
+  let importance: VersionManifest["importance"] = localVersion.importance as VersionManifest["importance"];
   let releaseNotes = [...localVersion.releaseNotes];
   let checkSucceeded = false;
 
