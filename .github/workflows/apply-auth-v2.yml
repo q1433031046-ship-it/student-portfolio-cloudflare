@@ -1,0 +1,74 @@
+name: Apply Administrator Authentication V2
+
+on:
+  push:
+    branches:
+      - upgrade/stability-footer-draft
+    paths:
+      - scripts/apply-auth-v2-ui.py
+      - tests/auth-v2.test.mjs
+      - .github/workflows/apply-auth-v2.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout development branch
+        uses: actions/checkout@v4
+        with:
+          ref: upgrade/stability-footer-draft
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.0'
+          cache: npm
+
+      - name: Apply authentication UI and schema patch
+        run: python scripts/apply-auth-v2-ui.py
+
+      - name: Update existing administrator regression fixture
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('tests/owner-onboarding.test.mjs')
+          content = path.read_text(encoding='utf-8')
+          content = content.replace('const deploymentCode = randomTestValue("D");', 'const deploymentCode = "StudentWeb2026A1";')
+          marker = '    "0005_password_auth_kv_media.sql",\n'
+          addition = marker + '    "0006_authentication_v2.sql",\n'
+          if '0006_authentication_v2.sql' not in content:
+              if marker not in content:
+                  raise SystemExit('migration fixture marker not found')
+              content = content.replace(marker, addition, 1)
+          path.write_text(content, encoding='utf-8')
+          PY
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Full build and tests
+        run: npm test
+
+      - name: Lint
+        run: npm run lint
+
+      - name: TypeScript
+        run: ./node_modules/.bin/tsc --noEmit
+
+      - name: Commit verified authentication changes
+        run: |
+          if git diff --quiet; then
+            echo "No generated changes to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app db tests
+          git commit -m "[skip ci] Apply verified administrator authentication v2"
+          git push origin HEAD:upgrade/stability-footer-draft
