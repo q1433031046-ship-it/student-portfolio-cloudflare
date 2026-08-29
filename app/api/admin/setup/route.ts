@@ -2,8 +2,8 @@ import { authorizeAdmin } from "../../_lib/auth";
 import {
   AuthError,
   createLocalAdministrator,
+  getLocalCredentialState,
   isSitesAuthPlatform,
-  localCredentialsExist,
   sessionResponseHeaders,
 } from "../../_lib/admin-auth";
 import { isRequestBodyError, readJsonBody } from "../../_lib/request-body";
@@ -13,9 +13,16 @@ const noCacheHeaders = { "Cache-Control": "no-store, max-age=0", Pragma: "no-cac
 
 export async function GET(request: Request) {
   try {
-    if (!isSitesAuthPlatform() && !await localCredentialsExist()) {
-      return Response.json({ state: "initial_setup", identity: null }, { headers: noCacheHeaders });
+    if (!isSitesAuthPlatform()) {
+      const credentialState = await getLocalCredentialState();
+      if (!credentialState.exists) {
+        return Response.json({ state: "initial_setup", identity: null, ...credentialState }, { headers: noCacheHeaders });
+      }
+      if (credentialState.upgradeRequired) {
+        return Response.json({ state: "upgrade_required", identity: null, ...credentialState }, { headers: noCacheHeaders });
+      }
     }
+
     const identity = await authorizeAdmin(request);
     if (!identity) return Response.json({ error: "请先输入管理员密码" }, { status: 401, headers: noCacheHeaders });
     if (identity.kind === "token") return Response.json({ error: "服务令牌不能进入初始化流程" }, { status: 403, headers: noCacheHeaders });
@@ -27,7 +34,7 @@ export async function GET(request: Request) {
     return Response.json({ state: "ready", identity: identity.user }, { headers: noCacheHeaders });
   } catch (error) {
     console.error(JSON.stringify({ message: "admin setup state failed", error: errorMessage(error) }));
-    return Response.json({ error: "管理员状态暂时无法读取" }, { status: 503, headers: noCacheHeaders });
+    return Response.json({ error: "管理员状态暂时无法读取，请稍后重试" }, { status: 503, headers: noCacheHeaders });
   }
 }
 
@@ -64,7 +71,7 @@ export async function POST(request: Request) {
       return Response.json({ error: error.message }, { status: error.status, headers: noCacheHeaders });
     }
     console.error(JSON.stringify({ message: "local administrator setup failed", error: errorMessage(error) }));
-    return Response.json({ error: "管理员初始化失败，请稍后重试" }, { status: 500, headers: noCacheHeaders });
+    return Response.json({ error: "管理员初始化没有完成，请检查网络后重试" }, { status: 500, headers: noCacheHeaders });
   }
 }
 
@@ -75,4 +82,3 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
-
