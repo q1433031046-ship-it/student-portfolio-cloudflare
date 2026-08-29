@@ -11,7 +11,8 @@
     "publicPreDeploymentGuide": "README.md",
     "postDeploymentGuide": "password-protected administrator interface",
     "publicGuideRoute": null,
-    "studentFacingFiles": ["README.md"]
+    "studentFacingFiles": ["README.md"],
+    "upgradePromptManifest": "deployment/upgrade-prompt.json"
   },
   "runtime": {
     "node": ">=22.13.0",

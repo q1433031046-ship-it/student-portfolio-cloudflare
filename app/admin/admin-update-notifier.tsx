@@ -3,6 +3,11 @@
 import localVersion from "@/deployment/template-version.json";
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import {
+  LOCAL_UPGRADE_PROMPT_VERSION,
+  getUpgradePrompt,
+  syncUpgradePrompt,
+} from "./admin-upgrade-content";
 
 type VersionStatus = {
   currentVersion: string;
@@ -12,6 +17,9 @@ type VersionStatus = {
   importance?: "routine" | "recommended" | "important";
   releaseNotes?: string[];
   checkSucceeded: boolean;
+  latestUpgradePrompt: string;
+  latestUpgradePromptVersion: string;
+  upgradePromptCheckSucceeded: boolean;
 };
 
 const styles = `
@@ -83,6 +91,9 @@ export function AdminUpdateNotifier() {
       const response = await fetch(`/api/version?check=${Date.now()}`, { cache: "no-store" });
       if (!response.ok) throw new Error("version check failed");
       const payload = await response.json() as VersionStatus;
+      if (payload.upgradePromptCheckSucceeded) {
+        syncUpgradePrompt(payload.latestUpgradePrompt, payload.latestUpgradePromptVersion);
+      }
       setStatus(payload);
     } catch {
       setStatus({
@@ -90,6 +101,9 @@ export function AdminUpdateNotifier() {
         latestVersion: localVersion.version,
         updateAvailable: false,
         checkSucceeded: false,
+        latestUpgradePrompt: getUpgradePrompt(),
+        latestUpgradePromptVersion: LOCAL_UPGRADE_PROMPT_VERSION,
+        upgradePromptCheckSucceeded: false,
       });
     } finally {
       setChecking(false);
@@ -174,6 +188,11 @@ export function AdminUpdateNotifier() {
       {status?.updateAvailable && status.releaseNotes?.length ? (
         <ul>{status.releaseNotes.map((note) => <li key={note}>{note}</li>)}</ul>
       ) : null}
+      <div className="meta">
+        {status?.upgradePromptCheckSucceeded
+          ? `升级指令已同步至 v${status.latestUpgradePromptVersion}`
+          : `升级指令使用内置安全版本 v${LOCAL_UPGRADE_PROMPT_VERSION}`}
+      </div>
       <button type="button" onClick={() => void checkVersion()} disabled={checking}>{checking ? "正在检查…" : "重新检查版本"}</button>
     </div>,
     panelHost,

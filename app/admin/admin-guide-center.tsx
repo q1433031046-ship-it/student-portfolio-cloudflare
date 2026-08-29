@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { PROGRAM_VERSION, UPGRADE_PROMPT } from "./admin-upgrade-content";
+import { PROGRAM_VERSION, UPGRADE_PROMPT_SYNC_EVENT, getUpgradePrompt } from "./admin-upgrade-content";
 
 const CENTRAL_GUIDE_URL = "https://github.com/q1433031046-ship-it/student-portfolio-cloudflare#readme";
 const DEPLOY_URL = "https://deploy.workers.cloudflare.com/?url=https://github.com/q1433031046-ship-it/student-portfolio-cloudflare";
@@ -112,6 +112,7 @@ export function AdminGuideCenter() {
   const [targetSection, setTargetSection] = useState<string | null>(null);
   const [deployCopy, setDeployCopy] = useState("复制部署引导语");
   const [upgradeCopy, setUpgradeCopy] = useState("复制升级指令");
+  const [upgradePrompt, setUpgradePrompt] = useState(getUpgradePrompt);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
 
@@ -129,6 +130,12 @@ export function AdminGuideCenter() {
     const observer = new MutationObserver(locate);
     observer.observe(document.body, { childList: true, subtree: true });
     return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const refreshUpgradePrompt = () => setUpgradePrompt(getUpgradePrompt());
+    window.addEventListener(UPGRADE_PROMPT_SYNC_EVENT, refreshUpgradePrompt);
+    return () => window.removeEventListener(UPGRADE_PROMPT_SYNC_EVENT, refreshUpgradePrompt);
   }, []);
 
   useEffect(() => {
@@ -404,8 +411,8 @@ export function AdminGuideCenter() {
           <section className="guide" id="admin-guide-upgrade">
             <GuideHeader eyebrow="12 / UPGRADE" title="程序升级" />
             <p>升级沿用当前 Worker、地址、D1、MEDIA_KV、Secrets、管理员和全部内容，只更新程序代码与增量数据库迁移。</p>
-            <div className="callout"><strong>新版本提醒</strong><p>登录后台时自动检查主模板版本；发现新版本后，右上角“程序升级”显示小红点，升级中心显示版本差异和更新内容。该提醒只在后台内显示，不是短信或邮件推送。</p></div>
-            <div className="prompt"><pre>{UPGRADE_PROMPT}</pre><button type="button" onClick={() => void copy(UPGRADE_PROMPT, "upgrade")}>{upgradeCopy}</button></div>
+            <div className="callout"><strong>新版本提醒与指令同步</strong><p>登录后台时自动检查主模板版本并同步升级指令；发现新版本后，右上角“程序升级”显示小红点，升级中心显示版本差异和更新内容。远程指令校验失败时会继续使用当前版本内置的安全指令。该提醒只在后台内显示，不是短信或邮件推送。</p></div>
+            <div className="prompt"><pre>{upgradePrompt}</pre><button type="button" onClick={() => void copy(getUpgradePrompt(), "upgrade")}>{upgradeCopy}</button></div>
             <div className="inlineActions"><button className="primary" type="button" onClick={openUpgradeCenter}>定位后台升级中心</button></div>
           </section>
 

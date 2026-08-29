@@ -502,7 +502,9 @@ student-portfolio-name-03
 1. **右上角“程序升级”**：点击后进入概览并定位升级中心；
 2. **概览 → 网站空间 → 程序升级中心**：点击“复制给 GPT 的升级指令”。
 
-每次登录后台时，网站会自动检查主模板版本。发现新版本后，右上角 **“程序升级”会显示小红点**，升级中心会显示当前版本、最新版本和更新内容。该提醒只在网站后台内显示，不是短信、邮件或手机系统推送。
+每次登录后台时，网站会自动检查主模板版本，并同步主仓库中与该版本配套的最新升级指令。发现新版本后，右上角 **“程序升级”会显示小红点**，升级中心会显示当前版本、最新版本和更新内容。远程指令只有通过项目身份、版本号和安全规则校验后才会使用；网络异常或校验失败时，复制按钮会继续使用当前网站内置的安全指令。该提醒只在网站后台内显示，不是短信、邮件或手机系统推送。
+
+旧版 v1.0 本身没有版本提醒，需要先手动复制下面的指令完成一次升级；升级到 v1.1.4 或更高版本后，后续版本提醒和升级指令会在后台一起同步。
 
 升级沿用现有 Worker、D1 与 `MEDIA_KV`，只更新程序代码和增量数据库迁移。
 
@@ -519,7 +521,7 @@ student-portfolio-name-03
 复制给 GPT：
 
 ```text
-请把我的“学生作品展示”现有网站升级到模板最新版本。开始前先确认当前要升级的 GitHub 仓库、Cloudflare 账户、Worker、workers.dev 地址、D1 的 DB 绑定及资源 ID、MEDIA_KV 绑定及资源 ID，并读取 README.md、AGENTS.md、deployment/agent-manifest.json 和 deployment/template-version.json。
+请把我的“学生作品展示”现有网站升级到模板最新版本。开始前先确认当前要升级的 GitHub 仓库、Cloudflare 账户、Worker、workers.dev 地址、D1 的 DB 绑定及资源 ID、MEDIA_KV 绑定及资源 ID，并读取 README.md、AGENTS.md、deployment/agent-manifest.json、deployment/template-version.json 和 deployment/upgrade-prompt.json。
 
 这是“升级现有站点”，不是新建站点。必须沿用现有 Worker、workers.dev 地址、D1、MEDIA_KV、Secrets 和运行变量；只允许更新程序代码及必要的增量数据库迁移。完整保留管理员账号与密码状态、会话与恢复状态、图片、字体、视频、草稿、已发布内容、二维码与访问凭证、访问统计和审计记录。不得创建第二套 Worker、D1、KV，不得创建或绑定 R2，不得把模板仓库中的任何资源 ID 覆盖到现有站点，也不得要求开通付费套餐、绑定付款方式或恢复邮件服务。发现上述情况、目标资源无法确认或迁移可能破坏正式数据时，立即停止并说明原因。
 
@@ -616,5 +618,6 @@ student-portfolio-name-03
 - `AGENTS.md`：自动化代理规则；
 - `deployment/agent-manifest.json`：机器可读部署契约；
 - `deployment/template-version.json`：版本与升级保护规则。
+- `deployment/upgrade-prompt.json`：后台自动同步的唯一升级指令清单。
 
 运行秘密只通过 Cloudflare Secret 或网站后台输入。
