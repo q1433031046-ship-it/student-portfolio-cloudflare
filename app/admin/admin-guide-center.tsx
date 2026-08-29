@@ -138,7 +138,7 @@ export function AdminGuideCenter() {
       <header className="top">
         <strong>学生作品展示 · 后台使用教程</strong>
         <div>
-          <a href={CENTRAL_GUIDE_URL} target="_blank" rel="noreferrer">在 GitHub 打开同版指南 ↗</a>
+          <a href={CENTRAL_GUIDE_URL} target="_blank" rel="noreferrer">打开 GitHub 完整指南 ↗</a>
           <a href={DEPLOY_URL} target="_blank" rel="noreferrer">官方部署入口 ↗</a>
           <button className="primary" type="button" onClick={() => setOpen(false)}>关闭教程</button>
         </div>
@@ -161,8 +161,7 @@ export function AdminGuideCenter() {
             <div className="callout"><strong>唯一正确流程</strong><p>GitHub 中央指南 → GPT 核对账号 → Cloudflare 一键部署 → 创建管理员 → 后台编辑 → 快速预览 → 正式发布。</p></div>
             <ul>
               <li>GitHub 仓库首页是部署前的公开指南，不消耗老师网站的 Cloudflare 请求。</li>
-              <li>作品前台公开；后台和本教程受管理员密码控制。</li>
-              <li>模板不再提供公开 `/guide` 页面。</li>
+              <li>作品前台默认公开，也可以在后台启用二维码限制访问；后台和本教程受管理员密码控制。</li>
               <li>同一个 GPT 可以帮助多人，但实际托管身份由浏览器中的 GitHub / Cloudflare 登录决定。</li>
             </ul>
           </section>
