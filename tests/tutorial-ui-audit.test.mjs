@@ -52,8 +52,8 @@ test("tutorial overlay remains usable on mobile and by keyboard", async () => {
   const audit = await readFile("app/admin/admin-guide-ui-audit.tsx", "utf8");
 
   assert.match(audit, /data-admin-tools/);
-  assert.match(audit, /data-kind=\\"guide\\"/);
-  assert.match(audit, /data-kind=\\"upgrade\\"/);
+  assert.match(audit, /data-kind="guide"/);
+  assert.match(audit, /data-kind="upgrade"/);
   assert.match(audit, /@media\(max-width:720px\)/);
   assert.match(audit, /content:"教程"/);
   assert.match(audit, /content:"升级"/);
