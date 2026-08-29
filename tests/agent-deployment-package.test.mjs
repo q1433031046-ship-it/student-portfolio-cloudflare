@@ -34,7 +34,7 @@ test("exposes a public Deploy to Cloudflare template with storage bindings", asy
   assert.match(readme, /student-portfolio-cloudflare/);
 });
 
-test("keeps one public human guide and the same guidance behind admin login", async () => {
+test("keeps one public human guide and consistent guidance behind admin login", async () => {
   const [readme, adminGuide, adminGuideStepTwo, adminUpgrade, adminPage] = await Promise.all([
     readFile("README.md", "utf8"),
     readFile("app/admin/admin-guide-center.tsx", "utf8"),
@@ -75,7 +75,8 @@ test("keeps one public human guide and the same guidance behind admin login", as
   assert.match(adminPage, /AdminGuideStepTwo/);
   assert.match(adminPage, /AdminUpgradeCenter/);
   assert.match(adminGuide, /使用教程/);
-  assert.match(adminGuide, /在 GitHub 打开同版指南/);
+  assert.match(adminGuide, /打开 GitHub 完整指南/);
+  assert.doesNotMatch(adminGuide, /在 GitHub 打开同版指南/);
   assert.match(adminUpgrade, /data-admin-upgrade-shortcut/);
   assert.match(adminUpgrade, />\s*程序升级\s*</);
   assert.match(adminUpgrade, /scrollIntoView/);
