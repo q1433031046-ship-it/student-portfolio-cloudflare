@@ -51,12 +51,14 @@ Ask the owner only to:
 
 Never request a Cloudflare password. Never request a GitHub password, browser cookie, long-lived API token, administrator password, deployment code, or recovery code in chat. Do not write secrets into source files, commits, logs, screenshots, or public repositories.
 
+Before requesting GitHub or Cloudflare authorization, run one harmless read-only action against each relevant official connector. Reuse every connection that succeeds. Request official authorization only when the connector explicitly reports Connect, Reconnect, expired authorization, or insufficient permission. After one authorization, repeat the same read-only action and resume the exact interrupted step. Never restart the deployment or recreate its repository, Worker, D1, or `MEDIA_KV` after authorization. If the authorization prompt repeats after approval, stop and resolve the account identity, target site, and already-created resources before continuing.
+
 ## Deployment workflow
 
 1. Read `README.md`, `deployment/agent-manifest.json`, and `deployment/template-version.json`.
 2. Confirm account isolation and target site identity before opening the deploy link.
 3. Verify the Node.js version from `package.json#engines`; run `npm ci`, `npm test`, `npm run lint`, and `./node_modules/.bin/tsc --noEmit` when performing a release or final package validation.
-4. For a new site, open the Deploy to Cloudflare link and let the owner approve official authorization.
+4. For a new site, reuse valid GitHub and Cloudflare connections; open the Deploy to Cloudflare authorization flow only when a harmless read-only check explicitly requires it.
 5. Confirm the deployment creates or binds resources named `DB` and `MEDIA_KV` for this site only. If the UI asks the user to choose a resource, use a newly created resource rather than another site's existing D1 or KV.
 6. Keep the production branch as `main`, build command as `npm run build`, deploy command as `npm run deploy`, and root directory as the UI default unless the repository configuration explicitly changes.
 7. Ensure `INITIAL_ADMIN_CODE` is configured as a secret, has at least 16 characters, and contains ASCII letters and digits. The owner enters it on an official or hidden-input surface.

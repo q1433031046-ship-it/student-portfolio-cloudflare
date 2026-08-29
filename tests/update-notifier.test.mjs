@@ -2,14 +2,14 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-test("version metadata advertises the v1.1.2 safe upgrade notice", async () => {
+test("version metadata advertises the v1.1.3 authorization resume policy", async () => {
   const manifest = JSON.parse(await readFile("deployment/template-version.json", "utf8"));
-  assert.equal(manifest.version, "1.1.2");
+  assert.equal(manifest.version, "1.1.3");
   assert.equal(manifest.importance, "recommended");
   assert.ok(Array.isArray(manifest.releaseNotes));
   assert.ok(manifest.releaseNotes.length >= 3);
-  assert.match(manifest.releaseNotes.join("\n"), /小红点/u);
-  assert.match(manifest.releaseNotes.join("\n"), /资源/u);
+  assert.match(manifest.releaseNotes.join("\n"), /只读检查/u);
+  assert.match(manifest.releaseNotes.join("\n"), /中断步骤/u);
 });
 
 test("version endpoint compares the installed version with the canonical GitHub template", async () => {
@@ -36,7 +36,7 @@ test("all admin upgrade entry points share one hardened prompt and manifest vers
     assert.doesNotMatch(source, /PROGRAM_VERSION = "1\.0\.0"/);
     assert.doesNotMatch(source, /UPGRADE-GUIDE\.md/);
   }
-  for (const phrase of ["不得创建或绑定 R2", "不得要求开通付费套餐", "不得把模板仓库中的任何资源 ID 覆盖", "至少 10 个独立会话"]) {
+  for (const phrase of ["不得创建或绑定 R2", "不得要求开通付费套餐", "不得把模板仓库中的任何资源 ID 覆盖", "至少 10 个独立会话", "无害的只读检查", "从中断步骤继续"]) {
     assert.match(content, new RegExp(phrase));
     assert.match(readme, new RegExp(phrase));
   }

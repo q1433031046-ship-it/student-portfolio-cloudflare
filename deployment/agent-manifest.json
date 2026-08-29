@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "project": {
     "name": "student-portfolio",
     "target": "cloudflare-workers",
@@ -41,6 +41,16 @@
     "storageWarningBytes": 734003200
   },
   "requiredSecrets": ["INITIAL_ADMIN_CODE"],
+  "authorizationFlow": {
+    "preflight": "harmless-read-only-check",
+    "reuseValidConnections": true,
+    "authorizeOnlyWhenExplicitlyRequired": true,
+    "maximumAutomaticAuthorizationAttempts": 1,
+    "verifyWithSameReadOnlyCheckAfterAuthorization": true,
+    "resumeInterruptedStep": true,
+    "restartDeploymentAfterAuthorization": false,
+    "inspectExistingResourcesBeforeRetry": true
+  },
   "commands": {
     "verify": ["npm ci", "npm test", "npm run lint", "./node_modules/.bin/tsc --noEmit"],
     "cloudBuildDeploy": "npm run deploy",
