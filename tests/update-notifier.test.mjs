@@ -2,53 +2,90 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-test("version metadata advertises the v1.1.3 authorization resume policy", async () => {
-  const manifest = JSON.parse(await readFile("deployment/template-version.json", "utf8"));
-  assert.equal(manifest.version, "1.1.3");
+test("version metadata advertises the v1.1.4 synchronized upgrade prompt", async () => {
+  const [manifest, promptManifest] = await Promise.all([
+    readFile("deployment/template-version.json", "utf8").then(JSON.parse),
+    readFile("deployment/upgrade-prompt.json", "utf8").then(JSON.parse),
+  ]);
+
+  assert.equal(manifest.version, "1.1.4");
   assert.equal(manifest.importance, "recommended");
-  assert.ok(Array.isArray(manifest.releaseNotes));
-  assert.ok(manifest.releaseNotes.length >= 3);
-  assert.match(manifest.releaseNotes.join("\n"), /只读检查/u);
-  assert.match(manifest.releaseNotes.join("\n"), /中断步骤/u);
+  assert.equal(manifest.upgradePromptManifest, "deployment/upgrade-prompt.json");
+  assert.match(manifest.releaseNotes.join("\n"), /同步主仓库/u);
+  assert.match(manifest.releaseNotes.join("\n"), /内置的安全指令/u);
+  assert.equal(promptManifest.schemaVersion, 1);
+  assert.equal(promptManifest.program, manifest.program);
+  assert.equal(promptManifest.promptVersion, manifest.version);
+  assert.ok(promptManifest.prompt.length >= 300);
 });
 
-test("version endpoint compares the installed version with the canonical GitHub template", async () => {
+test("version endpoint validates and returns the canonical prompt with a local fallback", async () => {
   const route = await readFile("app/api/version/route.ts", "utf8");
+
   assert.match(route, /raw\.githubusercontent\.com\/q1433031046-ship-it\/student-portfolio-cloudflare\/main\/deployment\/template-version\.json/);
+  assert.match(route, /raw\.githubusercontent\.com\/q1433031046-ship-it\/student-portfolio-cloudflare\/main\/deployment\/upgrade-prompt\.json/);
+  assert.match(route, /Promise\.all/);
+  assert.match(route, /remote\.program === localVersion\.program/);
+  assert.match(route, /remote\.program !== localVersion\.program/);
+  assert.match(route, /remote\.promptVersion !== latestVersion/);
+  assert.match(route, /REQUIRED_PROMPT_MARKERS\.every/);
+  assert.match(route, /latestUpgradePrompt = localUpgradePrompt\.prompt\.trim\(\)/);
+  assert.match(route, /upgradePromptCheckSucceeded/);
+  assert.match(route, /latestUpgradePromptManifestUrl/);
   assert.match(route, /updateAvailable/);
   assert.match(route, /compareVersions/);
-  assert.match(route, /checkSucceeded/);
-  assert.match(route, /releaseNotes/);
-  assert.match(route, /remote\.program === localVersion\.program/);
 });
 
-test("all admin upgrade entry points share one hardened prompt and manifest version", async () => {
-  const [content, upgrade, guide, enhancements, readme] = await Promise.all([
+test("all admin upgrade entry points copy the synchronized prompt", async () => {
+  const [content, upgrade, guide, enhancements, promptManifest, readme] = await Promise.all([
     readFile("app/admin/admin-upgrade-content.ts", "utf8"),
     readFile("app/admin/admin-upgrade-center.tsx", "utf8"),
     readFile("app/admin/admin-guide-center.tsx", "utf8"),
     readFile("app/admin/admin-interaction-enhancements.tsx", "utf8"),
+    readFile("deployment/upgrade-prompt.json", "utf8").then(JSON.parse),
     readFile("README.md", "utf8"),
   ]);
 
   for (const source of [upgrade, guide, enhancements]) {
-    assert.match(source, /admin-upgrade-content/);
+    assert.match(source, /getUpgradePrompt/);
+    assert.doesNotMatch(source, /\bUPGRADE_PROMPT\b/);
     assert.doesNotMatch(source, /PROGRAM_VERSION = "1\.0\.0"/);
     assert.doesNotMatch(source, /UPGRADE-GUIDE\.md/);
   }
-  for (const phrase of ["不得创建或绑定 R2", "不得要求开通付费套餐", "不得把模板仓库中的任何资源 ID 覆盖", "至少 10 个独立会话", "无害的只读检查", "从中断步骤继续"]) {
-    assert.match(content, new RegExp(phrase));
+
+  assert.match(content, /deployment\/upgrade-prompt\.json/);
+  assert.match(content, /UPGRADE_PROMPT_SYNC_EVENT/);
+  assert.match(content, /compareVersions\(promptVersion, activeUpgradePromptVersion\) < 0/);
+  assert.match(guide, /addEventListener\(UPGRADE_PROMPT_SYNC_EVENT/);
+  assert.match(guide, /<pre>\{upgradePrompt\}<\/pre>/);
+
+  for (const phrase of [
+    "不得创建或绑定 R2",
+    "不得要求开通付费套餐",
+    "不得把模板仓库中的任何资源 ID 覆盖",
+    "至少 10 个独立会话",
+    "无害的只读检查",
+    "从中断步骤继续",
+  ]) {
+    assert.match(promptManifest.prompt, new RegExp(phrase));
     assert.match(readme, new RegExp(phrase));
   }
+
+  const readmePrompt = readme.match(/复制给 GPT：\s*```text\n([\s\S]*?)\n```/u);
+  assert.ok(readmePrompt, "README must contain the copyable upgrade prompt");
+  assert.equal(readmePrompt[1], promptManifest.prompt, "README and prompt manifest must stay synchronized");
 });
 
-test("admin shows update status and moves the desktop tutorial navigation left", async () => {
+test("admin synchronizes the prompt while preserving the update red dot", async () => {
   const [notifier, page] = await Promise.all([
     readFile("app/admin/admin-update-notifier.tsx", "utf8"),
     readFile("app/admin/page.tsx", "utf8"),
   ]);
 
   assert.match(page, /AdminUpdateNotifier/);
+  assert.match(notifier, /syncUpgradePrompt\(payload\.latestUpgradePrompt, payload\.latestUpgradePromptVersion\)/);
+  assert.match(notifier, /升级指令已同步至/);
+  assert.match(notifier, /升级指令使用内置安全版本/);
   assert.match(notifier, /data-update-available/);
   assert.match(notifier, /发现新版本/);
   assert.match(notifier, /重新检查版本/);

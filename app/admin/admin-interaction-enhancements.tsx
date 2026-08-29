@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { PROGRAM_VERSION, UPGRADE_PROMPT } from "./admin-upgrade-content";
+import { PROGRAM_VERSION, getUpgradePrompt } from "./admin-upgrade-content";
 
 const fieldLabels: Array<[RegExp, string]> = [
   [/hero\.name/u, "姓名"],
@@ -254,7 +254,7 @@ function ensureUpgradeCenter() {
       copyButton.textContent = "浏览器不支持自动复制";
       return;
     }
-    void clipboard.writeText(UPGRADE_PROMPT)
+    void clipboard.writeText(getUpgradePrompt())
       .then(() => {
         copyButton.textContent = "已复制升级指令";
         window.setTimeout(() => { copyButton.textContent = "复制给 GPT 的升级指令"; }, 1800);

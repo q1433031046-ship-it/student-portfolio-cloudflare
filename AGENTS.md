@@ -7,6 +7,7 @@ This repository is a public deployment template for non-technical site owners.
 - Human-facing guide: `README.md`
 - Machine-readable deployment contract: `deployment/agent-manifest.json`
 - Version and upgrade policy: `deployment/template-version.json`
+- Canonical upgrade instruction: `deployment/upgrade-prompt.json`
 
 Do not send users to multiple setup documents. The repository README is the only public student guide. After deployment, the same operational guidance is available from the password-protected administrator interface.
 
@@ -55,7 +56,7 @@ Before requesting GitHub or Cloudflare authorization, run one harmless read-only
 
 ## Deployment workflow
 
-1. Read `README.md`, `deployment/agent-manifest.json`, and `deployment/template-version.json`.
+1. Read `README.md`, `deployment/agent-manifest.json`, `deployment/template-version.json`, and `deployment/upgrade-prompt.json`.
 2. Confirm account isolation and target site identity before opening the deploy link.
 3. Verify the Node.js version from `package.json#engines`; run `npm ci`, `npm test`, `npm run lint`, and `./node_modules/.bin/tsc --noEmit` when performing a release or final package validation.
 4. For a new site, reuse valid GitHub and Cloudflare connections; open the Deploy to Cloudflare authorization flow only when a harmless read-only check explicitly requires it.
@@ -71,7 +72,7 @@ Before requesting GitHub or Cloudflare authorization, run one harmless read-only
 
 ## Upgrade workflow
 
-1. Read `README.md`, this file, `deployment/agent-manifest.json`, and `deployment/template-version.json`.
+1. Read `README.md`, this file, `deployment/agent-manifest.json`, `deployment/template-version.json`, and `deployment/upgrade-prompt.json`.
 2. Resolve the exact existing Worker, D1, and `MEDIA_KV` before changing code.
 3. Preserve all current resource identifiers, secrets, administrator state, media, drafts, published content, access passes, analytics, and audit records.
 4. Apply only program changes and forward-only database migrations.

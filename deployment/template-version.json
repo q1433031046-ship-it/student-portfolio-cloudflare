@@ -1,16 +1,17 @@
 {
   "schemaVersion": 1,
   "program": "student-portfolio-cloudflare",
-  "version": "1.1.3",
+  "version": "1.1.4",
   "releasedAt": "2026-08-29",
   "importance": "recommended",
   "releaseNotes": [
-    "部署和升级前先用无害的只读检查判断 GitHub、Cloudflare 连接是否仍然有效。",
-    "有效连接直接复用；只有官方连接明确要求时才授权一次。",
-    "授权后从中断步骤继续并核对已有资源，避免重复创建仓库、Worker、D1 或 MEDIA_KV。"
+    "升级中心会在检查版本时同步主仓库的最新版升级指令。",
+    "远程指令必须通过项目身份、版本和安全规则校验，异常时自动使用当前版本内置的安全指令。",
+    "教程展示、升级中心和兼容入口共用同一份指令，自动化测试会阻止内容不同步。"
   ],
   "portfolioDocumentSchemaVersion": 4,
   "templateRepository": "https://github.com/q1433031046-ship-it/student-portfolio-cloudflare",
+  "upgradePromptManifest": "deployment/upgrade-prompt.json",
   "humanGuide": "README.md",
   "adminGuide": "password-protected administrator interface",
   "publicGuideRoute": null,
@@ -31,7 +32,8 @@
       "README.md",
       "AGENTS.md",
       "deployment/agent-manifest.json",
-      "deployment/template-version.json"
+      "deployment/template-version.json",
+      "deployment/upgrade-prompt.json"
     ]
   }
 }

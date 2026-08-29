@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { PROGRAM_VERSION, UPGRADE_PROMPT } from "./admin-upgrade-content";
+import { PROGRAM_VERSION, getUpgradePrompt } from "./admin-upgrade-content";
 
 const OPEN_GUIDE_EVENT = "portfolio:open-guide";
 const OPEN_UPGRADE_EVENT = "portfolio:open-upgrade";
@@ -66,7 +66,7 @@ export function AdminUpgradeCenter() {
 
   async function copyPrompt() {
     try {
-      await navigator.clipboard.writeText(UPGRADE_PROMPT);
+      await navigator.clipboard.writeText(getUpgradePrompt());
       setCopyLabel("已复制升级指令");
       window.setTimeout(() => setCopyLabel("复制给 GPT 的升级指令"), 1800);
     } catch {
@@ -147,7 +147,7 @@ export function AdminUpgradeCenter() {
           <div className="detail">
             <p><strong>入口：</strong>后台右上角“程序升级”，或“概览 → 网站空间 → 程序升级中心”。</p>
             <p><strong>推荐配置：</strong>最低使用 GPT-5.6 Sol，思考程度使用“高”；资源绑定、数据库迁移或版本冲突时使用“超高”。</p>
-            <p><strong>升级前读取：</strong>README.md、AGENTS.md、deployment/agent-manifest.json、deployment/template-version.json。</p>
+            <p><strong>升级前读取：</strong>README.md、AGENTS.md、deployment/agent-manifest.json、deployment/template-version.json、deployment/upgrade-prompt.json。</p>
             <p><strong>升级后检查：</strong>登录与恢复、图片、50 MB 分片视频与 Range 播放、草稿预览、正式发布、二维码、网站空间、10 会话播放及大陆网络访问。</p>
             <p><strong>资源原则：</strong>沿用现有 Worker、D1、MEDIA_KV、Secrets 与资源 ID；禁止 R2、付费套餐和付款方式，保留管理员、媒体和内容数据。</p>
           </div>
