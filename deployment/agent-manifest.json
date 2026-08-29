@@ -64,6 +64,8 @@
     "the administrator header exposes the password-protected guide entry after login",
     "the public /guide route is absent",
     "image upload renders successfully",
+    "project cover typography matches the administrator desktop and mobile previews",
+    "an uploaded image remains visible to the administrator before draft save while public access stays denied",
     "a 50 MB MP4 uploads in 4 MiB chunks",
     "video range requests support playback and seeking",
     "ten complete video viewers receive the full media stream",

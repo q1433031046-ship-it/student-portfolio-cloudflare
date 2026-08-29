@@ -108,13 +108,15 @@ test("keeps draft preview separate from publishing and uses plain Chinese admin 
 });
 
 test("keeps hover cover text off the poster after the pointer leaves", async () => {
-  const [css, coverSource] = await Promise.all([
+  const [css, coverSource, coverTextSource] = await Promise.all([
     readFile(new URL("../app/demo/portfolio-demo.module.css", import.meta.url), "utf8"),
     readFile(new URL("../app/portfolio/project-cover.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/portfolio/project-cover-text.tsx", import.meta.url), "utf8"),
   ]);
   assert.match(css, /\.projectCover:hover \.projectCoverInfo/);
   assert.match(css, /\.projectCover\[data-cover-overlay="fixed"\]/);
   assert.match(coverSource, /data-cover-overlay=\{presentation\.overlayMode\}/);
-  assert.match(coverSource, /presentation\.showTitle/);
+  assert.match(coverSource, /<ProjectCoverText/u);
+  assert.match(coverTextSource, /presentation\.showTitle/);
   assert.doesNotMatch(css, /\.project\[data-open="true"\] \.projectCoverInfo \{ opacity: 1[^}]+\}\s*\.demo/u);
 });

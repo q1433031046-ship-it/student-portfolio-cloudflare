@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
   "program": "student-portfolio-cloudflare",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "releasedAt": "2026-08-29",
   "importance": "recommended",
   "releaseNotes": [
-    "后台新增模板版本自动检查和新版本红点提醒。",
-    "程序升级中心显示当前版本、最新版本和更新说明。",
-    "后台教程桌面端加宽，左侧目录移到更靠左的位置并优化自适配。"
+    "项目封面前台与后台改用同一套文字渲染规则，字号、宽度和换行按封面画布计算。",
+    "封面排版新增桌面 16:9 与手机 4:5 预览切换。",
+    "图片上传后未保存草稿时，管理员仍可预览，并提供本地回退、状态提示和重试。"
   ],
   "portfolioDocumentSchemaVersion": 4,
   "templateRepository": "https://github.com/q1433031046-ship-it/student-portfolio-cloudflare",

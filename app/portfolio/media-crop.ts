@@ -55,6 +55,38 @@ export function croppedImageStyle(asset: MediaAsset, fallbackFit: "cover" | "con
   };
 }
 
+export function croppedImageStyleForAspect(asset: MediaAsset, targetAspectRatio: number): CSSProperties {
+  if (!asset.crop || !asset.sourceAspectRatio) return croppedImageStyle(asset);
+  return croppedImageStyle({
+    ...asset,
+    crop: fitConfirmedCropToAspect(asset.crop, asset.sourceAspectRatio, targetAspectRatio),
+  });
+}
+
+export function fitConfirmedCropToAspect(crop: MediaCrop, sourceAspectRatio: number, targetAspectRatio: number): MediaCrop {
+  const normalized = normalizeMediaCrop(crop);
+  const source = validAspect(sourceAspectRatio, 16 / 9);
+  const target = validAspect(targetAspectRatio, 16 / 9);
+  const current = source * (normalized.width / normalized.height);
+  if (current > target) {
+    const width = (target / source) * normalized.height;
+    return normalizeMediaCrop({
+      ...normalized,
+      x: normalized.x + (normalized.width - width) / 2,
+      width,
+    });
+  }
+  if (current < target) {
+    const height = (source / target) * normalized.width;
+    return normalizeMediaCrop({
+      ...normalized,
+      y: normalized.y + (normalized.height - height) / 2,
+      height,
+    });
+  }
+  return normalized;
+}
+
 export function validAspect(value: number | undefined, fallback: number) {
   return typeof value === "number" && Number.isFinite(value) && value >= 0.1 && value <= 20 ? value : fallback;
 }

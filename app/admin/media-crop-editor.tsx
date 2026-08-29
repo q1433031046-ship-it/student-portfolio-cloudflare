@@ -12,11 +12,15 @@ export function MediaCropEditor({
   asset,
   previewSrc,
   fixedAspect,
+  onPreviewLoad,
+  onPreviewError,
   onConfirm,
 }: {
   asset: MediaAsset;
   previewSrc?: string;
   fixedAspect?: number;
+  onPreviewLoad?: () => void;
+  onPreviewError?: () => void;
   onConfirm: (crop: MediaCrop, sourceAspectRatio: number) => void;
 }) {
   const [detectedAspect, setDetectedAspect] = useState<number | undefined>();
@@ -73,7 +77,7 @@ export function MediaCropEditor({
         <div className={styles.positionCanvas} style={{ aspectRatio: outputAspect }}>
           {previewSrc
             // eslint-disable-next-line @next/next/no-img-element
-            ? <img src={previewSrc} alt="" style={{ ...croppedImageStyle(previewAsset, "contain"), opacity: 1 }} />
+            ? <img src={previewSrc} alt="" onLoad={onPreviewLoad} onError={onPreviewError} style={{ ...croppedImageStyle(previewAsset, "contain"), opacity: 1 }} />
             : <span>上传图片后调整裁切</span>}
         </div>
         <small>裁切框已隐藏；需要再次修改时点击“调整裁切”。</small>
@@ -97,13 +101,14 @@ export function MediaCropEditor({
         {previewSrc
           // eslint-disable-next-line @next/next/no-img-element
           ? <img src={previewSrc} alt="" onLoad={(event) => {
+            onPreviewLoad?.();
             if (asset.sourceAspectRatio) return;
             const aspect = event.currentTarget.naturalWidth / event.currentTarget.naturalHeight;
             if (Number.isFinite(aspect) && aspect > 0) {
               setDetectedAspect(aspect);
               if (!asset.crop) setDraft(fixedAspect ? fitCropToAspect(aspect, fixedAspect) : fullMediaCrop());
             }
-          }} />
+          }} onError={onPreviewError} />
           : <span>上传图片后调整裁切</span>}
         <div
           className={styles.cropFrame}

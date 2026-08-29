@@ -46,7 +46,7 @@ async function serveMedia(
     }
 
     if (!document) return new Response("Not found", { status: 404 });
-    const media = await findPortfolioMedia(key, document);
+    const media = await findPortfolioMedia(key, document, Boolean(adminDocument));
     if (!media) return new Response("Not found", { status: 404 });
 
     if (media.kind === "video" && !adminDocument) {
@@ -157,15 +157,24 @@ function mediaHeaders(record: MediaRow, kind: string, restricted: boolean) {
   });
 }
 
-async function findPortfolioMedia(key: string, document: PortfolioDocument) {
+async function findPortfolioMedia(key: string, document: PortfolioDocument, allowUnreferenced: boolean) {
   const asset = findPublishedMedia(document, key);
-  if (!asset) return null;
+  if (!asset && !allowUnreferenced) return null;
   const record = await getPortfolioDb()
     .prepare(`SELECT id, object_key, content_type, byte_size, storage_backend, chunk_size, chunk_count
       FROM portfolio_media WHERE object_key = ? AND status = 'uploaded' LIMIT 1`)
     .bind(key)
     .first<MediaRow>();
-  return record ? { kind: asset.asset.kind, record } : null;
+  if (!record) return null;
+  const kind = asset?.asset.kind ?? mediaKindFromContentType(record.content_type);
+  return kind ? { kind, record } : null;
+}
+
+function mediaKindFromContentType(contentType: string): "image" | "video" | "font" | null {
+  if (contentType === "video/mp4") return "video";
+  if (contentType.startsWith("image/")) return "image";
+  if (contentType.startsWith("font/") || contentType.startsWith("application/font-") || contentType.startsWith("application/x-font-")) return "font";
+  return null;
 }
 
 function parseRange(value: string | null, size: number): { start: number; end: number } | "invalid" | null {

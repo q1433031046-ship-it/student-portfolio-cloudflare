@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { croppedImageStyle, fitCropToAspect, mediaCropAspect, normalizeMediaCrop } from "../app/portfolio/media-crop.ts";
+import { croppedImageStyle, fitConfirmedCropToAspect, fitCropToAspect, mediaCropAspect, normalizeMediaCrop } from "../app/portfolio/media-crop.ts";
 
 test("fits a fixed output ratio inside portrait and landscape sources", () => {
   const landscape = fitCropToAspect(2, 16 / 9);
@@ -31,4 +31,10 @@ test("uses the confirmed crop ratio and maps the selected source rectangle", () 
 
 test("keeps resized crop rectangles inside the source", () => {
   assert.deepEqual(normalizeMediaCrop({ x: 90, y: -10, width: 30, height: 120 }), { x: 70, y: 0, width: 30, height: 100 });
+});
+
+test("adapts a confirmed desktop crop to mobile without stretching", () => {
+  const mobileCrop = fitConfirmedCropToAspect({ x: 10, y: 0, width: 80, height: 100 }, 2, 4 / 5);
+  assert.deepEqual(mobileCrop, { x: 30, y: 0, width: 40, height: 100 });
+  assert.equal(2 * (mobileCrop.width / mobileCrop.height), 4 / 5);
 });

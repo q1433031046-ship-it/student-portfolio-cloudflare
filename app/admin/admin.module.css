@@ -227,6 +227,10 @@
 .mediaUpload small { color: var(--muted); font-size: 9px; line-height: 1.5; }
 .mediaUpload input { position: absolute; width: 1px !important; height: 1px; opacity: 0; pointer-events: none; }
 .mediaUpload i { margin-top: auto; font-size: 11px; font-style: normal; font-weight: 700; }
+.mediaPreviewState { margin: 0; padding: 9px 11px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 1px solid #d9c67d; border-radius: 7px; background: #fff9e8; color: #695619; font-size: 9px; line-height: 1.5; }
+.mediaPreviewState[data-state="checking"] { border-color: #c9d3f8; background: #f3f6ff; color: #3d4f88; }
+.mediaPreviewState[data-state="error"] { border-color: #e2a6a0; background: #fff2f0; color: #87382f; }
+.mediaPreviewState button { flex: 0 0 auto; min-height: 30px; padding: 0 9px; border: 1px solid currentColor; border-radius: 6px; background: transparent; color: inherit; cursor: pointer; font-size: 9px; }
 .positionEditor { display: grid; gap: 7px; }
 .cropToolbar { min-height: 38px; display: flex; align-items: center; gap: 8px; }
 .cropToolbar > span { margin-right: auto; color: var(--muted); font-size: 9px; font-weight: 700; }
@@ -262,18 +266,17 @@
 .coverStyleHeader { display: grid; gap: 4px; padding-bottom: 5px; border-bottom: 1px solid var(--line); }
 .coverStyleHeader > span { color: var(--accent); font-size: 9px; font-weight: 800; letter-spacing: .1em; }
 .coverStyleHeader > small { color: var(--muted); font-size: 10px; }
+.coverPreviewToolbar { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin-top: 8px; }
+.coverPreviewToolbar > span { margin-right: auto; color: var(--muted); font-size: 9px; font-weight: 700; letter-spacing: .08em; }
+.coverPreviewToolbar button { min-height: 34px; padding: 0 12px; border: 1px solid var(--line); border-radius: 7px; background: white; color: var(--muted); cursor: pointer; font-size: 9px; }
+.coverPreviewToolbar button[data-selected="true"] { border-color: var(--accent); background: var(--accent); color: white; }
 .coverLayoutPreview { position: relative; overflow: hidden; aspect-ratio: 16 / 9; margin: 8px 0 18px; border: 1px solid #2b2e35; background: #101217; color: white; isolation: isolate; }
+.coverLayoutPreview[data-cover-viewport="mobile"] { width: min(420px, 100%); margin-right: auto; margin-left: auto; }
 .coverLayoutPreview > img { position: absolute; z-index: 0; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .coverLayoutPreview > i { position: absolute; z-index: 1; inset: 0; background: linear-gradient(0deg, rgba(3,4,6,.88), rgba(3,4,6,.38) 48%, rgba(3,4,6,.05)); }
 .coverPreviewPlaceholder { position: absolute; z-index: 0; inset: 0; display: grid; place-items: center; color: #9a9ea8; }
-.coverLayoutPreview section { position: absolute; z-index: 2; max-height: 48%; overflow: visible; cursor: move; touch-action: none; }
-.coverLayoutPreview section[data-selected="true"], .contactTextLayer[data-selected="true"] { outline: 1px solid #8da4ff; outline-offset: 4px; }
+.contactTextLayer[data-selected="true"] { outline: 1px solid #8da4ff; outline-offset: 4px; }
 .coverLayoutPreview [data-editing="true"], .contactTextLayer [data-editing="true"], .layoutLayer [data-editing="true"] { padding: 2px 4px; outline: 2px solid #8da4ff; background: #111c; cursor: text; user-select: text; }
-.coverLayoutPreview section small { display: block; margin-bottom: 7px; color: #9fb4ff; font-size: 8px; letter-spacing: .13em; }
-.coverPreviewTitle strong { display: block; font-size: clamp(28px, 4vw, 62px); line-height: .85; letter-spacing: -.07em; }
-.coverPreviewSynopsis p { margin: 0; font-size: clamp(9px, 1.1vw, 14px); line-height: 1.5; }
-.coverPreviewFacts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; border-top: 1px solid #ffffff55; padding-top: 8px; font-size: 9px; }
-.coverPreviewFacts span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .coverStyleRow { display: grid; grid-template-columns: 74px repeat(4, minmax(72px, 1fr)) 110px 110px minmax(120px, 1fr); align-items: end; gap: 8px; padding: 9px 0; border-bottom: 1px solid var(--line); }
 .coverStyleRow:last-child { border-bottom: 0; }
 .coverStyleRow > strong { align-self: center; font-size: 11px; }
