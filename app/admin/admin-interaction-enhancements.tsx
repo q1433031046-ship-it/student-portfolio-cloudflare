@@ -1,9 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-
-const PROGRAM_VERSION = "1.0.0";
-const UPGRADE_PROMPT = "请把我的学生作品集网站升级到模板最新版本。先读取 AGENTS.md、deployment/agent-manifest.json、deployment/template-version.json 和 UPGRADE-GUIDE.md。升级只允许更新程序代码和增量数据库迁移，必须保留当前 Worker、workers.dev 地址、D1 DB、MEDIA_KV、管理员账号、Secrets、图片、视频、草稿、已发布内容、二维码和访问记录。不要创建新的 D1、KV 或 Worker，也不要把模板仓库中的资源 ID 覆盖到我的站点。先检查并确认目标站点和现有资源，再执行升级；需要账号官方授权时再叫我，任何密码、一次性部署口令和系统恢复码都由我本人在官方页面输入，不要向我索取。升级完成后请验证后台登录、图片、视频、草稿预览、正式发布和网站空间统计。";
+import { PROGRAM_VERSION, UPGRADE_PROMPT } from "./admin-upgrade-content";
 
 const fieldLabels: Array<[RegExp, string]> = [
   [/hero\.name/u, "姓名"],
@@ -241,8 +239,8 @@ function ensureUpgradeCenter() {
         <summary>查看升级说明</summary>
         <div class="upgrade-detail">
           <p><strong>标准要求：</strong>最低使用 GPT-5.6 Sol，默认思考程度为“高”；遇到部署失败、资源绑定、数据库迁移或版本冲突时改为“超高”。</p>
-          <p><strong>绝对禁止：</strong>升级时新建第二套 Worker、D1、KV，或用模板仓库的资源 ID 覆盖当前站点。</p>
-          <p><strong>升级完成后：</strong>验证后台登录、图片读取、视频播放、草稿预览、正式发布和网站空间统计。</p>
+          <p><strong>绝对禁止：</strong>升级时新建第二套 Worker、D1、KV 或 R2，使用付费套餐，或用模板仓库的资源 ID 覆盖当前站点。</p>
+          <p><strong>升级完成后：</strong>验证账号与恢复、媒体、草稿与发布隔离、二维码、网站空间、并发播放和大陆网络访问。</p>
         </div>
       </details>
     </div>

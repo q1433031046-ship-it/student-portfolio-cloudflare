@@ -37,7 +37,7 @@ export async function GET() {
     });
     if (response.ok) {
       const remote = await response.json() as VersionManifest;
-      if (remote.version) {
+      if (remote.program === localVersion.program && remote.version) {
         latestVersion = remote.version;
         latestReleasedAt = remote.releasedAt ?? latestReleasedAt;
         importance = remote.importance ?? importance;

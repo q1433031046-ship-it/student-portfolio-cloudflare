@@ -2,15 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { PROGRAM_VERSION, UPGRADE_PROMPT } from "./admin-upgrade-content";
 
-const PROGRAM_VERSION = "1.0.0";
 const OPEN_GUIDE_EVENT = "portfolio:open-guide";
 const OPEN_UPGRADE_EVENT = "portfolio:open-upgrade";
-const UPGRADE_PROMPT = `请把我的“学生作品展示”网站升级到模板最新版本。先确认当前要升级的具体网站、Worker、D1 DB 和 MEDIA_KV，再读取 README.md、AGENTS.md、deployment/agent-manifest.json 和 deployment/template-version.json。
-
-升级必须沿用现有 Worker、workers.dev 地址、D1、MEDIA_KV 和 Secrets，只更新程序代码与增量数据库迁移，并完整保留管理员、图片、视频、草稿、已发布内容、二维码和访问记录。检测到创建第二套 Worker、D1 或 KV 的步骤时，请停止并说明原因。
-
-升级完成后检查后台登录、图片读取、视频播放、草稿预览、正式发布、网站空间、使用教程和程序升级按钮。`;
 
 export function AdminUpgradeCenter() {
   const [panelHost, setPanelHost] = useState<HTMLElement | null>(null);
@@ -153,8 +148,8 @@ export function AdminUpgradeCenter() {
             <p><strong>入口：</strong>后台右上角“程序升级”，或“概览 → 网站空间 → 程序升级中心”。</p>
             <p><strong>推荐配置：</strong>最低使用 GPT-5.6 Sol，思考程度使用“高”；资源绑定、数据库迁移或版本冲突时使用“超高”。</p>
             <p><strong>升级前读取：</strong>README.md、AGENTS.md、deployment/agent-manifest.json、deployment/template-version.json。</p>
-            <p><strong>升级后检查：</strong>后台登录、图片读取、视频播放、草稿预览、正式发布、网站空间、使用教程和程序升级按钮。</p>
-            <p><strong>资源原则：</strong>沿用现有 Worker、D1、KV 与资源 ID，保留管理员、媒体和内容数据。</p>
+            <p><strong>升级后检查：</strong>登录与恢复、图片、50 MB 分片视频与 Range 播放、草稿预览、正式发布、二维码、网站空间、10 会话播放及大陆网络访问。</p>
+            <p><strong>资源原则：</strong>沿用现有 Worker、D1、MEDIA_KV、Secrets 与资源 ID；禁止 R2、付费套餐和付款方式，保留管理员、媒体和内容数据。</p>
           </div>
         </details>
       </div>
