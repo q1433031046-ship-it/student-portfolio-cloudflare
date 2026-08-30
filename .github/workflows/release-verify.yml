@@ -2,6 +2,16 @@ name: Verify And Tag Release
 
 on:
   workflow_dispatch:
+    inputs:
+      candidate_sha:
+        required: true
+        type: string
+      base_main_sha:
+        required: true
+        type: string
+      confirm_version:
+        required: true
+        type: string
   push:
     branches: [main]
 
@@ -9,20 +19,85 @@ permissions:
   contents: read
 
 concurrency:
-  group: release-tag-main
+  group: release-candidate-${{ github.event_name == 'workflow_dispatch' && inputs.confirm_version || github.sha }}
   cancel-in-progress: false
 
 jobs:
   release-verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
     permissions:
       contents: read
+    env:
+      CANDIDATE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.candidate_sha || github.sha }}
+      BASE_MAIN_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.base_main_sha || github.sha }}
+      CONFIRM_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.confirm_version || '' }}
     steps:
-      - name: Checkout without write credentials
+      - name: Checkout candidate without write credentials
         uses: actions/checkout@v6
         with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.candidate_sha || github.sha }}
+          fetch-depth: 0
           persist-credentials: false
+
+      - name: Validate invocation and remote candidate refs
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidate_sha="$CANDIDATE_SHA"
+          if [[ ! "$candidate_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "candidate_sha must be a full lowercase commit SHA." >&2
+            exit 1
+          fi
+          if [[ "$(git rev-parse HEAD)" != "$candidate_sha" ]]; then
+            echo "Checked-out source does not match candidate_sha." >&2
+            exit 1
+          fi
+
+          if [[ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ]]; then
+            if [[ "$GITHUB_REF" != "refs/heads/main" || "$candidate_sha" != "$GITHUB_SHA" ]]; then
+              echo "Automatic validation is limited to the pushed main commit." >&2
+              exit 1
+            fi
+            exit 0
+          fi
+
+          base_main_sha="$BASE_MAIN_SHA"
+          confirm_version="$CONFIRM_VERSION"
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "Release dispatch must run from the protected main workflow." >&2
+            exit 1
+          fi
+          if [[ ! "$base_main_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "base_main_sha must be a full lowercase commit SHA." >&2
+            exit 1
+          fi
+          if [[ ! "$confirm_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "confirm_version must be an exact semantic version." >&2
+            exit 1
+          fi
+
+          release_ref="refs/heads/release/v${confirm_version}"
+          remote_main_record="$(git ls-remote origin refs/heads/main)"
+          remote_release_record="$(git ls-remote origin "$release_ref")"
+          remote_main_sha="${remote_main_record%%$'\t'*}"
+          remote_release_sha="${remote_release_record%%$'\t'*}"
+          if [[ -z "$remote_main_sha" || "$remote_main_sha" != "$base_main_sha" ]]; then
+            echo "main no longer matches base_main_sha." >&2
+            exit 1
+          fi
+          if [[ -z "$remote_release_sha" || "$remote_release_sha" != "$candidate_sha" ]]; then
+            echo "candidate_sha is not the current release branch tip." >&2
+            exit 1
+          fi
+
+          git fetch --no-tags origin \
+            "+refs/heads/main:refs/remotes/origin/main" \
+            "+${release_ref}:refs/remotes/origin/release/v${confirm_version}"
+          if ! git merge-base --is-ancestor "$base_main_sha" "$candidate_sha"; then
+            echo "candidate_sha is not a descendant of base_main_sha." >&2
+            exit 1
+          fi
 
       - name: Setup Node
         uses: actions/setup-node@v6
@@ -53,6 +128,18 @@ jobs:
       - name: Full tests and single production build
         run: npm test
 
+      - name: Install Linux browsers when candidate ships E2E
+        if: ${{ hashFiles('scripts/run-playwright-suite.mjs') != '' }}
+        run: npx --no-install playwright install --with-deps chromium webkit chrome
+
+      - name: Mobile browser layout gate
+        if: ${{ hashFiles('scripts/run-playwright-suite.mjs') != '' }}
+        run: npm run test:e2e
+
+      - name: Branded Chrome codec gate
+        if: ${{ hashFiles('scripts/run-playwright-suite.mjs') != '' }}
+        run: npm run test:e2e:codec:chrome
+
       - name: Cloudflare deployment dry run
         run: |
           npx --no-install wrangler deploy --dry-run --keep-vars --config wrangler.jsonc
@@ -64,37 +151,132 @@ jobs:
       - name: TypeScript
         run: ./node_modules/.bin/tsc --noEmit
 
-  tag-release:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+  macos-webkit:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     needs: release-verify
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
+    runs-on: macos-latest
+    timeout-minutes: 35
     permissions:
-      contents: write
+      contents: read
     steps:
-      - name: Checkout the verified commit
+      - name: Checkout candidate without write credentials
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ inputs.candidate_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22.13.0
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Record candidate without E2E scripts
+        if: ${{ hashFiles('scripts/run-playwright-suite.mjs') == '' }}
+        run: echo "WebKit codec gate activates when the candidate ships Task 9 scripts."
+
+      - name: Install GNU timeout and WebKit
+        if: ${{ hashFiles('scripts/run-playwright-suite.mjs') != '' }}
+        run: |
+          brew install coreutils
+          echo "$(brew --prefix coreutils)/libexec/gnubin" >> "$GITHUB_PATH"
+
+      - name: Verify GNU timeout and install WebKit
+        if: ${{ hashFiles('scripts/run-playwright-suite.mjs') != '' }}
+        run: |
+          timeout --version
+          npx --no-install playwright install webkit
+
+      - name: macOS WebKit codec gate
+        if: ${{ hashFiles('scripts/run-playwright-suite.mjs') != '' }}
+        run: npm run test:e2e:codec:webkit
+
+  tag-release:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && needs.release-verify.result == 'success' && needs.macos-webkit.result == 'success'
+    needs: [release-verify, macos-webkit]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      INPUT_CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+      INPUT_BASE_MAIN_SHA: ${{ inputs.base_main_sha }}
+      INPUT_CONFIRM_VERSION: ${{ inputs.confirm_version }}
+    steps:
+      - name: Checkout protected main with tag credentials
+        uses: actions/checkout@v6
+        with:
+          ref: refs/heads/main
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Validate immutable release contract
-        id: release_contract
+      - name: Revalidate remote objects and immutable release contract
         shell: bash
         run: |
-          node <<'NODE'
-          const { createHash } = require("node:crypto");
-          const { appendFileSync, readFileSync } = require("node:fs");
+          set -euo pipefail
+          candidate_sha="$INPUT_CANDIDATE_SHA"
+          base_main_sha="$INPUT_BASE_MAIN_SHA"
+          confirm_version="$INPUT_CONFIRM_VERSION"
+          if [[ ! "$candidate_sha" =~ ^[0-9a-f]{40}$ || ! "$base_main_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Release SHAs must be full lowercase commit identifiers." >&2
+            exit 1
+          fi
+          if [[ ! "$confirm_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "confirm_version must be an exact semantic version." >&2
+            exit 1
+          fi
 
-          const readJson = (path) => JSON.parse(readFileSync(path, "utf8"));
+          release_ref="refs/heads/release/v${confirm_version}"
+          release_tag="v${confirm_version}"
+          remote_main_record="$(git ls-remote origin refs/heads/main)"
+          remote_release_record="$(git ls-remote origin "$release_ref")"
+          remote_main_sha="${remote_main_record%%$'\t'*}"
+          remote_release_sha="${remote_release_record%%$'\t'*}"
+          if [[ "$remote_main_sha" != "$base_main_sha" ]]; then
+            echo "main advanced after candidate verification." >&2
+            exit 1
+          fi
+          if [[ "$remote_release_sha" != "$candidate_sha" ]]; then
+            echo "release branch no longer points at candidate_sha." >&2
+            exit 1
+          fi
+
+          git fetch --no-tags origin \
+            "+refs/heads/main:refs/remotes/origin/main" \
+            "+${release_ref}:refs/remotes/origin/release/v${confirm_version}"
+          if ! git merge-base --is-ancestor "$base_main_sha" "$candidate_sha"; then
+            echo "candidate_sha is not descended from base_main_sha." >&2
+            exit 1
+          fi
+          if [[ "$(git cat-file -t "$candidate_sha")" != "commit" ]]; then
+            echo "candidate_sha is not a commit object." >&2
+            exit 1
+          fi
+
+          export RELEASE_CANDIDATE_SHA="$candidate_sha"
+          export RELEASE_CONFIRM_VERSION="$confirm_version"
+          node <<'NODE'
+          const { execFileSync } = require("node:child_process");
+          const { createHash } = require("node:crypto");
+
+          const candidate = process.env.RELEASE_CANDIDATE_SHA;
+          const confirmVersion = process.env.RELEASE_CONFIRM_VERSION;
+          const releaseTag = `v${confirmVersion}`;
+          const sourceRef = `refs/tags/${releaseTag}`;
+          const show = (path) => execFileSync(
+            "git",
+            ["show", `${candidate}:${path}`],
+            { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 },
+          );
+          const readJson = (path) => JSON.parse(show(path));
+          const sha256 = (value) => createHash("sha256").update(value, "utf8").digest("hex");
           const assert = (condition, message) => {
             if (!condition) throw new Error(message);
           };
-          const sha256 = (value) => createHash("sha256").update(value, "utf8").digest("hex");
-          const expectedVersion = "1.2.1";
-          const expectedTag = `v${expectedVersion}`;
-          const expectedSourceRef = `refs/tags/${expectedTag}`;
 
           const packageJson = readJson("package.json");
           const packageLock = readJson("package-lock.json");
@@ -102,77 +284,83 @@ jobs:
           const agent = readJson("deployment/agent-manifest.json");
           const prompt = readJson("deployment/upgrade-prompt.json");
 
-          assert(packageJson.version === expectedVersion, "package.json version is not the release version");
-          assert(packageLock.version === expectedVersion, "package-lock.json version is not the release version");
-          assert(packageLock.packages?.[""]?.version === expectedVersion, "package-lock root version is not the release version");
-          assert(template.version === expectedVersion, "template version is not the release version");
-          assert(template.releaseTag === expectedTag, "template releaseTag is not immutable");
-          assert(template.upgradePolicy?.releaseSource === expectedSourceRef, "template release source is not the release tag");
-          assert(agent.releaseContract?.version === expectedVersion, "agent contract version is not the release version");
-          assert(agent.releaseContract?.releaseTag === expectedTag, "agent contract releaseTag is not immutable");
-          assert(agent.releaseContract?.sourceRef === expectedSourceRef, "agent contract sourceRef is not the release tag");
-          assert(prompt.promptVersion === expectedVersion, "upgrade prompt version is not the release version");
-          assert(prompt.releaseTag === expectedTag, "upgrade prompt releaseTag is not immutable");
-          assert(typeof prompt.prompt === "string" && prompt.prompt.length > 0, "upgrade prompt text is missing");
+          assert(packageJson.version === confirmVersion, "package version does not match confirmation");
+          assert(packageLock.version === confirmVersion, "lockfile version does not match confirmation");
+          assert(packageLock.packages?.[""]?.version === confirmVersion, "lockfile root version does not match confirmation");
+          assert(template.version === confirmVersion, "template version does not match confirmation");
+          assert(template.releaseTag === releaseTag, "template releaseTag is invalid");
+          assert(template.upgradePolicy?.releaseSource === sourceRef, "template release source is invalid");
+          assert(agent.releaseContract?.version === confirmVersion, "agent version does not match confirmation");
+          assert(agent.releaseContract?.releaseTag === releaseTag, "agent releaseTag is invalid");
+          assert(agent.releaseContract?.sourceRef === sourceRef, "agent sourceRef is invalid");
+          assert(prompt.promptVersion === confirmVersion, "prompt version does not match confirmation");
+          assert(prompt.releaseTag === releaseTag, "prompt releaseTag is invalid");
+          assert(typeof prompt.prompt === "string" && prompt.prompt.length > 0, "prompt text is missing");
 
           const promptDigest = sha256(prompt.prompt);
-          assert(prompt.promptSha256 === promptDigest, "upgrade prompt self digest does not match its UTF-8 text");
-          assert(template.upgradePromptManifest === "deployment/upgrade-prompt.json", "template prompt manifest path is invalid");
-          assert(template.upgradePromptSha256 === promptDigest, "template prompt digest does not match");
-          assert(agent.releaseContract?.upgradePromptManifest === "deployment/upgrade-prompt.json", "agent prompt manifest path is invalid");
-          assert(agent.releaseContract?.upgradePromptSha256 === promptDigest, "agent prompt digest does not match");
+          assert(prompt.promptSha256 === promptDigest, "prompt self digest is invalid");
+          assert(template.upgradePromptManifest === "deployment/upgrade-prompt.json", "template prompt path is invalid");
+          assert(template.upgradePromptSha256 === promptDigest, "template prompt digest is invalid");
+          assert(agent.releaseContract?.upgradePromptManifest === "deployment/upgrade-prompt.json", "agent prompt path is invalid");
+          assert(agent.releaseContract?.upgradePromptSha256 === promptDigest, "agent prompt digest is invalid");
 
-          const migrationPath = "drizzle/0007_legacy_media_and_access_state.sql";
-          const migrationDigest = sha256(readFileSync(migrationPath, "utf8"));
+          const migrationName = "0007_legacy_media_and_access_state.sql";
+          const migrationDigest = sha256(show(`drizzle/${migrationName}`));
           assert(
-            agent.databaseMigrationPolicy?.migrationSha256?.["0007_legacy_media_and_access_state.sql"] === migrationDigest,
-            "0007 migration digest does not match the agent contract",
+            agent.databaseMigrationPolicy?.migrationSha256?.[migrationName] === migrationDigest,
+            "0007 migration digest is invalid",
           );
-
-          appendFileSync(process.env.GITHUB_OUTPUT, `release_tag=${expectedTag}\n`, "utf8");
           NODE
 
       - name: Create the release tag once
         shell: bash
-        env:
-          RELEASE_TAG: ${{ steps.release_contract.outputs.release_tag }}
         run: |
-          if git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
-            echo "$RELEASE_TAG already exists; leaving it unchanged."
-            exit 0
-          fi
+          set -euo pipefail
+          candidate_sha="$INPUT_CANDIDATE_SHA"
+          base_main_sha="$INPUT_BASE_MAIN_SHA"
+          confirm_version="$INPUT_CONFIRM_VERSION"
+          release_ref="refs/heads/release/v${confirm_version}"
+          release_tag="v${confirm_version}"
 
-          checked_sha="$(git rev-parse HEAD)"
-          if [[ "$checked_sha" != "$GITHUB_SHA" ]]; then
-            echo "Checked-out commit does not match GITHUB_SHA." >&2
+          remote_main_record="$(git ls-remote origin refs/heads/main)"
+          remote_release_record="$(git ls-remote origin "$release_ref")"
+          remote_main_sha="${remote_main_record%%$'\t'*}"
+          remote_release_sha="${remote_release_record%%$'\t'*}"
+          if [[ "$remote_main_sha" != "$base_main_sha" || "$remote_release_sha" != "$candidate_sha" ]]; then
+            echo "Remote refs changed after contract validation; refusing to create a tag." >&2
             exit 1
           fi
-          remote_main_record="$(git ls-remote origin refs/heads/main)"
-          remote_main_sha="${remote_main_record%%$'\t'*}"
-          if [[ "$remote_main_sha" != "$GITHUB_SHA" ]]; then
-            echo "main advanced after this verification; the newer workflow will decide the release tag."
-            exit 0
+
+          set +e
+          remote_tag_record="$(git ls-remote --exit-code --tags origin "refs/tags/$release_tag" "refs/tags/$release_tag^{}")"
+          tag_lookup_status=$?
+          set -e
+          if [[ "$tag_lookup_status" == "0" ]]; then
+            peeled_target="$(printf '%s\n' "$remote_tag_record" | awk -F '\t' -v ref="refs/tags/$release_tag^{}" '$2 == ref { print $1 }')"
+            if [[ -n "$peeled_target" && "$peeled_target" == "$candidate_sha" ]]; then
+              echo "$release_tag already exists at the verified commit."
+              exit 0
+            fi
+            echo "$release_tag already exists at a different target; refusing to continue." >&2
+            exit 1
+          fi
+          if [[ "$tag_lookup_status" != "2" ]]; then
+            echo "Unable to read the remote release tag safely." >&2
+            exit "$tag_lookup_status"
           fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "$RELEASE_TAG" "$GITHUB_SHA" -m "Release $RELEASE_TAG"
-          if ! git push origin "refs/tags/$RELEASE_TAG"; then
-            remote_tag_record="$(git ls-remote --tags origin "refs/tags/$RELEASE_TAG" "refs/tags/$RELEASE_TAG^{}")"
-            direct_target=""
-            peeled_target=""
-            while IFS=$'\t' read -r object_id ref_name; do
-              if [[ "$ref_name" == "refs/tags/$RELEASE_TAG^{}" ]]; then
-                peeled_target="$object_id"
-              elif [[ "$ref_name" == "refs/tags/$RELEASE_TAG" ]]; then
-                direct_target="$object_id"
-              fi
-            done <<< "$remote_tag_record"
-            remote_tag_target="${peeled_target:-$direct_target}"
-            if [[ "$remote_tag_target" == "$GITHUB_SHA" ]]; then
-              echo "$RELEASE_TAG was created concurrently at the verified commit; leaving it unchanged."
-              exit 0
-            fi
-            echo "$RELEASE_TAG appeared concurrently at a different target; refusing to treat the release as successful." >&2
-            exit 1
+          git tag -a "$release_tag" "$candidate_sha" -m "Release $release_tag"
+          if git push origin "refs/tags/$release_tag"; then
+            exit 0
           fi
+
+          remote_tag_record="$(git ls-remote --tags origin "refs/tags/$release_tag" "refs/tags/$release_tag^{}")"
+          peeled_target="$(printf '%s\n' "$remote_tag_record" | awk -F '\t' -v ref="refs/tags/$release_tag^{}" '$2 == ref { print $1 }')"
+          if [[ "$peeled_target" == "$candidate_sha" ]]; then
+            echo "$release_tag was created concurrently at the verified commit."
+            exit 0
+          fi
+          echo "$release_tag appeared concurrently at a different target; refusing to continue." >&2
+          exit 1
