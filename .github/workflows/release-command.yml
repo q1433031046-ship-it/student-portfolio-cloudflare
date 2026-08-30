@@ -1,0 +1,96 @@
+name: Trusted Release Command
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: release-command-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  resolve-release-request:
+    if: >-
+      github.event.issue.pull_request &&
+      github.actor == github.repository_owner &&
+      startsWith(github.event.comment.body, '/verify-and-tag ')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      candidate_sha: ${{ steps.resolve.outputs.candidate_sha }}
+      base_main_sha: ${{ steps.resolve.outputs.base_main_sha }}
+      confirm_version: ${{ steps.resolve.outputs.confirm_version }}
+    steps:
+      - name: Resolve the exact owner-approved release PR
+        id: resolve
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMENT_ACTOR: ${{ github.actor }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          REPOSITORY: ${{ github.repository }}
+          REPOSITORY_OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$COMMENT_ACTOR" != "$REPOSITORY_OWNER" ]]; then
+            echo "Only the repository owner can request a release." >&2
+            exit 1
+          fi
+          if [[ ! "$COMMENT_BODY" =~ ^/verify-and-tag\ v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            echo "Use the exact command: /verify-and-tag vX.Y.Z" >&2
+            exit 1
+          fi
+          confirm_version="${BASH_REMATCH[1]}"
+
+          pr_json="$(gh api "repos/${REPOSITORY}/pulls/${PR_NUMBER}")"
+          pr_state="$(jq -r '.state' <<<"$pr_json")"
+          pr_draft="$(jq -r '.draft' <<<"$pr_json")"
+          base_ref="$(jq -r '.base.ref' <<<"$pr_json")"
+          base_repo="$(jq -r '.base.repo.full_name' <<<"$pr_json")"
+          head_ref="$(jq -r '.head.ref' <<<"$pr_json")"
+          head_repo="$(jq -r '.head.repo.full_name' <<<"$pr_json")"
+          candidate_sha="$(jq -r '.head.sha' <<<"$pr_json")"
+          base_main_sha="$(gh api "repos/${REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
+
+          if [[ "$pr_state" != "open" || "$pr_draft" != "false" ]]; then
+            echo "The release request must be an open, review-ready pull request." >&2
+            exit 1
+          fi
+          if [[ "$base_ref" != "main" || "$base_repo" != "$REPOSITORY" ]]; then
+            echo "The release pull request must target this repository's main branch." >&2
+            exit 1
+          fi
+          if [[ "$head_repo" != "$REPOSITORY" || "$head_ref" != "release/v${confirm_version}" ]]; then
+            echo "The release pull request must come from release/v${confirm_version} in this repository." >&2
+            exit 1
+          fi
+          if [[ ! "$candidate_sha" =~ ^[0-9a-f]{40}$ || ! "$base_main_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "GitHub returned an invalid candidate or main commit identifier." >&2
+            exit 1
+          fi
+
+          {
+            echo "candidate_sha=$candidate_sha"
+            echo "base_main_sha=$base_main_sha"
+            echo "confirm_version=$confirm_version"
+          } >> "$GITHUB_OUTPUT"
+
+  verify-and-tag:
+    needs: resolve-release-request
+    if: needs.resolve-release-request.result == 'success'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release-verify.yml
+    with:
+      candidate_sha: ${{ needs.resolve-release-request.outputs.candidate_sha }}
+      base_main_sha: ${{ needs.resolve-release-request.outputs.base_main_sha }}
+      confirm_version: ${{ needs.resolve-release-request.outputs.confirm_version }}
