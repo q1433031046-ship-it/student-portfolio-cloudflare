@@ -1,6 +1,17 @@
 name: Verify And Tag Release
 
 on:
+  workflow_call:
+    inputs:
+      candidate_sha:
+        required: true
+        type: string
+      base_main_sha:
+        required: true
+        type: string
+      confirm_version:
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       candidate_sha:
@@ -19,7 +30,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: release-candidate-${{ github.event_name == 'workflow_dispatch' && inputs.confirm_version || github.sha }}
+  group: release-candidate-${{ inputs.confirm_version || github.sha }}
   cancel-in-progress: false
 
 jobs:
@@ -29,14 +40,14 @@ jobs:
     permissions:
       contents: read
     env:
-      CANDIDATE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.candidate_sha || github.sha }}
-      BASE_MAIN_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.base_main_sha || github.sha }}
-      CONFIRM_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.confirm_version || '' }}
+      CANDIDATE_SHA: ${{ inputs.candidate_sha || github.sha }}
+      BASE_MAIN_SHA: ${{ inputs.base_main_sha || github.sha }}
+      CONFIRM_VERSION: ${{ inputs.confirm_version || '' }}
     steps:
       - name: Checkout candidate without write credentials
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.candidate_sha || github.sha }}
+          ref: ${{ inputs.candidate_sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -54,7 +65,7 @@ jobs:
             exit 1
           fi
 
-          if [[ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ]]; then
+          if [[ -z "$CONFIRM_VERSION" ]]; then
             if [[ "$GITHUB_REF" != "refs/heads/main" || "$candidate_sha" != "$GITHUB_SHA" ]]; then
               echo "Automatic validation is limited to the pushed main commit." >&2
               exit 1
@@ -152,7 +163,7 @@ jobs:
         run: ./node_modules/.bin/tsc --noEmit
 
   macos-webkit:
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    if: inputs.confirm_version != '' && github.ref == 'refs/heads/main'
     needs: release-verify
     runs-on: macos-latest
     timeout-minutes: 35
@@ -196,7 +207,7 @@ jobs:
         run: npm run test:e2e:codec:webkit
 
   tag-release:
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && needs.release-verify.result == 'success' && needs.macos-webkit.result == 'success'
+    if: inputs.confirm_version != '' && github.ref == 'refs/heads/main' && needs.release-verify.result == 'success' && needs.macos-webkit.result == 'success'
     needs: [release-verify, macos-webkit]
     runs-on: ubuntu-latest
     timeout-minutes: 10

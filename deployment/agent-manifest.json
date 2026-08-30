@@ -194,6 +194,24 @@
     "restartDeploymentAfterAuthorization": false,
     "inspectExistingResourcesBeforeRetry": true
   },
+  "trustedReleaseCommand": {
+    "workflow": ".github/workflows/release-command.yml",
+    "event": "issue_comment.created",
+    "exactCommand": "/verify-and-tag vX.Y.Z",
+    "actor": "repository-owner-only",
+    "pullRequestRequirements": {
+      "state": "open",
+      "draft": false,
+      "base": "main",
+      "head": "same-repository release/vX.Y.Z"
+    },
+    "inputSource": "resolve candidate SHA and current main SHA from GitHub; never accept SHAs from comment text",
+    "reusableGate": ".github/workflows/release-verify.yml",
+    "bypassExistingGates": false,
+    "cloudflareAccess": false,
+    "productionDeployment": false,
+    "verifiedTagCreation": "only by the reusable gate after all existing checks pass"
+  },
   "commands": {
     "verify": [
       "npm ci",
