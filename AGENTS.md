@@ -79,7 +79,7 @@ Before requesting GitHub or Cloudflare authorization, run one harmless read-only
 3. Resolve the exact existing Worker, D1, and `MEDIA_KV` before changing code.
 4. Preserve all current resource identifiers, secrets, administrator state, media, drafts, published content, access passes, analytics, and audit records.
 5. Apply only program changes and forward-only database migrations.
-6. Use `npm run cloudflare:deploy` for an existing installation unless the repository explicitly defines a newer upgrade command.
+6. Use `npm run cloudflare:deploy` for an existing installation unless the repository explicitly defines a newer upgrade command. Migration `0006_auth_v2.sql` creates `admin_auth_state` idempotently; if an existing Workers Builds token cannot edit D1, the application may create that same table on the first `/admin` request, and the migration can be recorded later without conflict. Do not create a replacement database or repeat authorization for this case.
 7. Never create a second Worker, D1, or KV merely to perform an upgrade.
 8. After a formal version upgrade, open the official `/admin` page. The owner enters the latest recovery code and administrator password there once, downloads the newly rotated recovery code, and confirms it is stored. Do not bypass this gate or collect either secret in chat.
 9. Re-run the critical live checks after deployment, including credential independence from `INITIAL_ADMIN_CODE`, exact validation location, and multi-end-cover ordering.

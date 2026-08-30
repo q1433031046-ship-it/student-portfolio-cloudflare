@@ -26,7 +26,7 @@ test("new administrator credentials and sessions no longer depend on the initial
   }));
   assert.equal(setup.status, 201);
   const setupCookie = setup.headers.get("set-cookie");
-  const row = database.prepare("SELECT auth_version, confirmed_program_version FROM admin_credentials WHERE id = 'default'").get();
+  const row = database.prepare("SELECT auth_version, confirmed_program_version FROM admin_auth_state WHERE id = 'default'").get();
   assert.equal(row.auth_version, 2);
   assert.equal(row.confirmed_program_version, PROGRAM_VERSION);
 
@@ -41,7 +41,7 @@ test("new administrator credentials and sessions no longer depend on the initial
 });
 
 test("legacy recovery performs the one-time version confirmation and rotates the recovery code", async () => {
-  const database = await createDatabase();
+  const database = await createDatabase({ includeAuthMigration: false });
   env.DB = d1Adapter(database);
   env.AUTH_PLATFORM = "password";
   env.INITIAL_ADMIN_CODE = "LegacyStudentCode2026";
@@ -51,16 +51,15 @@ test("legacy recovery performs the one-time version confirmation and rotates the
   const now = new Date().toISOString();
   database.prepare(`INSERT INTO admin_credentials (
     id, password_hash, password_salt, recovery_hash, recovery_salt,
-    auth_version, confirmed_program_version, failed_attempts, initialized_at,
+    failed_attempts, initialized_at,
     password_changed_at, recovery_code_created_at, updated_at
-  ) VALUES (?, ?, ?, ?, ?, 1, ?, 0, ?, ?, ?, ?)`)
+  ) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`)
     .run(
       "default",
       await legacyHash("password", "OldPassword2026", passwordSalt, env.INITIAL_ADMIN_CODE),
       passwordSalt,
       await legacyHash("recovery", normalizeRecovery(recoveryCode), recoverySalt, env.INITIAL_ADMIN_CODE),
       recoverySalt,
-      "1.1.6",
       now,
       now,
       now,
@@ -81,9 +80,11 @@ test("legacy recovery performs the one-time version confirmation and rotates the
   assert.equal(recovered.status, 200);
   const nextRecovery = (await recovered.json()).recoveryCode;
   assert.notEqual(nextRecovery, recoveryCode);
-  const migrated = database.prepare("SELECT auth_version, confirmed_program_version FROM admin_credentials WHERE id = 'default'").get();
+  const migrated = database.prepare("SELECT auth_version, confirmed_program_version FROM admin_auth_state WHERE id = 'default'").get();
   assert.equal(migrated.auth_version, 2);
   assert.equal(migrated.confirmed_program_version, PROGRAM_VERSION);
+  const authMigration = await readFile(new URL("../drizzle/0006_auth_v2.sql", import.meta.url), "utf8");
+  assert.doesNotThrow(() => database.exec(authMigration.replaceAll("--> statement-breakpoint", "")));
 
   env.INITIAL_ADMIN_CODE = "ChangedAfterMigration2026";
   const login = await loginRoute.POST(jsonRequest("https://portfolio.example/api/admin/login", { password: "MigratedPassword2026!" }));
@@ -104,9 +105,9 @@ test("version gate and password normalization reject hidden input mistakes", () 
   assert.equal(normalizePassword("学生Password2026"), "学生Password2026");
 });
 
-async function createDatabase() {
+async function createDatabase({ includeAuthMigration = true } = {}) {
   const database = new DatabaseSync(":memory:");
-  for (const name of [
+  const migrations = [
     "0000_bumpy_ultimo.sql",
     "0001_perpetual_firestar.sql",
     "0002_nosy_silhouette.sql",
@@ -114,7 +115,8 @@ async function createDatabase() {
     "0004_owner_email_onboarding.sql",
     "0005_password_auth_kv_media.sql",
     "0006_auth_v2.sql",
-  ]) {
+  ];
+  for (const name of includeAuthMigration ? migrations : migrations.slice(0, -1)) {
     const sql = await readFile(new URL(`../drizzle/${name}`, import.meta.url), "utf8");
     database.exec(sql.replaceAll("--> statement-breakpoint", ""));
   }

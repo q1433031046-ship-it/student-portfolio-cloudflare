@@ -81,6 +81,13 @@
     "0005_password_auth_kv_media.sql",
     "0006_auth_v2.sql"
   ],
+  "authStateBootstrap": {
+    "table": "admin_auth_state",
+    "migration": "0006_auth_v2.sql",
+    "runtimeCreateIfMissing": true,
+    "migrationIsIdempotent": true,
+    "replacementDatabaseRequired": false
+  },
   "humanActions": [
     "approve official Cloudflare authorization",
     "enter the one-time deployment code on a secret input surface",

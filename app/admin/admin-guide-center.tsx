@@ -427,6 +427,7 @@ export function AdminGuideCenter() {
             <GuideHeader eyebrow="12 / UPGRADE" title="程序升级" />
             <p>升级沿用当前 Worker、地址、D1、MEDIA_KV、Secrets、管理员和全部内容，只更新程序代码与增量数据库迁移。</p>
             <div className="callout safe"><strong>升级前先保存恢复码</strong><p>只向 GPT 确认“当前最新系统恢复码已经保存”，不要发送恢复码内容。部署后在正式 /admin 页面完成一次升级确认，旧码会失效，必须下载新码。</p></div>
+            <div className="callout"><strong>不反复授权</strong><p>若现有 Git 构建令牌不能直接执行 D1 迁移，v1.2.0 会在原 D1 内安全创建同一张认证状态表；不需要重连账号，也不需要新建数据库。</p></div>
             <div className="callout"><strong>新版本提醒与指令同步</strong><p>登录后台时自动检查主模板版本并同步升级指令；发现新版本后，右上角“程序升级”显示小红点，升级中心显示版本差异和更新内容。远程指令校验失败时会继续使用当前版本内置的安全指令。该提醒只在后台内显示，不是短信或邮件推送。</p></div>
             <div className="prompt"><pre>{upgradePrompt}</pre><button type="button" onClick={() => void copy(getUpgradePrompt(), "upgrade")}>{upgradeCopy}</button></div>
             <div className="inlineActions"><button className="primary" type="button" onClick={openUpgradeCenter}>定位后台升级中心</button></div>

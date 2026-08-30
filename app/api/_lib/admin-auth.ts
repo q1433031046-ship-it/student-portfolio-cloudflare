@@ -57,8 +57,15 @@ export function programResetRequired(confirmedProgramVersion: string | null, cur
 }
 
 export async function getLocalCredentialState(): Promise<LocalCredentialState> {
+  await ensureAuthStateTable();
   const row = await getPortfolioDb()
-    .prepare("SELECT auth_version, confirmed_program_version FROM admin_credentials WHERE id = ? LIMIT 1")
+    .prepare(`SELECT
+      CASE WHEN state.auth_version IS NOT NULL THEN state.auth_version
+        WHEN credentials.password_hash LIKE 'p2.%' THEN 2 ELSE 1 END AS auth_version,
+      state.confirmed_program_version
+      FROM admin_credentials credentials
+      LEFT JOIN admin_auth_state state ON state.id = credentials.id
+      WHERE credentials.id = ? LIMIT 1`)
     .bind(CREDENTIAL_ID)
     .first<{ auth_version: number; confirmed_program_version: string | null }>();
   return {
@@ -106,12 +113,15 @@ export async function createLocalAdministrator(input: {
     await db.batch([
       db.prepare(`INSERT INTO admin_credentials (
         id, password_hash, password_salt, recovery_hash, recovery_salt,
-        auth_version, confirmed_program_version, failed_attempts, initialized_at,
+        failed_attempts, initialized_at,
         password_changed_at, recovery_code_created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`).bind(
+      ) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`).bind(
         CREDENTIAL_ID, passwordHash, passwordSalt, recoveryHash, recoverySalt,
-        AUTH_VERSION, PROGRAM_VERSION, now, now, now, now,
+        now, now, now, now,
       ),
+      db.prepare(`INSERT INTO admin_auth_state (id, auth_version, confirmed_program_version, updated_at)
+        VALUES (?, ?, ?, ?)`)
+        .bind(CREDENTIAL_ID, AUTH_VERSION, PROGRAM_VERSION, now),
       db.prepare("INSERT OR IGNORE INTO site_ownership (id, owner_email, auth_provider, bound_at, onboarding_email_sent_at, onboarding_email_id) VALUES (?, ?, 'password', ?, ?, 'local-password')")
         .bind(OWNER_ID, OWNER_HANDLE, now, now),
       db.prepare("INSERT OR IGNORE INTO portfolio_documents (id, owner_email, revision, draft_json, updated_at) VALUES (?, ?, 1, ?, ?)")
@@ -184,10 +194,15 @@ export async function resetPasswordWithRecovery(input: {
   await db.batch([
     db.prepare(`UPDATE admin_credentials SET
       password_hash = ?, password_salt = ?, recovery_hash = ?, recovery_salt = ?,
-      auth_version = ?, confirmed_program_version = ?, failed_attempts = 0,
-      locked_until = NULL, password_changed_at = ?,
+      failed_attempts = 0, locked_until = NULL, password_changed_at = ?,
       recovery_code_created_at = ?, updated_at = ? WHERE id = ?`)
-      .bind(passwordHash, passwordSalt, recoveryHash, recoverySalt, AUTH_VERSION, PROGRAM_VERSION, now, now, now, CREDENTIAL_ID),
+      .bind(passwordHash, passwordSalt, recoveryHash, recoverySalt, now, now, now, CREDENTIAL_ID),
+    db.prepare(`INSERT INTO admin_auth_state (id, auth_version, confirmed_program_version, updated_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET auth_version = excluded.auth_version,
+        confirmed_program_version = excluded.confirmed_program_version,
+        updated_at = excluded.updated_at`)
+      .bind(CREDENTIAL_ID, AUTH_VERSION, PROGRAM_VERSION, now),
     db.prepare("DELETE FROM admin_sessions"),
     db.prepare("INSERT INTO admin_sessions (token_hash, created_at, expires_at, user_agent_hash) VALUES (?, ?, ?, ?)")
       .bind(session.tokenHash, session.createdAt, session.expiresAt, session.userAgentHash),
@@ -290,12 +305,28 @@ function sessionCookie(token: string) {
 }
 
 async function readCredentials() {
+  await ensureAuthStateTable();
   return getPortfolioDb()
-    .prepare(`SELECT password_hash, password_salt, recovery_hash, recovery_salt,
-      auth_version, confirmed_program_version, failed_attempts, locked_until
-      FROM admin_credentials WHERE id = ? LIMIT 1`)
+    .prepare(`SELECT credentials.password_hash, credentials.password_salt,
+      credentials.recovery_hash, credentials.recovery_salt,
+      CASE WHEN state.auth_version IS NOT NULL THEN state.auth_version
+        WHEN credentials.password_hash LIKE 'p2.%' THEN 2 ELSE 1 END AS auth_version,
+      state.confirmed_program_version, credentials.failed_attempts, credentials.locked_until
+      FROM admin_credentials credentials
+      LEFT JOIN admin_auth_state state ON state.id = credentials.id
+      WHERE credentials.id = ? LIMIT 1`)
     .bind(CREDENTIAL_ID)
     .first<CredentialRow>();
+}
+
+async function ensureAuthStateTable() {
+  await getPortfolioDb().prepare(`CREATE TABLE IF NOT EXISTS admin_auth_state (
+    id text PRIMARY KEY NOT NULL,
+    auth_version integer DEFAULT 1 NOT NULL,
+    confirmed_program_version text,
+    updated_at text DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    FOREIGN KEY (id) REFERENCES admin_credentials(id) ON UPDATE no action ON DELETE cascade
+  )`).run();
 }
 
 function enforceLock(row: CredentialRow) {
