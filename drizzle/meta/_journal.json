@@ -43,6 +43,13 @@
       "when": 1787906370345,
       "tag": "0005_password_auth_kv_media",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1788062400000,
+      "tag": "0006_auth_v2",
+      "breakpoints": true
     }
   ]
 }

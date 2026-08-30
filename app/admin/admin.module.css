@@ -139,6 +139,7 @@
 .accessPassActions button:disabled { cursor: default; opacity: .4; }
 
 .formSection { margin-bottom: 54px; }
+.sectionHint { margin: 12px 0 0; color: var(--muted); font-size: 10px; line-height: 1.7; }
 .sectionTitle { margin: 38px 0 24px; display: flex; align-items: baseline; gap: 15px; }
 .sectionTitle span { color: var(--accent); font-size: 9px; font-weight: 800; letter-spacing: .13em; }
 .sectionTitle h2 { margin: 0; font-size: 22px; letter-spacing: -.04em; }
@@ -188,6 +189,20 @@
 .layerControls select { min-height: 36px !important; padding: 7px !important; }
 .layerColor { display: grid; grid-template-columns: 1fr 34px; gap: 5px; align-items: center; }
 .layerColor input[type="color"], .wideColorInput { width: 100%; min-height: 38px; padding: 3px; border: 1px solid var(--line); border-radius: 7px; background: white; cursor: pointer; }
+
+.endCoverList { display: grid; gap: 22px; }
+.endCoverCard { padding: 20px; border: 1px solid var(--line); border-radius: 12px; background: white; }
+.endCoverCard > header { margin-bottom: 18px; padding-bottom: 14px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--line); }
+.endCoverCard > header > div:first-child { display: grid; gap: 4px; }
+.endCoverCard > header span { color: var(--accent); font-size: 9px; font-weight: 800; letter-spacing: .12em; }
+.endCoverCard > header strong { font-size: 15px; }
+.endCoverCard > header > div:last-child { display: flex; flex-wrap: wrap; gap: 5px; }
+.endCoverCard > header button { min-height: 34px; padding: 0 9px; border: 1px solid var(--line); border-radius: 6px; background: white; cursor: pointer; }
+.endCoverCard > header button:disabled { cursor: default; opacity: .35; }
+.endCoverGrid { display: grid; grid-template-columns: minmax(360px, .8fr) minmax(420px, 1.2fr); gap: 18px; align-items: start; }
+.previewDeviceSwitch { margin: 8px 0; color: var(--muted); font-size: 9px; font-weight: 700; letter-spacing: .08em; }
+.endCoverLayoutCanvas .layoutLayer { white-space: pre-wrap; overflow-wrap: anywhere; }
+.endCoverLayoutCanvas [data-placeholder="true"] { opacity: .6; }
 
 .listEditor { display: grid; gap: 10px; }
 .listEditor article { min-height: 78px; padding: 12px 14px; display: grid; grid-template-columns: 34px 34px minmax(180px, 1fr) minmax(180px, .8fr) auto; align-items: center; gap: 13px; border: 1px solid var(--line); border-radius: 9px; background: white; }
@@ -411,6 +426,7 @@
   .categoryRow { grid-template-columns: 28px 34px minmax(140px, 1fr) auto; }
   .categoryRow code { display: none; }
   .transitionEditor { grid-template-columns: 1fr; }
+  .endCoverGrid { grid-template-columns: 1fr; }
   .layerControls article { grid-template-columns: 110px 70px 1fr 1fr; }
   .layerControls input[type="range"] { grid-column: 1 / -1; width: 100%; }
   .listEditor code { display: none; }
@@ -456,6 +472,8 @@
   .categoryRow { grid-template-columns: 25px 28px minmax(110px, 1fr) auto; gap: 7px; }
   .heroSlideCard > header { align-items: flex-start; flex-direction: column; }
   .layoutCanvas { aspect-ratio: 4 / 5; }
+  .endCoverLayoutCanvas { aspect-ratio: 16 / 9; }
+  .endCoverCard > header { align-items: flex-start; flex-direction: column; }
   .layerControls article { grid-template-columns: 1fr 1fr; }
   .coverStyleRow { grid-template-columns: 1fr 1fr; }
   .coverStyleRow > strong { grid-column: 1 / -1; }

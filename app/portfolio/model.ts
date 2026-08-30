@@ -71,6 +71,23 @@ export type HeroSlide = {
   layers: HeroLayer[];
 };
 
+export type EndCoverSlide = {
+  id: string;
+  media: MediaAsset;
+  contentMode: HeroContentMode;
+  effect: HeroEffect;
+  animationEnabled: boolean;
+  title: string;
+  statement: string;
+  details: string;
+  layers: HeroLayer[];
+};
+
+export type EndCoverConfig = {
+  enabled: boolean;
+  slides: EndCoverSlide[];
+};
+
 export type CategoryTransition = {
   mode: "default" | "image";
   visible: boolean;
@@ -140,7 +157,7 @@ export type Project = {
 };
 
 export type PortfolioDocument = {
-  schemaVersion: 4;
+  schemaVersion: 5;
   settings: {
     siteTitle: string;
     activeTheme: ThemeKey;
@@ -160,6 +177,7 @@ export type PortfolioDocument = {
     contact: ContactConfig;
   };
   hero: HeroConfig;
+  endCovers: EndCoverConfig;
   themes: ThemeConfig[];
   categories: CategoryConfig[];
   projects: Project[];
@@ -188,6 +206,24 @@ export function createDefaultHeroLayers(): HeroLayer[] {
     { id: "statement", kind: "statement", x: 3, y: 87, width: 36, scale: 1, align: "left", zIndex: 2, visible: true, color: "system", fontFamily: "system" },
     { id: "facts", kind: "facts", x: 72, y: 72, width: 25, scale: 1, align: "left", zIndex: 3, visible: true, color: "system", fontFamily: "system" },
   ];
+}
+
+export function createDefaultEndCoverSlide(id = "end-cover-1"): EndCoverSlide {
+  return {
+    id,
+    media: { id: `${id}-media`, label: "", alt: "封底图片", kind: "image", visualKey: "frame" },
+    contentMode: "image-only",
+    effect: "halo",
+    animationEnabled: false,
+    title: "",
+    statement: "",
+    details: "",
+    layers: createDefaultHeroLayers().map((layer) => ({ ...layer })),
+  };
+}
+
+export function createDefaultEndCoverConfig(): EndCoverConfig {
+  return { enabled: false, slides: [] };
 }
 
 export function createDefaultMediaPosition(): MediaPosition {
@@ -351,7 +387,7 @@ function normalizePortfolioInput(input: Record<string, unknown>): Record<string,
       : candidate.categories;
     candidate = { ...candidate, schemaVersion: 3, settings, hero, categories };
   }
-  if (candidate.schemaVersion !== 3) return candidate;
+  if (candidate.schemaVersion !== 3) return upgradeSchemaFour(candidate);
 
   const oldSettings = isRecord(candidate.settings) ? candidate.settings : candidate.settings;
   const settings = isRecord(oldSettings)
@@ -404,18 +440,25 @@ function normalizePortfolioInput(input: Record<string, unknown>): Record<string,
       ? { ...value, coverPresentation: normalizeCoverPresentation(value.coverPresentation, legacyOverlayMode) }
       : value)
     : candidate.projects;
-  return { ...candidate, schemaVersion: 4, settings, hero, categories, projects };
+  return upgradeSchemaFour({ ...candidate, schemaVersion: 4, settings, hero, categories, projects });
+}
+
+function upgradeSchemaFour(candidate: Record<string, unknown>): Record<string, unknown> {
+  if (candidate.schemaVersion !== 4) return candidate;
+  const normalized = normalizeSchemaFourPresentation(candidate);
+  return { ...normalized, schemaVersion: 5, endCovers: createDefaultEndCoverConfig() };
 }
 
 export function validatePortfolioDocument(input: unknown): ValidationResult {
   const errors: string[] = [];
   if (!isRecord(input)) return { ok: false, errors: ["作品集文档必须是对象"] };
   let candidate = normalizePortfolioInput(input);
-  if (candidate.schemaVersion === 4) candidate = normalizeSchemaFourPresentation(candidate);
-  if (candidate.schemaVersion !== 4) errors.push("schemaVersion 必须为 4");
+  if (candidate.schemaVersion === 5) candidate = normalizeSchemaFiveDocument(normalizeSchemaFourPresentation(candidate));
+  if (candidate.schemaVersion !== 5) errors.push("schemaVersion 必须为 5");
 
   const settings = expectRecord(candidate.settings, "settings", errors);
   const hero = expectRecord(candidate.hero, "hero", errors);
+  const endCovers = expectRecord(candidate.endCovers, "endCovers", errors);
   const themes = expectArray(candidate.themes, "themes", errors, 1, 8);
   const categories = expectArray(candidate.categories, "categories", errors, 1, 30);
   const projects = expectArray(candidate.projects, "projects", errors, 0, 60);
@@ -435,13 +478,13 @@ export function validatePortfolioDocument(input: unknown): ValidationResult {
     validateMedia(settings.customFont, "settings.customFont", "font", new Set<string>(), errors);
     const workHeading = expectRecord(settings.workHeading, "settings.workHeading", errors);
     if (workHeading) {
-      validateText(workHeading.lead, "settings.workHeading.lead", 1, 100, errors);
-      validateText(workHeading.accent, "settings.workHeading.accent", 1, 100, errors);
+      validateText(workHeading.lead, "settings.workHeading.lead", 0, 100, errors);
+      validateText(workHeading.accent, "settings.workHeading.accent", 0, 100, errors);
     }
     const contact = expectRecord(settings.contact, "settings.contact", errors);
     if (contact) {
       validateText(contact.eyebrow, "settings.contact.eyebrow", 0, 60, errors);
-      validateContactTitle(contact.title, errors);
+      validateText(contact.title, "settings.contact.title", 0, 100, errors);
       validateText(contact.note, "settings.contact.note", 0, 300, errors);
       if (!isStringIn(contact.layout, CONTACT_LAYOUTS)) errors.push("settings.contact.layout 无效");
       validateMedia(contact.image, "settings.contact.image", "image", new Set<string>(), errors);
@@ -451,6 +494,7 @@ export function validatePortfolioDocument(input: unknown): ValidationResult {
     }
   }
   if (hero) validateHero(hero, errors);
+  if (endCovers) validateEndCoverConfig(endCovers, errors);
 
   const themeIds = new Set<string>();
   themes?.forEach((theme, index) => validateTheme(theme, index, themeIds, errors));
@@ -531,11 +575,81 @@ function normalizeSchemaFourPresentation(candidate: Record<string, unknown>): Re
   return { ...candidate, hero, categories, projects, settings, themes };
 }
 
+function normalizeSchemaFiveDocument(candidate: Record<string, unknown>): Record<string, unknown> {
+  const settings = isRecord(candidate.settings)
+    ? {
+        ...candidate.settings,
+        siteTitle: textOrDefault(candidate.settings.siteTitle, "学生作品展示"),
+      }
+    : candidate.settings;
+  const categories = Array.isArray(candidate.categories)
+    ? candidate.categories.map((category) => isRecord(category)
+      ? { ...category, label: textOrDefault(category.label, "未命名分类") }
+      : category)
+    : candidate.categories;
+  const projects = Array.isArray(candidate.projects)
+    ? candidate.projects.map((project) => isRecord(project)
+      ? {
+          ...project,
+          title: textOrDefault(project.title, "未命名作品"),
+          duration: textOrDefault(project.duration, "00:00"),
+        }
+      : project)
+    : candidate.projects;
+  return {
+    ...candidate,
+    schemaVersion: 5,
+    settings,
+    categories,
+    projects,
+    endCovers: normalizeEndCoverConfig(candidate.endCovers),
+  };
+}
+
+function normalizeEndCoverConfig(value: unknown): EndCoverConfig {
+  if (!isRecord(value)) return createDefaultEndCoverConfig();
+  const slides = Array.isArray(value.slides)
+    ? value.slides.map((item, index) => {
+        const fallback = createDefaultEndCoverSlide(`end-cover-${index + 1}`);
+        if (!isRecord(item)) return fallback;
+        const layers = Array.isArray(item.layers)
+          ? item.layers.map((layer, layerIndex) => {
+              const layerFallback = fallback.layers[layerIndex] ?? fallback.layers[0];
+              if (!isRecord(layer)) return { ...layerFallback };
+              return {
+                ...layerFallback,
+                ...layer,
+                color: layer.color === "system" || isColor(layer.color) ? layer.color : layerFallback.color,
+                fontFamily: layer.fontFamily === "custom" || layer.fontFamily === "system" ? layer.fontFamily : layerFallback.fontFamily,
+              } as HeroLayer;
+            })
+          : fallback.layers;
+        return {
+          id: typeof item.id === "string" ? item.id : fallback.id,
+          media: isRecord(item.media) ? normalizeAsset(item.media) as MediaAsset : fallback.media,
+          contentMode: isStringIn(item.contentMode, HERO_CONTENT_MODES) ? item.contentMode : fallback.contentMode,
+          effect: isStringIn(item.effect, HERO_EFFECTS) ? item.effect : fallback.effect,
+          animationEnabled: typeof item.animationEnabled === "boolean" ? item.animationEnabled : fallback.animationEnabled,
+          title: typeof item.title === "string" ? item.title : "",
+          statement: typeof item.statement === "string" ? item.statement : "",
+          details: typeof item.details === "string" ? item.details : "",
+          layers,
+        };
+      })
+    : [];
+  return { enabled: typeof value.enabled === "boolean" ? value.enabled : slides.length > 0, slides };
+}
+
+function textOrDefault(value: unknown, fallback: string) {
+  return typeof value === "string" && value.trim().length > 0 ? value : fallback;
+}
+
 export function mediaAssetsInDocument(document: PortfolioDocument): MediaAsset[] {
   const assets: MediaAsset[] = [
     document.settings.customFont,
     document.settings.contact.image,
     ...document.hero.slides.map((slide) => slide.media),
+    ...document.endCovers.slides.map((slide) => slide.media),
     ...document.categories.map((category) => category.transition.media),
   ];
   for (const project of document.projects) {
@@ -564,6 +678,14 @@ export function toPublicPortfolioDocument(document: PortfolioDocument): Portfoli
       customFont: publicAsset(document.settings.customFont),
       contact: { ...document.settings.contact, image: publicAsset(document.settings.contact.image) },
     },
+    endCovers: {
+      ...document.endCovers,
+      slides: document.endCovers.slides.map((slide) => ({
+        ...slide,
+        media: publicAsset(slide.media),
+        layers: slide.layers.map((layer) => ({ ...layer })),
+      })),
+    },
     themes: document.themes.map((theme) => ({ ...theme, swatches: [...theme.swatches] as [string, string, string] })),
     categories: document.categories.map((category) => ({
       ...category,
@@ -585,11 +707,13 @@ export function toPublicPortfolioDocument(document: PortfolioDocument): Portfoli
 export function findPublishedMedia(
   document: PortfolioDocument,
   key: string,
-): { project: Project | null; asset: MediaAsset; role: "font" | "contact" | "hero" | "transition" | "cover" | "final" | "detail" } | null {
+): { project: Project | null; asset: MediaAsset; role: "font" | "contact" | "hero" | "end-cover" | "transition" | "cover" | "final" | "detail" } | null {
   if (document.settings.customFont.key === key) return { project: null, asset: document.settings.customFont, role: "font" };
   if (document.settings.contact.image.key === key) return { project: null, asset: document.settings.contact.image, role: "contact" };
   const heroAsset = document.hero.slides.find((slide) => slide.media.key === key)?.media;
   if (heroAsset) return { project: null, asset: heroAsset, role: "hero" };
+  const endCoverAsset = document.endCovers.slides.find((slide) => slide.media.key === key)?.media;
+  if (endCoverAsset) return { project: null, asset: endCoverAsset, role: "end-cover" };
   const transitionAsset = document.categories.find((category) => category.transition.media.key === key)?.transition.media;
   if (transitionAsset) return { project: null, asset: transitionAsset, role: "transition" };
   for (const project of document.projects) {
@@ -610,13 +734,13 @@ export function findPublishedMedia(
 
 function validateHero(hero: Record<string, unknown>, errors: string[]) {
   validateText(hero.name, "hero.name", 1, 60, errors);
-  validateText(hero.role, "hero.role", 1, 80, errors);
-  validateText(hero.targetRole, "hero.targetRole", 1, 120, errors);
-  validateText(hero.email, "hero.email", 3, 160, errors);
-  if (typeof hero.email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(hero.email)) errors.push("hero.email 格式无效");
+  validateText(hero.role, "hero.role", 0, 80, errors);
+  validateText(hero.targetRole, "hero.targetRole", 0, 120, errors);
+  validateText(hero.email, "hero.email", 0, 160, errors);
+  if (typeof hero.email !== "string" || (hero.email.length > 0 && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(hero.email))) errors.push("联系资料 → 邮箱（hero.email）：格式不正确");
   validateText(hero.phone, "hero.phone", 0, 30, errors);
-  if (typeof hero.phone !== "string" || (hero.phone.length > 0 && !/^[0-9+()\-\s]{5,30}$/u.test(hero.phone))) errors.push("hero.phone 格式无效");
-  validateText(hero.statement, "hero.statement", 1, 260, errors);
+  if (typeof hero.phone !== "string" || (hero.phone.length > 0 && !/^[0-9+()\-\s]{5,30}$/u.test(hero.phone))) errors.push("联系资料 → 电话（hero.phone）：格式不正确");
+  validateText(hero.statement, "hero.statement", 0, 260, errors);
   validateText(hero.availability, "hero.availability", 0, 100, errors);
   const slides = expectArray(hero.slides, "hero.slides", errors, 1, 12);
   const slideIds = new Set<string>();
@@ -653,6 +777,29 @@ function validateHeroLayer(value: unknown, path: string, ids: Set<string>, error
   if (typeof layer.visible !== "boolean") errors.push(`${path}.visible 必须为布尔值`);
   if (layer.color !== "system" && !isColor(layer.color)) errors.push(`${path}.color 无效`);
   if (layer.fontFamily !== "system" && layer.fontFamily !== "custom") errors.push(`${path}.fontFamily 无效`);
+}
+
+function validateEndCoverConfig(value: Record<string, unknown>, errors: string[]) {
+  if (typeof value.enabled !== "boolean") errors.push("封底设置（endCovers.enabled）：开关状态无效");
+  const slides = expectArray(value.slides, "endCovers.slides", errors, 0, 12);
+  const ids = new Set<string>();
+  const mediaIds = new Set<string>();
+  slides?.forEach((item, index) => {
+    const path = `endCovers.slides[${index}]`;
+    const slide = expectRecord(item, path, errors);
+    if (!slide) return;
+    validateId(slide.id, `${path}.id`, ids, errors);
+    validateMedia(slide.media, `${path}.media`, "image", mediaIds, errors);
+    if (!isStringIn(slide.contentMode, HERO_CONTENT_MODES)) errors.push(`第 ${index + 1} 张封底（${path}.contentMode）：显示模式无效`);
+    if (!isStringIn(slide.effect, HERO_EFFECTS)) errors.push(`第 ${index + 1} 张封底（${path}.effect）：视觉效果无效`);
+    if (typeof slide.animationEnabled !== "boolean") errors.push(`第 ${index + 1} 张封底（${path}.animationEnabled）：动画开关无效`);
+    validateText(slide.title, `${path}.title`, 0, 160, errors);
+    validateText(slide.statement, `${path}.statement`, 0, 1000, errors);
+    validateText(slide.details, `${path}.details`, 0, 1600, errors);
+    const layers = expectArray(slide.layers, `${path}.layers`, errors, 3, 3);
+    const layerIds = new Set<string>();
+    layers?.forEach((layer, layerIndex) => validateHeroLayer(layer, `${path}.layers[${layerIndex}]`, layerIds, errors));
+  });
 }
 
 function validateTheme(value: unknown, index: number, ids: Set<string>, errors: string[]) {
@@ -695,9 +842,9 @@ function validateProject(
     errors.push(`projects[${index}].categoryId 未引用有效分类`);
   }
   validateText(project.title, `projects[${index}].title`, 1, 100, errors);
-  if (typeof project.year !== "string" || !/^20\d{2}$/.test(project.year)) errors.push(`projects[${index}].year 无效`);
+  if (typeof project.year !== "string" || (project.year.length > 0 && !/^20\d{2}$/.test(project.year))) errors.push(`第 ${index + 1} 个作品 → 年份（projects[${index}].year）：留空或填写 20 开头的四位年份`);
   if (typeof project.duration !== "string" || !/^\d{1,3}:[0-5]\d$/.test(project.duration)) errors.push(`projects[${index}].duration 无效`);
-  validateText(project.synopsis, `projects[${index}].synopsis`, 1, 1200, errors);
+  validateText(project.synopsis, `projects[${index}].synopsis`, 0, 1200, errors);
   validateText(project.challenge, `projects[${index}].challenge`, 0, 1200, errors);
   validateText(project.solution, `projects[${index}].solution`, 0, 1200, errors);
   const mediaIds = new Set<string>();
@@ -729,19 +876,19 @@ function validateBlock(value: unknown, path: string, ids: Set<string>, mediaIds:
   }
   if (block.type === "text") {
     validateText(block.eyebrow, `${path}.eyebrow`, 0, 80, errors);
-    validateText(block.title, `${path}.title`, 1, 120, errors);
-    validateText(block.body, `${path}.body`, 1, 4000, errors);
+    validateText(block.title, `${path}.title`, 0, 120, errors);
+    validateText(block.body, `${path}.body`, 0, 4000, errors);
   }
   if (block.type === "media-text") {
     validateMedia(block.media, `${path}.media`, "image", mediaIds, errors);
     if (block.side !== "left" && block.side !== "right") errors.push(`${path}.side 无效`);
     validateText(block.eyebrow, `${path}.eyebrow`, 0, 80, errors);
-    validateText(block.title, `${path}.title`, 1, 120, errors);
-    validateText(block.body, `${path}.body`, 1, 4000, errors);
+    validateText(block.title, `${path}.title`, 0, 120, errors);
+    validateText(block.body, `${path}.body`, 0, 4000, errors);
   }
   if (block.type === "gallery") {
     validateText(block.eyebrow, `${path}.eyebrow`, 0, 80, errors);
-    validateText(block.title, `${path}.title`, 1, 120, errors);
+    validateText(block.title, `${path}.title`, 0, 120, errors);
     if (!isStringIn(block.orientation, GALLERY_ORIENTATIONS)) errors.push(`${path}.orientation 无效`);
     const items = expectArray(block.items, `${path}.items`, errors, 1, 4);
     items?.forEach((item, itemIndex) => validateMedia(item, `${path}.items[${itemIndex}]`, "image", mediaIds, errors));
@@ -823,13 +970,48 @@ function validateId(value: unknown, path: string, ids: Set<string>, errors: stri
 }
 
 function validateText(value: unknown, path: string, min: number, max: number, errors: string[]) {
-  if (typeof value !== "string" || value.trim().length < min || value.length > max) errors.push(`${path} 长度无效`);
+  const length = typeof value === "string" ? Array.from(value).length : 0;
+  if (typeof value !== "string" || value.trim().length < min || length > max) {
+    errors.push(`${validationPathLabel(path)}（${path}）：需要 ${min}–${max} 个字符，当前 ${length} 个`);
+  }
 }
 
-function validateContactTitle(value: unknown, errors: string[]) {
-  if (typeof value !== "string" || value.trim().length < 1 || Array.from(value).length > 100) {
-    errors.push("settings.contact.title：联系方式主标题不能为空，最多输入 100 个字符，支持直接输入中文");
+function validationPathLabel(path: string) {
+  const projectMatch = path.match(/^projects\[(\d+)\](?:\.detailBlocks\[(\d+)\])?\.(.+)$/u);
+  if (projectMatch) {
+    const project = `第 ${Number(projectMatch[1]) + 1} 个作品`;
+    const block = projectMatch[2] === undefined ? "" : ` → 第 ${Number(projectMatch[2]) + 1} 个内容块`;
+    return `${project}${block} → ${fieldLabel(projectMatch[3])}`;
   }
+  const endCoverMatch = path.match(/^endCovers\.slides\[(\d+)\]\.(.+)$/u);
+  if (endCoverMatch) return `第 ${Number(endCoverMatch[1]) + 1} 张封底 → ${fieldLabel(endCoverMatch[2])}`;
+  return fieldLabel(path);
+}
+
+function fieldLabel(path: string) {
+  const field = path.split(".").at(-1) ?? path;
+  return ({
+    siteTitle: "网站名称",
+    lead: "作品区标题第一行",
+    accent: "作品区标题第二行",
+    name: "姓名",
+    role: "职业标题",
+    targetRole: "求职方向",
+    email: "邮箱",
+    phone: "电话",
+    statement: "正文",
+    availability: "状态",
+    title: "标题",
+    synopsis: "作品简介",
+    challenge: "项目难点",
+    solution: "解决思路",
+    eyebrow: "眉题",
+    body: "正文",
+    caption: "图注",
+    details: "补充信息",
+    label: "名称",
+    duration: "时长",
+  } as Record<string, string>)[field] ?? path;
 }
 
 function validateNumber(value: unknown, path: string, min: number, max: number, errors: string[]) {

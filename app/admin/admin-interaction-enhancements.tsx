@@ -13,6 +13,13 @@ const fieldLabels: Array<[RegExp, string]> = [
   [/settings\.siteTitle/u, "浏览器标签与站点名称"],
   [/(?:settings\.contact\.title|联系方式主标题)/u, "主标题"],
   [/settings\.contact\.note/u, "说明"],
+  [/detailBlocks\[\d+\]\.eyebrow/u, "眉题"],
+  [/detailBlocks\[\d+\]\.title/u, "标题"],
+  [/detailBlocks\[\d+\]\.body/u, "正文"],
+  [/detailBlocks\[\d+\]\.caption/u, "图注"],
+  [/endCovers\.slides\[\d+\]\.title/u, "封底标题"],
+  [/endCovers\.slides\[\d+\]\.statement/u, "封底说明"],
+  [/endCovers\.slides\[\d+\]\.details/u, "补充信息"],
   [/\.year/u, "年份"],
   [/\.synopsis/u, "作品简介"],
   [/\.challenge/u, "项目难点"],
@@ -80,7 +87,7 @@ export function AdminInteractionEnhancements() {
 
     const focusAfterDialog = (event: Event) => {
       const button = event.target instanceof Element && event.target.tagName === "BUTTON" ? event.target : null;
-      if (!button || button.textContent?.trim() !== "返回继续处理" || !lastProblemTarget) return;
+      if (!button || button.textContent?.trim() !== "定位并修改" || !lastProblemTarget) return;
       const target = lastProblemTarget;
       window.setTimeout(() => revealTarget(target, true), 30);
     };
@@ -228,11 +235,11 @@ function ensureUpgradeCenter() {
       <div class="upgrade-version"><span>当前程序版本</span><strong>v${PROGRAM_VERSION}</strong></div>
     </div>
     <div class="upgrade-grid">
-      <div><strong>升级机制已启用</strong><small>后续可以只升级程序，不重新部署整个网站。</small></div>
+      <div><strong>先保存最新恢复码</strong><small>正式升级后要在 /admin 确认一次，并保存系统生成的新码。</small></div>
       <div><strong>D1 / KV 保留</strong><small>升级不得替换数据库、媒体空间和已有资源 ID。</small></div>
       <div><strong>内容与账号保留</strong><small>管理员、草稿、发布内容、图片、视频和二维码全部保留。</small></div>
     </div>
-    <p class="upgrade-note">以后发布新版本时，把“升级指令”交给 GPT/Codex。升级流程必须先确认当前 Worker、DB 和 MEDIA_KV，再只更新程序代码与增量迁移。</p>
+    <p class="upgrade-note">先确认当前最新系统恢复码已离线保存（不要把内容发给 GPT），再把“升级指令”交给 GPT/Codex。升级流程必须确认当前 Worker、DB 和 MEDIA_KV，只更新程序代码与增量迁移。</p>
     <div class="upgrade-actions">
       <button type="button" data-upgrade-copy>复制给 GPT 的升级指令</button>
       <details>
@@ -296,6 +303,8 @@ function locateValidationProblem(reason: string): Element | null {
     });
   }
 
+  const blockIndexMatch = reason.match(/detailBlocks\[(\d+)\]/u);
+
   let fieldLabel = "";
   for (const [pattern, label] of fieldLabels) {
     if (pattern.test(reason)) {
@@ -305,7 +314,9 @@ function locateValidationProblem(reason: string): Element | null {
   }
   if (!fieldLabel) return document.querySelector("section");
 
-  const findField = () => Array.from(document.querySelectorAll("label"))
+  const findField = () => Array.from((blockIndexMatch
+    ? document.querySelector(`[data-block-index="${Number(blockIndexMatch[1])}"]`)
+    : document)?.querySelectorAll("label") ?? [])
     .find((label) => fieldText(label).includes(fieldLabel));
   const immediate = findField();
   if (immediate) return immediate;
@@ -318,6 +329,7 @@ function locateValidationProblem(reason: string): Element | null {
 }
 
 function validationView(reason: string) {
+  if (/endCovers\.slides|封底/u.test(reason)) return "封底";
   if (/settings\.contact|联系方式主标题/u.test(reason)) return "联系";
   if (/hero\.(?:email|phone)/u.test(reason)) return "联系";
   if (/hero\./u.test(reason)) return "首图与文字";

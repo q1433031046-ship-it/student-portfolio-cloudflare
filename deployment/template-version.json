@@ -1,15 +1,16 @@
 {
   "schemaVersion": 1,
   "program": "student-portfolio-cloudflare",
-  "version": "1.1.6",
+  "version": "1.2.0",
   "releasedAt": "2026-08-30",
   "importance": "recommended",
   "releaseNotes": [
-    "修复画布直接编辑时中文输入法按 Enter 选词会提前结束编辑的问题。",
-    "联系方式主标题支持直接输入中文，空标题或超长标题会显示明确中文提示。",
-    "联系方式标题校验失败后会自动返回并定位到对应的主标题输入框。"
+    "新增多张独立封底（尾图）：支持分别上传、裁切、复制、排序、删除和文字排版，并显示在全部作品之后、页脚之前。",
+    "允许联系方式主标题等可选文案留空并自动隐藏；中文可直接输入，报错会显示具体作品、内容块、字段和字符数。",
+    "管理员密码、恢复码和会话升级为独立凭据；正式升级后使用当前最新恢复码确认一次并自动生成新恢复码。",
+    "保留现有 Worker、D1、MEDIA_KV、Secrets、媒体、草稿、发布内容、二维码与统计数据。"
   ],
-  "portfolioDocumentSchemaVersion": 4,
+  "portfolioDocumentSchemaVersion": 5,
   "templateRepository": "https://github.com/q1433031046-ship-it/student-portfolio-cloudflare",
   "upgradePromptManifest": "deployment/upgrade-prompt.json",
   "humanGuide": "README.md",

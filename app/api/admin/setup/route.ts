@@ -2,8 +2,8 @@ import { authorizeAdmin } from "../../_lib/auth";
 import {
   AuthError,
   createLocalAdministrator,
+  getLocalCredentialState,
   isSitesAuthPlatform,
-  localCredentialsExist,
   sessionResponseHeaders,
 } from "../../_lib/admin-auth";
 import { isRequestBodyError, readJsonBody } from "../../_lib/request-body";
@@ -13,8 +13,14 @@ const noCacheHeaders = { "Cache-Control": "no-store, max-age=0", Pragma: "no-cac
 
 export async function GET(request: Request) {
   try {
-    if (!isSitesAuthPlatform() && !await localCredentialsExist()) {
-      return Response.json({ state: "initial_setup", identity: null }, { headers: noCacheHeaders });
+    if (!isSitesAuthPlatform()) {
+      const credentialState = await getLocalCredentialState();
+      if (!credentialState.exists) {
+        return Response.json({ state: "initial_setup", identity: null, ...credentialState }, { headers: noCacheHeaders });
+      }
+      if (credentialState.upgradeRequired) {
+        return Response.json({ state: "upgrade_required", identity: null, ...credentialState }, { headers: noCacheHeaders });
+      }
     }
     const identity = await authorizeAdmin(request);
     if (!identity) return Response.json({ error: "请先输入管理员密码" }, { status: 401, headers: noCacheHeaders });
@@ -75,4 +81,3 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
-

@@ -1025,6 +1025,33 @@
 .emptyState h3 { align-self: end; max-width: 680px; margin: 0; font-size: clamp(42px, 6vw, 84px); font-weight: 470; letter-spacing: -0.06em; }
 .emptyState button { min-height: 44px; border: 0; border-bottom: 1px solid currentColor; background: transparent; color: var(--muted); padding: 0; font-size: 11px; }
 
+.endCoverSequence { border-top: 1px solid var(--line); }
+.endCoverSlide { min-height: min(100svh, 960px); }
+.endCoverSlide .heroLayer[data-kind="identity"] h2 {
+  margin: 0;
+  font-size: clamp(64px, 10cqw, 170px);
+  font-weight: 520;
+  line-height: .82;
+  letter-spacing: -.085em;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.endCoverSlide .heroLayer[data-kind="statement"] > p,
+.endCoverSlide .heroLayer[data-kind="facts"] > p {
+  margin: 0;
+  color: var(--ink);
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.endCoverSlide .heroLayer[data-kind="facts"] > p {
+  padding-top: 14px;
+  border-top: 1px solid var(--line-strong);
+  color: var(--muted);
+  font-size: clamp(10px, 1cqw, 16px);
+}
+.endCoverIndex { position: absolute; z-index: 8; right: 28px; bottom: 24px; color: var(--muted); font-size: 9px; letter-spacing: .16em; }
+
 .footer {
   display: grid;
   grid-template-columns: 1fr auto 1fr;

@@ -9,6 +9,10 @@ const portfolioCss = await readFile(new URL("../app/demo/portfolio-demo.module.c
 const coverTextComponent = await readFile(new URL("../app/portfolio/project-cover-text.tsx", import.meta.url), "utf8");
 const coverTextCss = await readFile(new URL("../app/portfolio/project-cover-text.module.css", import.meta.url), "utf8");
 const projectCover = await readFile(new URL("../app/portfolio/project-cover.tsx", import.meta.url), "utf8");
+const portfolioExperience = await readFile(new URL("../app/portfolio/portfolio-experience.tsx", import.meta.url), "utf8");
+const endCoverSequence = await readFile(new URL("../app/portfolio/end-cover-sequence.tsx", import.meta.url), "utf8");
+const endCoverEditor = await readFile(new URL("../app/admin/end-cover-layout-editor.tsx", import.meta.url), "utf8");
+const uploadRoute = await readFile(new URL("../app/api/admin/media/[projectId]/[slot]/route.ts", import.meta.url), "utf8");
 
 test("new projects start with zero video duration", () => {
   assert.match(adminClient, /duration:\s*"00:00"/u);
@@ -65,4 +69,26 @@ test("uploaded image previews retain a local fallback and report retry state", (
   assert.match(adminClient, /重新检查/u);
   assert.match(adminClient, /onPreviewError=\{handlePreviewError\}/u);
   assert.match(adminClient, /onPreviewChange=\{setCoverPreviewSrc\}/u);
+});
+
+test("multiple independent end covers can be edited and render before the footer", () => {
+  assert.match(adminClient, /封底（尾图）/u);
+  assert.match(adminClient, /createDefaultEndCoverSlide/u);
+  assert.match(adminClient, /copySlide/u);
+  assert.match(adminClient, /moveSlide/u);
+  assert.match(adminClient, /slot="end-cover"/u);
+  assert.match(endCoverEditor, /shouldFinishInlineEditing/u);
+  assert.match(endCoverEditor, /Enter 换行/u);
+  assert.match(endCoverSequence, /config\.slides\.map/u);
+  assert.match(endCoverSequence, /if \(!entered \|\| !config\.enabled/u);
+  assert.ok(portfolioExperience.indexOf("<EndCoverSequence") < portfolioExperience.indexOf("<footer"));
+  assert.match(uploadRoute, /"end-cover"/u);
+  assert.match(uploadRoute, /end-covers/u);
+});
+
+test("validation dialog offers direct location down to the selected content block", () => {
+  assert.match(adminClient, /定位并修改/u);
+  assert.match(adminClient, /data-block-index/u);
+  assert.match(adminEnhancements, /detailBlocks\\\[\(\\d\+\)\\\]/u);
+  assert.match(adminEnhancements, /data-block-index/u);
 });
