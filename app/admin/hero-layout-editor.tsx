@@ -97,6 +97,7 @@ export function HeroLayoutEditor({
             onPointerMove={movePointer}
             onPointerUp={stopPointer}
             onPointerCancel={stopPointer}
+            onLostPointerCapture={stopPointer}
           >
             {layer.kind === "identity" && <InlineEditable tag="strong" value={hero.name} ariaLabel="姓名" onCommit={(name) => onHeroChange({ name })} />}
             {layer.kind === "statement" && <InlineEditable tag="span" value={hero.statement} ariaLabel="个人定位" onCommit={(statement) => onHeroChange({ statement })} />}
@@ -113,11 +114,12 @@ export function HeroLayoutEditor({
               onPointerMove={movePointer}
               onPointerUp={stopPointer}
               onPointerCancel={stopPointer}
+              onLostPointerCapture={stopPointer}
             />
           </div>
         ))}
       </div>
-      <p className={styles.layoutHint}>拖动文字改变位置，拖动右下角改变大小；双击文字直接修改。方向键可微调位置。</p>
+      <p className={styles.layoutHint}>拖动文字改变位置，拖动右下角改变大小；轻点文字直接修改。方向键可微调位置。</p>
       <div className={styles.layerControls}>
         {slide.layers.map((layer) => (
           <article key={layer.id} data-selected={selectedId === layer.id}>
@@ -160,9 +162,10 @@ function InlineEditable({ value, ariaLabel, onCommit, tag = "span" }: { value: s
     contentEditable: editing,
     suppressContentEditableWarning: true,
     role: "textbox",
-    "aria-label": `双击修改${ariaLabel}`,
+    "aria-label": `点击修改${ariaLabel}`,
     "data-editing": editing,
     onDoubleClick: (event: React.MouseEvent<HTMLElement>) => { event.preventDefault(); event.stopPropagation(); setEditing(true); },
+    onClick: (event: React.MouseEvent<HTMLElement>) => { if (!editing) { event.preventDefault(); event.stopPropagation(); setEditing(true); } },
     onPointerDown: (event: React.PointerEvent<HTMLElement>) => { if (editing) event.stopPropagation(); },
     onBlur: (event: React.FocusEvent<HTMLElement>) => { setEditing(false); onCommit(event.currentTarget.textContent?.trim() ?? ""); },
     onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => {

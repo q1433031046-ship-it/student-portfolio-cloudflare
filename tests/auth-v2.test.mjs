@@ -106,6 +106,9 @@ test("legacy recovery performs the one-time version confirmation and rotates the
 test("version gate and password normalization reject hidden input mistakes", () => {
   assert.equal(programResetRequired(PROGRAM_VERSION), false);
   assert.equal(programResetRequired("1.1.6"), true);
+  assert.equal(programResetRequired("1.3.0", "1.3.0"), false);
+  assert.equal(programResetRequired("1.2.0", "1.3.0"), true);
+  assert.equal(programResetRequired("1.2.1", "1.3.0"), true);
   assert.throws(() => normalizePassword(" Student2026"), /开头和结尾不能有空格/u);
   assert.throws(() => normalizePassword("Student\u200b2026"), /不可见字符/u);
   assert.equal(normalizePassword("学生Password2026"), "学生Password2026");

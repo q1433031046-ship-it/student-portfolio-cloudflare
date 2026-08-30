@@ -29,7 +29,9 @@ export function ProjectCover({
         aria-expanded={isOpen}
         aria-controls={detailId}
         onClick={onToggle}
-      />
+      >
+        <span className={styles.coverToggleLabel}>{isOpen ? "收起作品" : "查看作品"}</span>
+      </button>
       <div className={styles.projectCoverInfo}>
         <ProjectCoverText project={project} categoryLabel={category.label} accent={category.accent} />
         {hasPlayableVideo(project.finalVideo) && <button

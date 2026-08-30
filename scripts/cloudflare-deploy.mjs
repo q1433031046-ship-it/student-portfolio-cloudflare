@@ -275,13 +275,13 @@ function localResourceFingerprint(config, manifest, workerName) {
 
 function assertExistingUpgradeResourceIds(local) {
   if (typeof local.d1.id !== "string") {
-    throw new Error("现有站点配置缺少固定的 DB database_id；v1.2.1 自动升级只支持已具备固定 DB ID 和 MEDIA_KV 的站点，纯 v1.0 R2-only 站点本版未支持且已在任何远程改动前停止");
+    throw new Error("现有站点配置缺少固定的 DB database_id；v1.3.0 自动升级只支持已具备固定 DB ID 和 MEDIA_KV 的站点，纯 v1.0 R2-only 站点本版未支持且已在任何远程改动前停止");
   }
   if (!local.resourceBindingsPresent.kv) {
-    throw new Error("现有站点配置缺少 MEDIA_KV；v1.2.1 不会在升级中自动创建或猜测 KV，纯 v1.0 R2-only 站点本版未支持且已在任何远程改动前停止");
+    throw new Error("现有站点配置缺少 MEDIA_KV；v1.3.0 不会在升级中自动创建或猜测 KV，纯 v1.0 R2-only 站点本版未支持且已在任何远程改动前停止");
   }
   if (typeof local.kv.id !== "string") {
-    throw new Error("现有站点的 MEDIA_KV 绑定缺少固定 id；v1.2.1 不会在升级中自动创建或猜测 KV，纯 v1.0 R2-only 站点本版未支持且已在任何远程改动前停止");
+    throw new Error("现有站点的 MEDIA_KV 绑定缺少固定 id；v1.3.0 不会在升级中自动创建或猜测 KV，纯 v1.0 R2-only 站点本版未支持且已在任何远程改动前停止");
   }
 }
 

@@ -82,7 +82,7 @@ test("no-negative-echo audit keeps one final tutorial flow", async () => {
   assert.match(readme, /新建分类.*保存草稿.*再上传/su);
   assert.match(readme, /独立浏览器配置文件或独立 Cookie/u);
   assert.match(readme, /大陆.*人工/u);
-  assert.match(readme, /宽屏.*右上角.*窄屏.*右下角/su);
+  assert.match(readme, /宽屏.*右上角.*手机后台.*底部操作栏.*更多/su);
   assert.match(readme, /R2 → MEDIA_KV/);
   assert.match(readme, /“开始逐块迁移并校验”/);
   assert.match(readme, /原 R2 对象.*ETag/su);
@@ -138,7 +138,7 @@ test("no-negative-echo audit keeps one final tutorial flow", async () => {
   assert.match(guide, /新建分类.*保存草稿.*再上传/su);
   assert.match(guide, /独立浏览器配置文件或独立 Cookie/u);
   assert.match(guide, /大陆.*人工/u);
-  assert.match(guide, /宽屏.*右上角.*窄屏.*右下角/su);
+  assert.match(guide, /宽屏.*右上角.*手机.*底部操作栏.*更多/su);
   assert.match(guide, /R2 → MEDIA_KV/);
   assert.match(guide, /“开始逐块迁移并校验”/);
   assert.match(guide, /原 R2 对象.*ETag/su);

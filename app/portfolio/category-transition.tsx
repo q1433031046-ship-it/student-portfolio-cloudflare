@@ -15,7 +15,10 @@ export function CategoryTransition({
   if (!current.transition.visible) return null;
   if (current.transition.mode === "image" && current.transition.media.src) {
     return (
-      <header className={styles.customTransition} style={{ aspectRatio: mediaCropAspect(current.transition.media, 8) }}>
+      <header className={styles.customTransition} style={{
+        "--media-aspect-desktop": mediaCropAspect(current.transition.media, 8),
+        "--media-aspect-mobile": 3,
+      } as CSSProperties}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={current.transition.media.src} alt={current.transition.media.alt || `${current.label}模块过渡图`} style={croppedImageStyle(current.transition.media)} />
         <h2 className={styles.srOnly}>{current.label}</h2>

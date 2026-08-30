@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { croppedImageStyle, fitConfirmedCropToAspect, fitCropToAspect, mediaCropAspect, normalizeMediaCrop } from "../app/portfolio/media-crop.ts";
+import { croppedImageStyle, croppedImageStyleForAspect, fitConfirmedCropToAspect, fitCropToAspect, mediaCropAspect, normalizeMediaCrop } from "../app/portfolio/media-crop.ts";
 
 test("fits a fixed output ratio inside portrait and landscape sources", () => {
   const landscape = fitCropToAspect(2, 16 / 9);
@@ -37,4 +37,26 @@ test("adapts a confirmed desktop crop to mobile without stretching", () => {
   const mobileCrop = fitConfirmedCropToAspect({ x: 10, y: 0, width: 80, height: 100 }, 2, 4 / 5);
   assert.deepEqual(mobileCrop, { x: 30, y: 0, width: 40, height: 100 });
   assert.equal(2 * (mobileCrop.width / mobileCrop.height), 4 / 5);
+});
+
+test("derives an in-bounds 4:5 crop from a confirmed 16:9 desktop crop", () => {
+  const sourceAspectRatio = 4 / 3;
+  const desktopCrop = fitCropToAspect(sourceAspectRatio, 16 / 9);
+  const mobileCrop = fitConfirmedCropToAspect(desktopCrop, sourceAspectRatio, 4 / 5);
+  assert.ok(Math.abs(sourceAspectRatio * (mobileCrop.width / mobileCrop.height) - (4 / 5)) < 0.001);
+  assert.ok(mobileCrop.x >= 0 && mobileCrop.y >= 0);
+  assert.ok(mobileCrop.x + mobileCrop.width <= 100);
+  assert.ok(mobileCrop.y + mobileCrop.height <= 100);
+
+  const style = croppedImageStyleForAspect({
+    id: "responsive-crop",
+    label: "",
+    alt: "",
+    kind: "image",
+    visualKey: "responsive-crop",
+    sourceAspectRatio,
+    crop: desktopCrop,
+  }, 4 / 5);
+  assert.equal(style.objectFit, "fill");
+  assert.equal(style.maxWidth, "none");
 });

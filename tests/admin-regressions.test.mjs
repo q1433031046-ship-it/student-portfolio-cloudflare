@@ -77,7 +77,7 @@ test("uploaded image previews retain a local fallback and report retry state", (
 });
 
 test("multiple independent end covers can be edited and render before the footer", () => {
-  assert.match(adminClient, /封底（尾图）/u);
+  assert.match(adminClient, /label: "封底"/u);
   assert.match(adminClient, /createDefaultEndCoverSlide/u);
   assert.match(adminClient, /copySlide/u);
   assert.match(adminClient, /moveSlide/u);

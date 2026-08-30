@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-test("version metadata publishes the authenticated v1.2.1 upgrade contract", async () => {
+test("version metadata publishes the authenticated v1.3.0 upgrade contract", async () => {
   const [manifest, promptManifest, agentManifest, migration0007] = await Promise.all([
     readFile("deployment/template-version.json", "utf8").then(JSON.parse),
     readFile("deployment/upgrade-prompt.json", "utf8").then(JSON.parse),
@@ -11,13 +11,13 @@ test("version metadata publishes the authenticated v1.2.1 upgrade contract", asy
     readFile("drizzle/0007_legacy_media_and_access_state.sql", "utf8"),
   ]);
 
-  assert.equal(manifest.version, "1.2.1");
-  assert.equal(manifest.releaseTag, "v1.2.1");
+  assert.equal(manifest.version, "1.3.0");
+  assert.equal(manifest.releaseTag, "v1.3.0");
   assert.equal(manifest.importance, "important");
   assert.equal(manifest.upgradePromptManifest, "deployment/upgrade-prompt.json");
-  assert.match(manifest.releaseNotes.join("\n"), /旧版 R2/u);
-  assert.match(manifest.releaseNotes.join("\n"), /90 MiB/u);
-  assert.match(manifest.releaseNotes.join("\n"), /视频.*可选/u);
+  assert.match(manifest.releaseNotes.join("\n"), /320 px/u);
+  assert.match(manifest.releaseNotes.join("\n"), /Playwright/u);
+  assert.match(manifest.releaseNotes.join("\n"), /schema.*5/u);
   assert.match(manifest.releaseNotes.join("\n"), /恢复码.*会话/u);
   assert.equal(manifest.portfolioDocumentSchemaVersion, 5);
   assert.equal(promptManifest.schemaVersion, 1);
@@ -56,7 +56,7 @@ test("version metadata publishes the authenticated v1.2.1 upgrade contract", asy
     "MEDIA_KV.id",
     "matching live DB and MEDIA_KV bindings",
   ]);
-  assert.equal(agentManifest.existingInstallUpgradeEligibility.r2OnlyV1_0, "unsupported-fail-closed-in-v1.2.1");
+  assert.equal(agentManifest.existingInstallUpgradeEligibility.r2OnlyV1_0, "unsupported-fail-closed-in-v1.3.0");
   assert.equal(agentManifest.existingInstallUpgradeEligibility.provisionMissingResources, false);
   assert.equal(agentManifest.existingInstallUpgradeEligibility.remoteMutationBeforeEligibility, false);
   assert.equal(agentManifest.newDeploymentProvisioning.templateContainsResourceIds, false);
@@ -132,8 +132,8 @@ test("all admin upgrade entry points copy the synchronized prompt", async () => 
   assert.match(guide, /<pre>\{upgradePrompt\}<\/pre>/);
 
   for (const phrase of [
-    "目标版本固定为 v1.2.1",
-    "发布标签 v1.2.1",
+    "目标版本固定为 v1.3.0",
+    "发布标签 v1.3.0",
     "SHA-256",
     "npm run cloudflare:fingerprint -- --output",
     "npm run cloudflare:deploy",
@@ -186,7 +186,7 @@ test("all admin upgrade entry points copy the synchronized prompt", async () => 
     assert.match(readme, new RegExp(phrase));
   }
 
-  assert.ok(promptManifest.prompt.includes("{hostname}-v1.2.1-系统恢复码-{YYYYMMDDTHHMMSSZ}.txt"));
+  assert.ok(promptManifest.prompt.includes("{hostname}-v1.3.0-系统恢复码-{YYYYMMDDTHHMMSSZ}.txt"));
   assert.doesNotMatch(promptManifest.prompt, /<升级前指纹文件>|<upgrade-before-fingerprint-file>/u);
   assert.match(promptManifest.prompt, /远端 workers\.dev 开关.*人工基线/su);
   assert.match(promptManifest.prompt, /upgrade-predeploy-fingerprint\.json.*upgrade-before-fingerprint\.json/su);

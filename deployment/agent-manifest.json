@@ -1,11 +1,11 @@
 {
   "schemaVersion": 3,
   "releaseContract": {
-    "version": "1.2.1",
-    "releaseTag": "v1.2.1",
-    "sourceRef": "refs/tags/v1.2.1",
+    "version": "1.3.0",
+    "releaseTag": "v1.3.0",
+    "sourceRef": "refs/tags/v1.3.0",
     "upgradePromptManifest": "deployment/upgrade-prompt.json",
-    "upgradePromptSha256": "8e0a389a1a6c38a833c39ee6ed1b9c18690e067e83d42cc9e8d810d2219ec2dc"
+    "upgradePromptSha256": "c72b072aa4c9a78121297078e572e7a1536fd5a1b1498f8cb103a825979b4149"
   },
   "project": {
     "name": "student-portfolio",
@@ -48,7 +48,7 @@
       "MEDIA_KV.id",
       "matching live DB and MEDIA_KV bindings"
     ],
-    "r2OnlyV1_0": "unsupported-fail-closed-in-v1.2.1",
+    "r2OnlyV1_0": "unsupported-fail-closed-in-v1.3.0",
     "provisionMissingResources": false,
     "remoteMutationBeforeEligibility": false
   },
@@ -124,6 +124,29 @@
     "exhaustionRevokesExistingSessions": false,
     "pauseDeleteOrExpiryRevokesExistingSessions": true
   },
+  "responsiveUI": {
+    "minimumViewportWidth": 320,
+    "minimumTouchTargetPixels": 44,
+    "mobileInputFontPixels": 16,
+    "safeAreaInsets": true,
+    "renderOnlyMobileLayout": true,
+    "mobileSpecificStoredCoordinates": false,
+    "mobileSpecificStoredCrop": false,
+    "mobileSpecificDocumentFields": false,
+    "administrator": {
+      "singleBottomActionBar": true,
+      "visualViewportKeyboardHandling": true,
+      "sameTreePreview": true,
+      "fullScreenCropEditor": true,
+      "activeUploadBlocksNavigationPreviewSaveAndPublish": true,
+      "failedUploadCanRetryDismissAndLocate": true
+    },
+    "browserGates": {
+      "mobileLayout": "Playwright Chromium",
+      "h264AacChrome": "Playwright branded Chrome",
+      "h264AacWebKit": "Playwright WebKit on macOS"
+    }
+  },
   "media": {
     "videoType": "video/mp4",
     "videoMaxBytes": 52428800,
@@ -182,16 +205,19 @@
       "npm test",
       "npx --no-install wrangler deploy --dry-run --keep-vars --config wrangler.jsonc",
       "npm run lint",
-      "./node_modules/.bin/tsc --noEmit"
+      "./node_modules/.bin/tsc --noEmit",
+      "npm run test:e2e",
+      "npm run test:e2e:codec:chrome",
+      "npm run test:e2e:codec:webkit"
     ],
     "cloudBuildFirstDeployment": "npm run deploy",
     "cloudBuildExistingWorker": "fail-closed; never an upgrade entry",
-    "legacyBaselineTool": "invoke the verified refs/tags/v1.2.1 worktree's absolute scripts/cloudflare-deploy.mjs path; the script pins Wrangler cwd and dependencies to that tag root while reading the original site's absolute wrangler.jsonc and writing its .wrangler/upgrade-before-fingerprint.json",
+    "legacyBaselineTool": "invoke the verified refs/tags/v1.3.0 worktree's absolute scripts/cloudflare-deploy.mjs path; the script pins Wrangler cwd and dependencies to that tag root while reading the original site's absolute wrangler.jsonc and writing its .wrangler/upgrade-before-fingerprint.json",
     "captureUpgradeFingerprint": "npm run cloudflare:fingerprint",
     "upgradeFingerprintPath": ".wrangler/upgrade-before-fingerprint.json",
     "capturePreDeployFingerprint": "npm run cloudflare:fingerprint -- --output .wrangler/upgrade-predeploy-fingerprint.json",
     "preDeployFingerprintPath": ".wrangler/upgrade-predeploy-fingerprint.json",
-    "preDeployRequirement": "strictly match upgrade-before-fingerprint without overwriting it after restoring the original wrangler.jsonc into current v1.2.1 source",
+    "preDeployRequirement": "strictly match upgrade-before-fingerprint without overwriting it after restoring the original wrangler.jsonc into current v1.3.0 source",
     "update": "npm run cloudflare:deploy",
     "capturePostUpgradeFingerprint": "npm run cloudflare:fingerprint -- --output .wrangler/upgrade-after-fingerprint.json"
   },
@@ -214,7 +240,7 @@
   },
   "sourceUpgradePolicy": {
     "tagAudit": "temporary detached worktree outside the original site repository directory; no deploy",
-    "targetWorktree": "the original site repository after converging verified v1.2.1 tracked source",
+    "targetWorktree": "the original site repository after converging verified v1.3.0 tracked source",
     "preserveOriginalConfig": [
       "Worker name",
       "DB binding and id",
@@ -223,7 +249,7 @@
       "workers_dev local setting",
       "runtime vars"
     ],
-    "strictDeployCwd": "original site worktree with current v1.2.1 source and restored original wrangler.jsonc",
+    "strictDeployCwd": "original site worktree with current v1.3.0 source and restored original wrangler.jsonc",
     "dirtyWorktree": "fail-closed-until-owner-confirmed-recoverable-save",
     "destructiveGitCommandsAllowed": false
   },
@@ -308,6 +334,13 @@
     "optional Chinese text fields accept direct input or blank values and blank values auto-hide",
     "validation identifies the exact project, content block, field and character count and can locate the editor",
     "multiple independent end covers upload, crop, copy, reorder and render after every project and before the footer",
+    "the public portfolio has no horizontal overflow at 320, 360 and 390 pixel mobile widths and honors safe-area insets",
+    "mobile hero slides snap horizontally while project content remains a readable single column",
+    "mobile administrator controls provide one bottom action bar, 44 pixel touch targets and 16 pixel form inputs",
+    "mobile administrator preview reuses the current draft portfolio tree and can locate hero, project, contact and end-cover targets",
+    "mobile crop editing supports drag, pinch zoom, explicit confirmation and cancel restoration",
+    "an active upload blocks administrator navigation, preview, save and publish while a failed upload remains retryable, dismissible and locatable",
+    "the H.264 and AAC fixture plays in branded Chrome and WebKit before a release tag can be created",
     "a project without a final video publishes with duration 00:00 and no public play control",
     "a 50 MB MP4 uploads in 4 MiB chunks",
     "video range requests support playback and seeking",
@@ -330,7 +363,10 @@
       "unit and integration tests with one production build",
       "Wrangler deployment dry run",
       "lint",
-      "TypeScript"
+      "TypeScript",
+      "Playwright mobile Chromium layout and interaction suite",
+      "Playwright branded Chrome H.264/AAC playback suite",
+      "Playwright macOS WebKit H.264/AAC playback suite"
     ],
     "productionEvidenceRequired": [
       "live resource fingerprint",

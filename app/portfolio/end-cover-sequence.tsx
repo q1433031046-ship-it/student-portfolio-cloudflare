@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import type { EndCoverConfig, EndCoverSlide, HeroLayer } from "./model";
 import { heroLayerStyle } from "./hero-layer-style";
 import { croppedImageStyle, mediaCropAspect } from "./media-crop";
@@ -19,8 +19,12 @@ export function EndCoverSequence({ config, entered }: { config: EndCoverConfig; 
           data-animation={slide.animationEnabled ? "on" : "off"}
           data-custom-media={Boolean(slide.media.src)}
           data-end-cover-index={index}
+          data-end-cover-id={slide.id}
           aria-label={`封底 ${index + 1}`}
-          style={slide.media.crop && slide.media.sourceAspectRatio ? { aspectRatio: mediaCropAspect(slide.media), minHeight: "auto" } : undefined}
+          style={{
+            "--media-aspect-desktop": mediaCropAspect(slide.media),
+            "--media-aspect-mobile": 4 / 5,
+          } as CSSProperties}
         >
           <div className={styles.heroArtwork} aria-hidden="true">
             {slide.media.src

@@ -36,6 +36,13 @@ test("ships a machine-readable agent deployment contract", async () => {
   assert.equal(manifest.newDeploymentProvisioning.fixedDatabaseNameReuseAllowed, false);
   assert.equal(manifest.effectiveWorkerName.overrideVariable, "WRANGLER_CI_OVERRIDE_NAME");
   assert.equal(manifest.effectiveWorkerName.useForAllRemoteOperations, true);
+  assert.equal(manifest.responsiveUI.minimumViewportWidth, 320);
+  assert.equal(manifest.responsiveUI.minimumTouchTargetPixels, 44);
+  assert.equal(manifest.responsiveUI.mobileInputFontPixels, 16);
+  assert.equal(manifest.responsiveUI.renderOnlyMobileLayout, true);
+  assert.equal(manifest.responsiveUI.mobileSpecificStoredCoordinates, false);
+  assert.equal(manifest.responsiveUI.mobileSpecificStoredCrop, false);
+  assert.equal(manifest.responsiveUI.mobileSpecificDocumentFields, false);
   assert.ok(manifest.liveTests.length >= 10);
 });
 
@@ -46,7 +53,7 @@ test("keeps package, lockfile and template release versions synchronized", async
     readFile("deployment/template-version.json", "utf8").then(JSON.parse),
   ]);
 
-  assert.equal(packageJson.version, "1.2.1");
+  assert.equal(packageJson.version, "1.3.0");
   assert.equal(packageLock.version, packageJson.version);
   assert.equal(packageLock.packages[""].version, packageJson.version);
   assert.equal(templateVersion.version, packageJson.version);
@@ -140,6 +147,16 @@ test("tags only an explicitly verified release candidate from the protected main
   ]) {
     assert.match(verificationJobs, new RegExp(command.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")));
   }
+
+  for (const browserGate of [
+    "npm run test:e2e",
+    "npm run test:e2e:codec:chrome",
+    "npm run test:e2e:codec:webkit",
+  ]) {
+    assert.match(workflow, new RegExp(browserGate.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")));
+  }
+  assert.match(workflow, /playwright install --with-deps chromium webkit chrome/u);
+  assert.match(workflow, /runs-on: macos-latest/u);
 
   assert.match(tagJob, /needs:\s*\[release-verify, macos-webkit\]/u);
   assert.match(tagJob, /github\.event_name == 'workflow_dispatch'/u);

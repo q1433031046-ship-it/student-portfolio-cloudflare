@@ -89,15 +89,16 @@ export function EndCoverLayoutEditor({
             onPointerMove={movePointer}
             onPointerUp={stopPointer}
             onPointerCancel={stopPointer}
+            onLostPointerCapture={stopPointer}
           >
-            {layer.kind === "identity" && <InlineEditable tag="strong" value={slide.title || "双击填写封底标题"} placeholder={!slide.title} ariaLabel="封底标题" onCommit={(title) => updateText({ title })} />}
-            {layer.kind === "statement" && <InlineEditable value={slide.statement || "双击填写封底说明"} placeholder={!slide.statement} ariaLabel="封底说明" onCommit={(statement) => updateText({ statement })} />}
-            {layer.kind === "facts" && <InlineEditable tag="small" value={slide.details || "双击填写补充信息"} placeholder={!slide.details} ariaLabel="补充信息" onCommit={(details) => updateText({ details })} />}
-            <i className={styles.resizeHandle} aria-hidden="true" onPointerDown={(event) => startPointer(event, layer, "resize")} onPointerMove={movePointer} onPointerUp={stopPointer} onPointerCancel={stopPointer} />
+            {layer.kind === "identity" && <InlineEditable tag="strong" value={slide.title || "轻点填写封底标题"} placeholder={!slide.title} ariaLabel="封底标题" onCommit={(title) => updateText({ title })} />}
+            {layer.kind === "statement" && <InlineEditable value={slide.statement || "轻点填写封底说明"} placeholder={!slide.statement} ariaLabel="封底说明" onCommit={(statement) => updateText({ statement })} />}
+            {layer.kind === "facts" && <InlineEditable tag="small" value={slide.details || "轻点填写补充信息"} placeholder={!slide.details} ariaLabel="补充信息" onCommit={(details) => updateText({ details })} />}
+            <i className={styles.resizeHandle} aria-hidden="true" onPointerDown={(event) => startPointer(event, layer, "resize")} onPointerMove={movePointer} onPointerUp={stopPointer} onPointerCancel={stopPointer} onLostPointerCapture={stopPointer} />
           </div>
         ))}
       </div>
-      <p className={styles.layoutHint}>拖动文字改变位置，拖动右下角改变大小；双击文字可编辑，Enter 换行，Ctrl/⌘ + Enter 完成。</p>
+      <p className={styles.layoutHint}>拖动文字改变位置，拖动右下角改变大小；轻点文字可编辑，Enter 换行，Ctrl/⌘ + Enter 完成。</p>
       <div className={styles.layerControls}>
         {slide.layers.map((layer) => (
           <article key={layer.id} data-selected={selectedId === layer.id}>
@@ -140,10 +141,11 @@ function InlineEditable({ value, placeholder, ariaLabel, onCommit, tag = "span" 
     contentEditable: editing,
     suppressContentEditableWarning: true,
     role: "textbox",
-    "aria-label": `双击修改${ariaLabel}`,
+    "aria-label": `点击修改${ariaLabel}`,
     "data-editing": editing,
     "data-placeholder": placeholder,
     onDoubleClick: (event: React.MouseEvent<HTMLElement>) => { event.preventDefault(); event.stopPropagation(); setEditing(true); },
+    onClick: (event: React.MouseEvent<HTMLElement>) => { if (!editing) { event.preventDefault(); event.stopPropagation(); setEditing(true); } },
     onPointerDown: (event: React.PointerEvent<HTMLElement>) => { if (editing) event.stopPropagation(); },
     onBlur: (event: React.FocusEvent<HTMLElement>) => { setEditing(false); onCommit(placeholder && event.currentTarget.innerText === value ? "" : normalizeEditableText(event.currentTarget.innerText)); },
     onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => { if (editing && shouldFinishMultilineInlineEditing(event.nativeEvent)) { event.preventDefault(); event.currentTarget.blur(); } if (editing) event.stopPropagation(); },

@@ -10,6 +10,7 @@
   background: var(--paper);
   font-family: Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
 }
+.adminClient { min-height: 100svh; }
 
 .adminShell *, .adminShell *::before, .adminShell *::after { box-sizing: border-box; }
 .adminShell button, .adminShell input, .adminShell textarea, .adminShell select { font: inherit; }
@@ -58,6 +59,8 @@
 .saveState[data-dirty="true"] i { background: #ff8a4c; box-shadow: 0 0 0 4px #ff8a4c22; }
 .saveButton { min-height: 46px; border: 0; border-radius: 9px; color: white; background: var(--accent); font-weight: 700; cursor: pointer; }
 .saveButton:disabled { cursor: default; opacity: .4; }
+.mobileActions, .mobileMoreBackdrop, .mobileFinalPreviewButton, .projectMobileSelector { display: none; }
+.cardMobilePreview { display: none; }
 
 .content { width: min(1540px, 100%); padding: 58px clamp(28px, 4vw, 70px) 100px; }
 .viewHeader { min-height: 160px; margin-bottom: 46px; display: flex; align-items: flex-start; justify-content: space-between; gap: 30px; border-bottom: 1px solid var(--line); }
@@ -159,6 +162,9 @@
 .accessPassActions button { min-height: 34px; padding: 0 11px; border: 1px solid var(--line); border-radius: 7px; background: #fff; color: var(--ink); font-size: 10px; cursor: pointer; }
 .accessPassActions button:nth-last-child(1) { color: #a43b35; }
 .accessPassActions button:disabled { cursor: default; opacity: .4; }
+.accessLinkFallback { margin-top: 10px; display: grid; gap: 6px; }
+.accessLinkFallback > span { color: var(--muted); font-size: 9px; }
+.accessLinkFallback[data-visible="false"] { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 
 .formSection { margin-bottom: 54px; }
 .sectionHint { margin: 12px 0 0; color: var(--muted); font-size: 10px; line-height: 1.7; }
@@ -270,6 +276,10 @@
 .mediaPreviewState[data-state="checking"] { border-color: #c9d3f8; background: #f3f6ff; color: #3d4f88; }
 .mediaPreviewState[data-state="error"] { border-color: #e2a6a0; background: #fff2f0; color: #87382f; }
 .mediaPreviewState button { flex: 0 0 auto; min-height: 30px; padding: 0 9px; border: 1px solid currentColor; border-radius: 6px; background: transparent; color: inherit; cursor: pointer; font-size: 9px; }
+.uploadFailure { padding: 11px; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px; border: 1px solid #e2a6a0; border-radius: 8px; background: #fff2f0; color: #87382f; }
+.uploadFailure > div { min-width: 0; display: grid; gap: 3px; }
+.uploadFailure span { overflow-wrap: anywhere; font-size: 10px; line-height: 1.5; }
+.uploadFailure button { min-height: 34px; padding-inline: 10px; border: 1px solid currentColor; border-radius: 6px; background: transparent; color: inherit; cursor: pointer; }
 .positionEditor { display: grid; gap: 7px; }
 .cropToolbar { min-height: 38px; display: flex; align-items: center; gap: 8px; }
 .cropToolbar > span { margin-right: auto; color: var(--muted); font-size: 9px; font-weight: 700; }
@@ -396,6 +406,7 @@
 .auditList > div:last-child { border-bottom: 0; }
 .auditList span, .auditList small { color: var(--muted); }
 .auditList > p { padding: 20px; color: var(--muted); }
+.characterCount { justify-self: end; color: var(--muted); font-size: 9px; font-variant-numeric: tabular-nums; }
 
 .statePanel { min-height: calc(100svh - 76px); padding: 10vh 8vw; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; }
 .statePanel > p { color: var(--accent); font-size: 10px; font-weight: 800; letter-spacing: .18em; }
@@ -424,6 +435,30 @@
 .operationDialog dt { color: #91a7ff; font-size: 10px; }
 .operationDialog dd { margin: 0; color: #d5d7df; font-size: 12px; line-height: 1.7; }
 .operationDialog button { width: 100%; min-height: 48px; margin-top: 26px; border: 0; border-radius: 8px; background: white; color: #11141b; font-weight: 750; cursor: pointer; }
+
+.mobileEditorBackdrop { --ink: #101114; --muted: #6d7077; --line: #d9d9d6; --paper: #f5f4ef; --accent: #3258ff; position: fixed; z-index: 1200; inset: 0; display: grid; align-items: end; background: #080a0fb8; font-family: Arial, "PingFang SC", "Microsoft YaHei", sans-serif; backdrop-filter: blur(12px); }
+.mobileEditorSheet { width: 100%; max-height: var(--admin-visual-height, 100dvh); display: grid; grid-template-rows: auto minmax(0, 1fr); border-radius: 20px 20px 0 0; background: var(--paper); color: var(--ink); box-shadow: 0 -24px 80px #0006; }
+.mobileEditorSheet > header { min-height: 60px; padding: 8px max(12px, env(safe-area-inset-right)) 8px max(12px, env(safe-area-inset-left)); display: grid; grid-template-columns: 72px minmax(0, 1fr) 72px; align-items: center; gap: 8px; border-bottom: 1px solid var(--line); }
+.mobileEditorSheet > header h2 { margin: 0; overflow: hidden; font-size: 15px; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+.mobileEditorSheet > header button { min-height: 44px; border: 0; border-radius: 8px; background: transparent; color: inherit; }
+.mobileEditorSheet > header .mobileEditorConfirm { color: white; background: var(--accent); font-weight: 700; }
+.mobileEditorSheet > header .mobileEditorConfirm:disabled { opacity: .4; }
+.mobileEditorBody { min-height: 0; overflow: auto; padding: 14px max(14px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left)); overscroll-behavior: contain; }
+.mobileCropTools { display: grid; grid-template-columns: 52px minmax(88px, 1fr) 52px; justify-content: center; gap: 8px; }
+.mobileCropTools button { min-height: 46px; border: 1px solid var(--line); border-radius: 9px; background: white; color: var(--ink); font-size: 18px; }
+.mobileCropTools button:nth-child(2) { font-size: 11px; }
+.mobileCropStage { min-height: min(62dvh, 560px); margin-top: 12px; display: grid; place-items: center; overflow: hidden; border-radius: 12px; background: #101217; }
+.mobileCropCanvas { width: 100%; max-height: min(62dvh, 560px); border: 0; border-radius: 0; touch-action: none; }
+.mobileCropHint { margin: 12px 2px 0; color: var(--muted); font-size: 10px; line-height: 1.65; }
+
+.mobilePreviewOverlay { --ink: #101114; --paper: #f5f4ef; --line: #d9d9d6; --accent: #3258ff; position: fixed; z-index: 1250; inset: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); background: #15171c; font-family: Arial, "PingFang SC", "Microsoft YaHei", sans-serif; }
+.mobilePreviewOverlay > header { min-height: calc(58px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) max(12px, env(safe-area-inset-right)) 0 max(14px, env(safe-area-inset-left)); display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid #ffffff24; background: #111319; color: white; }
+.mobilePreviewOverlay > header div { display: grid; gap: 3px; }
+.mobilePreviewOverlay > header span { color: #91a7ff; font-size: 8px; font-weight: 800; letter-spacing: .16em; }
+.mobilePreviewOverlay > header strong { font-size: 14px; }
+.mobilePreviewOverlay > header button { min-width: 60px; min-height: 44px; border: 1px solid #ffffff3d; border-radius: 8px; background: #ffffff0d; color: white; }
+.mobilePreviewViewport { min-height: 0; overflow: auto; overscroll-behavior: contain; background: var(--paper); }
+.mobilePreviewViewport > [data-embedded="true"] { min-height: 100%; }
 
 .adminShell button:focus-visible, .adminShell a:focus-visible, .adminShell input:focus-visible, .adminShell textarea:focus-visible, .adminShell select:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 
@@ -457,19 +492,21 @@
 }
 
 @media (max-width: 720px) {
-  .adminHeader { height: 64px; padding: 0 16px; }
-  .headerPreview { min-width: 150px; height: 44px; }
-  .headerPreview > span { width: 26px; height: 26px; }
-  .systemState { display: none; }
+  .adminShell { min-width: 320px; }
+  .adminClient { min-height: var(--admin-visual-height, 100dvh); padding-top: var(--admin-visual-offset-top, 0); }
+  .adminHeader { height: 54px; padding: 0 max(14px, env(safe-area-inset-right)) 0 max(14px, env(safe-area-inset-left)); }
+  .adminHeader::before { content: "作品集后台"; font-size: 13px; font-weight: 800; letter-spacing: -.02em; }
+  .headerPreview, .adminHeader > div { display: none; }
   .workspace { display: block; }
-  .sidebar { position: static; width: 100%; height: auto; padding: 13px 14px; display: block; border-right: 0; border-bottom: 1px solid var(--line); }
+  .sidebar { position: sticky; z-index: 19; top: calc(54px + var(--admin-visual-offset-top, 0px)); width: 100%; height: auto; padding: 7px max(12px, env(safe-area-inset-right)) 7px max(12px, env(safe-area-inset-left)); display: block; border-right: 0; border-bottom: 1px solid var(--line); background: color-mix(in srgb, #ecebe6 96%, transparent); backdrop-filter: blur(16px); }
   .ownerCard { display: none; }
-  .sidebar nav { margin: 0; display: flex; overflow-x: auto; }
-  .sidebar nav button { min-width: max-content; min-height: 40px; }
-  .saveButton { position: fixed; z-index: 30; right: 14px; bottom: 14px; padding: 0 18px; box-shadow: 0 8px 28px #0004; }
-  .saveState { position: fixed; z-index: 29; left: 14px; bottom: 14px; max-width: calc(100vw - 165px); min-height: 46px; margin: 0; padding: 8px 11px; border: 1px solid var(--line); border-radius: 9px; background: color-mix(in srgb, var(--paper) 96%, transparent); box-shadow: 0 8px 28px #0002; backdrop-filter: blur(14px); }
-  .saveState span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .content { padding: 38px 16px 100px; }
+  .sidebar nav { margin: 0; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; scroll-snap-type: x proximity; overscroll-behavior-inline: contain; }
+  .sidebar nav::-webkit-scrollbar { display: none; }
+  .sidebar nav button { min-width: max-content; min-height: 44px; padding-inline: 13px; scroll-snap-align: center; }
+  .sidebar nav button:disabled { opacity: .58; }
+  .saveButton, .saveState { display: none; }
+  .content { padding: 30px max(14px, env(safe-area-inset-right)) calc(118px + env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left)); }
+  .mobileFinalPreviewButton { min-height: 44px; margin: 0 0 18px auto; padding: 0 14px; display: block; border: 1px solid var(--accent); border-radius: 8px; background: #f1f4ff; color: #2448d8; font-weight: 700; }
   .viewHeader { min-height: 0; margin-bottom: 30px; display: block; }
   .viewHeader h1 { font-size: 40px; }
   .viewHeader > button { margin-bottom: 20px; }
@@ -488,20 +525,29 @@
   .accessFlow > i { display: none; }
   .accessFlow > span { min-height: 58px; }
   .accessCreate { grid-template-columns: 1fr; }
-  .accessPassCard { grid-template-columns: 1fr; }
+  .accessPassCard { grid-template-columns: 1fr; padding: 14px; }
   .accessQr { width: min(220px, 100%); justify-self: center; }
+  .accessPassActions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .accessPassActions button { min-height: 44px; }
+  .accessManualLink { font-size: 16px !important; }
   .listEditor article { grid-template-columns: 25px 28px minmax(110px, 1fr) auto; gap: 7px; }
   .listEditor article:not(.categoryCard) > div button:nth-child(-n+2), .categoryRow > div button:nth-child(-n+2) { display: none; }
   .listEditor .categoryCard { display: block; }
   .categoryRow { grid-template-columns: 25px 28px minmax(110px, 1fr) auto; gap: 7px; }
   .heroSlideCard > header { align-items: flex-start; flex-direction: column; }
+  .cardMobilePreview { display: inline-block; color: #2448d8; border-color: #9fb0f7 !important; background: #f1f4ff !important; }
   .layoutCanvas { aspect-ratio: 4 / 5; }
   .endCoverLayoutCanvas { aspect-ratio: 16 / 9; }
   .endCoverCard > header { align-items: flex-start; flex-direction: column; }
   .layerControls article { grid-template-columns: 1fr 1fr; }
   .coverStyleRow { grid-template-columns: 1fr 1fr; }
   .coverStyleRow > strong { grid-column: 1 / -1; }
-  .projectList { grid-template-columns: 1fr; }
+  .projectList { display: none; }
+  .projectMobileSelector { position: sticky; z-index: 7; top: calc(109px + var(--admin-visual-offset-top, 0px)); margin-bottom: 18px; padding: 8px; display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; align-items: end; gap: 7px; border: 1px solid var(--line); border-radius: 10px; background: color-mix(in srgb, white 96%, transparent); box-shadow: 0 8px 22px #10111412; backdrop-filter: blur(14px); }
+  .projectMobileSelector label { min-width: 0; display: grid; gap: 4px; }
+  .projectMobileSelector label > span { color: var(--muted); font-size: 9px; }
+  .projectMobileSelector select { min-height: 44px; padding-block: 8px; }
+  .projectMobileSelector button { min-width: 44px; min-height: 44px; border: 1px solid var(--line); border-radius: 8px; background: white; }
   .blockHeader { display: block; }
   .galleryEditor { grid-template-columns: 1fr; }
   .contactAdminPreview { min-height: 0; grid-template-columns: 1fr; }
@@ -509,6 +555,55 @@
   .publishActions { align-items: stretch; flex-direction: column; }
   .auditList > div { grid-template-columns: 100px 1fr; }
   .auditList small { grid-column: 1 / -1; padding-bottom: 10px; }
+  .tableWrap { overflow: visible; border: 0; background: transparent; }
+  .tableWrap table, .tableWrap tbody { width: 100%; min-width: 0; display: grid; gap: 10px; }
+  .tableWrap thead { display: none; }
+  .tableWrap tr { padding: 10px 13px; display: grid; gap: 0; border: 1px solid var(--line); border-radius: 10px; background: white; }
+  .tableWrap td { max-width: none; min-height: 38px; padding: 8px 0; display: grid; grid-template-columns: 92px minmax(0, 1fr); align-items: start; gap: 10px; overflow: visible; border-top: 1px solid #ecece8; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; }
+  .tableWrap td:first-child { border-top: 0; }
+  .tableWrap td::before { content: attr(data-label); color: var(--muted); font-size: 9px; font-weight: 700; letter-spacing: .05em; }
+  .tableWrap td[colspan] { display: block; }
+  .tableWrap td[colspan]::before { content: none; }
+  .adminShell input:not([type="color"]), .adminShell textarea, .adminShell select { font-size: 16px; }
+  .viewHeader > button, .blockHeader button, .projectTools button, .listEditor button, .editorSectionHeader > button, .heroSlideCard > header button, .galleryItem > div:last-child button { min-height: 44px; }
+  .mobileActions { position: fixed; z-index: 80; left: max(8px, env(safe-area-inset-left)); right: max(8px, env(safe-area-inset-right)); bottom: calc(8px + env(safe-area-inset-bottom) + var(--admin-keyboard-inset, 0px)); min-height: 58px; padding: 7px; display: grid; grid-template-columns: minmax(0, 1fr) 72px 64px; align-items: stretch; gap: 7px; border: 1px solid #d2d2ce; border-radius: 13px; background: color-mix(in srgb, white 96%, transparent); box-shadow: 0 12px 38px #1011142e; backdrop-filter: blur(18px); transition: bottom 160ms ease; }
+  .mobileSaveState { min-width: 0; padding: 0 8px; display: flex; align-items: center; gap: 8px; color: var(--muted); }
+  .mobileSaveState i { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; background: #8a8c92; }
+  .mobileSaveState[data-dirty="true"] i { background: #ff8a4c; box-shadow: 0 0 0 4px #ff8a4c22; }
+  .mobileSaveState span { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+  .mobileActions > button { min-height: 44px; border: 0; border-radius: 8px; font-weight: 750; }
+  .mobileSaveButton { background: var(--accent); color: white; }
+  .mobileSaveButton:disabled { opacity: .4; }
+  .mobileMoreButton { background: #e9e9e5; color: var(--ink); }
+  .mobileMoreBackdrop { position: fixed; z-index: 79; inset: 0; display: grid; align-items: end; visibility: hidden; pointer-events: none; background: transparent; transition: background 180ms ease, visibility 180ms ease; }
+  .mobileMoreBackdrop[data-open="true"] { visibility: visible; pointer-events: auto; background: #0b0d1273; }
+  .mobileMoreSheet { width: 100%; max-height: min(78dvh, calc(var(--admin-visual-height, 100dvh) - 72px)); padding: 12px max(14px, env(safe-area-inset-right)) calc(86px + env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left)); overflow: auto; border-radius: 20px 20px 0 0; background: var(--paper); box-shadow: 0 -22px 70px #0005; transform: translateY(105%); transition: transform 180ms ease; }
+  .mobileMoreBackdrop[data-open="true"] .mobileMoreSheet { transform: translateY(0); }
+  .mobileMoreSheet > header { min-height: 52px; display: flex; align-items: center; justify-content: space-between; }
+  .mobileMoreSheet > header button { width: 44px; height: 44px; border: 0; border-radius: 50%; background: #e6e6e2; font-size: 22px; }
+  .mobileMorePrimaryActions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .mobileMorePrimaryActions button, .mobileMorePrimaryActions a, .mobileLogout { min-height: 48px; padding: 0 12px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 9px; background: white; color: inherit; font: inherit; font-size: 11px; text-decoration: none; }
+  .mobileMorePrimaryActions a { grid-column: 1 / -1; }
+  [data-admin-mobile-more-actions] [data-admin-tools] { position: static !important; inset: auto !important; margin-top: 8px; padding: 0 !important; display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px !important; border: 0 !important; border-radius: 0 !important; background: transparent !important; box-shadow: none !important; backdrop-filter: none !important; }
+  [data-admin-mobile-more-actions] [data-admin-tools] button { min-height: 48px !important; border-radius: 9px !important; font-size: 11px !important; }
+  [data-admin-mobile-more-actions] [data-admin-tools] button::after { content: none !important; }
+  .mobileUploadFailures { margin-top: 12px; padding-top: 12px; display: grid; gap: 8px; border-top: 1px solid var(--line); }
+  .mobileUploadFailures > strong { font-size: 11px; }
+  .mobileUploadFailures > div { padding: 10px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px; border: 1px solid #e2a6a0; border-radius: 8px; background: #fff2f0; }
+  .mobileUploadFailures span, .mobileUploadFailures small { overflow-wrap: anywhere; }
+  .mobileUploadFailures small { color: #87382f; font-size: 9px; }
+  .mobileUploadFailures button { grid-column: 2; grid-row: 1 / 3; min-width: 52px; border: 1px solid currentColor; border-radius: 7px; background: transparent; color: #87382f; }
+  .mobileLogout { width: 100%; margin-top: 8px; color: #9a2f28; }
+}
+
+@media (max-width: 420px) {
+  .content { padding-inline: max(12px, env(safe-area-inset-left)); }
+  .viewHeader h1 { font-size: 36px; }
+  .mobileActions { grid-template-columns: minmax(0, 1fr) 68px 60px; }
+  .mobileSaveState { padding-inline: 5px; }
+  .mobileMoreSheet { padding-inline: 12px; }
+  .uploadFailure { grid-template-columns: 1fr 1fr; }
+  .uploadFailure > div { grid-column: 1 / -1; }
 }
 
 @media (prefers-reduced-motion: reduce) {
