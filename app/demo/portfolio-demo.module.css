@@ -785,7 +785,9 @@
   line-height: 1.12;
   letter-spacing: -0.045em;
   text-wrap: pretty;
+  white-space: pre-wrap;
 }
+.projectSynopsis { max-width: 780px; margin: 28px 0 0; color: var(--muted); font-size: clamp(14px, 1.35vw, 19px); line-height: 1.8; white-space: pre-wrap; }
 
 .projectIntro dl { margin: 0; }
 .projectIntro dl div {
@@ -803,6 +805,7 @@
   color: var(--muted);
   font-size: 12px;
   line-height: 1.8;
+  white-space: pre-wrap;
 }
 
 .mediaTextBlock {

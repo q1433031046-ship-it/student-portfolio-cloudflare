@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
 import type { HeroConfig, HeroLayer, HeroSlide } from "../portfolio/model";
+import { heroLayerStyle } from "../portfolio/hero-layer-style";
 import { clampHeroLayer, keyboardMoveDelta, moveHeroLayer, resizeHeroLayer } from "../portfolio/hero-layout";
 import { croppedImageStyle, mediaCropAspect } from "../portfolio/media-crop";
 import { shouldFinishInlineEditing } from "./inline-editing";
@@ -87,16 +88,7 @@ export function HeroLayoutEditor({
             key={layer.id}
             className={styles.layoutLayer}
             data-selected={selectedId === layer.id}
-            style={{
-              left: `${layer.x}%`,
-              top: `${layer.y}%`,
-              width: `${layer.width}%`,
-              zIndex: layer.zIndex,
-              textAlign: layer.align,
-              fontSize: `${layer.scale}em`,
-              color: layer.color === "system" ? undefined : layer.color,
-              fontFamily: layer.fontFamily === "custom" ? "PortfolioCustom, sans-serif" : undefined,
-            }}
+            style={heroLayerStyle(layer)}
             role="button"
             tabIndex={0}
             aria-label={`移动${labels[layer.kind]}`}

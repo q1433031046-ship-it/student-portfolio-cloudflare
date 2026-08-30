@@ -11,6 +11,7 @@ const COOKIE_NAME = "__Host-portfolio_admin_session";
 const SESSION_SECONDS = 12 * 60 * 60;
 const MAX_FAILURES = 5;
 const LOCK_SECONDS = 15 * 60;
+const LOGIN_NETWORK_BUCKET_COUNT = 4_096;
 const AUTH_VERSION = 2;
 // Keep password verification within the Workers Free CPU envelope while still
 // making the stored verifier substantially more expensive than a plain digest.
@@ -23,6 +24,9 @@ type CredentialRow = {
   recovery_salt: string;
   auth_version: number;
   confirmed_program_version: string | null;
+};
+
+type LoginThrottleRow = {
   failed_attempts: number;
   locked_until: string | null;
 };
@@ -58,6 +62,7 @@ export function programResetRequired(confirmedProgramVersion: string | null, cur
 
 export async function getLocalCredentialState(): Promise<LocalCredentialState> {
   await ensureAuthStateTable();
+  await ensureAdminLoginThrottleTable();
   const row = await getPortfolioDb()
     .prepare(`SELECT
       CASE WHEN state.auth_version IS NOT NULL THEN state.auth_version
@@ -128,6 +133,9 @@ export async function createLocalAdministrator(input: {
         .bind(OWNER_ID, OWNER_HANDLE, draft, now),
       db.prepare("INSERT INTO admin_sessions (token_hash, created_at, expires_at, user_agent_hash) VALUES (?, ?, ?, ?)")
         .bind(session.tokenHash, session.createdAt, session.expiresAt, session.userAgentHash),
+      db.prepare(`DELETE FROM admin_login_throttle WHERE EXISTS (
+        SELECT 1 FROM admin_credentials WHERE id = ? AND password_hash = ? AND password_salt = ?
+      )`).bind(CREDENTIAL_ID, passwordHash, passwordSalt),
     ]);
   } catch (error) {
     if (isConstraintError(error)) throw new AuthError("管理员已经初始化，请直接登录", 409);
@@ -137,26 +145,44 @@ export async function createLocalAdministrator(input: {
 }
 
 export async function loginWithPassword(password: string, request: Request) {
+  await ensureAdminLoginThrottleTable();
   const row = await readCredentials();
   if (!row) throw new AuthError("网站尚未完成管理员初始化", 428);
   if (programResetRequired(row.confirmed_program_version)) {
     throw new AuthError("网站已经升级，请使用当前最新的系统恢复码确认升级并重设一次密码", 428);
   }
-  enforceLock(row);
+  const bucketKey = await loginNetworkBucketKey(request, row.password_hash);
+  enforceLoginThrottle(await readLoginThrottle(bucketKey));
   const normalizedPassword = row.auth_version >= AUTH_VERSION ? normalizePassword(password) : password;
   const valid = row.auth_version >= AUTH_VERSION
     ? await verifyCredentialV2("password", normalizedPassword, row.password_salt, row.password_hash)
     : await verifyLegacyCredential("password", normalizedPassword, row.password_salt, row.password_hash);
   if (!valid) {
-    await recordLoginFailure(row.failed_attempts);
+    const throttle = await recordPasswordFailure(bucketKey, row.password_hash, row.password_salt);
+    enforceLoginThrottle(throttle);
     throw new AuthError("管理员密码不正确", 401);
   }
-  await clearLoginFailures();
   const session = await createSessionRecord(request);
-  await getPortfolioDb()
-    .prepare("INSERT INTO admin_sessions (token_hash, created_at, expires_at, user_agent_hash) VALUES (?, ?, ?, ?)")
-    .bind(session.tokenHash, session.createdAt, session.expiresAt, session.userAgentHash)
-    .run();
+  const now = new Date().toISOString();
+  const db = getPortfolioDb();
+  const results = await db.batch([
+    db.prepare(`UPDATE admin_credentials SET failed_attempts = 0, locked_until = NULL, updated_at = ?
+      WHERE id = ? AND password_hash = ? AND password_salt = ?`)
+      .bind(now, CREDENTIAL_ID, row.password_hash, row.password_salt),
+    db.prepare(`INSERT INTO admin_sessions (token_hash, created_at, expires_at, user_agent_hash)
+      SELECT ?, ?, ?, ? FROM admin_credentials
+      WHERE id = ? AND password_hash = ? AND password_salt = ?`)
+      .bind(
+        session.tokenHash, session.createdAt, session.expiresAt, session.userAgentHash,
+        CREDENTIAL_ID, row.password_hash, row.password_salt,
+      ),
+    db.prepare(`DELETE FROM admin_login_throttle WHERE bucket_key = ? AND EXISTS (
+      SELECT 1 FROM admin_credentials WHERE id = ? AND password_hash = ? AND password_salt = ?
+    )`).bind(bucketKey, CREDENTIAL_ID, row.password_hash, row.password_salt),
+  ]);
+  if (Number(results[0]?.meta.changes ?? 0) !== 1) {
+    throw new AuthError("管理员密码不正确", 401);
+  }
   return sessionCookie(session.token);
 }
 
@@ -165,19 +191,18 @@ export async function resetPasswordWithRecovery(input: {
   password: string;
   request: Request;
 }) {
+  await ensureAdminLoginThrottleTable();
   const password = normalizePassword(input.password);
   const row = await readCredentials();
   if (!row) throw new AuthError("网站尚未完成管理员初始化", 428);
-  enforceLock(row);
   const recoveryValue = normalizeRecoveryCode(input.recoveryCode);
   const valid = row.auth_version >= AUTH_VERSION
     ? await verifyCredentialV2("recovery", recoveryValue, row.recovery_salt, row.recovery_hash)
     : await verifyLegacyCredential("recovery", recoveryValue, row.recovery_salt, row.recovery_hash);
   if (!valid) {
-    await recordLoginFailure(row.failed_attempts);
     throw new AuthError("系统恢复码不正确", 401);
   }
-  if (await constantTimeEqual(password, getInitialAdminCode())) {
+  if (row.auth_version < AUTH_VERSION && await constantTimeEqual(password, getInitialAdminCode())) {
     throw new AuthError("新密码不能与一次性部署口令相同", 400);
   }
 
@@ -191,22 +216,40 @@ export async function resetPasswordWithRecovery(input: {
   ]);
   const now = new Date().toISOString();
   const db = getPortfolioDb();
-  await db.batch([
+  const results = await db.batch([
     db.prepare(`UPDATE admin_credentials SET
       password_hash = ?, password_salt = ?, recovery_hash = ?, recovery_salt = ?,
       failed_attempts = 0, locked_until = NULL, password_changed_at = ?,
-      recovery_code_created_at = ?, updated_at = ? WHERE id = ?`)
-      .bind(passwordHash, passwordSalt, recoveryHash, recoverySalt, now, now, now, CREDENTIAL_ID),
+      recovery_code_created_at = ?, updated_at = ?
+      WHERE id = ? AND recovery_hash = ? AND recovery_salt = ?`)
+      .bind(
+        passwordHash, passwordSalt, recoveryHash, recoverySalt, now, now, now,
+        CREDENTIAL_ID, row.recovery_hash, row.recovery_salt,
+      ),
     db.prepare(`INSERT INTO admin_auth_state (id, auth_version, confirmed_program_version, updated_at)
-      VALUES (?, ?, ?, ?)
+      SELECT ?, ?, ?, ? FROM admin_credentials
+      WHERE id = ? AND password_hash = ? AND password_salt = ?
       ON CONFLICT(id) DO UPDATE SET auth_version = excluded.auth_version,
         confirmed_program_version = excluded.confirmed_program_version,
         updated_at = excluded.updated_at`)
-      .bind(CREDENTIAL_ID, AUTH_VERSION, PROGRAM_VERSION, now),
-    db.prepare("DELETE FROM admin_sessions"),
-    db.prepare("INSERT INTO admin_sessions (token_hash, created_at, expires_at, user_agent_hash) VALUES (?, ?, ?, ?)")
-      .bind(session.tokenHash, session.createdAt, session.expiresAt, session.userAgentHash),
+      .bind(CREDENTIAL_ID, AUTH_VERSION, PROGRAM_VERSION, now, CREDENTIAL_ID, passwordHash, passwordSalt),
+    db.prepare(`DELETE FROM admin_sessions WHERE EXISTS (
+      SELECT 1 FROM admin_credentials WHERE id = ? AND password_hash = ? AND password_salt = ?
+    )`).bind(CREDENTIAL_ID, passwordHash, passwordSalt),
+    db.prepare(`INSERT INTO admin_sessions (token_hash, created_at, expires_at, user_agent_hash)
+      SELECT ?, ?, ?, ? FROM admin_credentials
+      WHERE id = ? AND password_hash = ? AND password_salt = ?`)
+      .bind(
+        session.tokenHash, session.createdAt, session.expiresAt, session.userAgentHash,
+        CREDENTIAL_ID, passwordHash, passwordSalt,
+      ),
+    db.prepare(`DELETE FROM admin_login_throttle WHERE EXISTS (
+      SELECT 1 FROM admin_credentials WHERE id = ? AND password_hash = ? AND password_salt = ?
+    )`).bind(CREDENTIAL_ID, passwordHash, passwordSalt),
   ]);
+  if (Number(results[0]?.meta.changes ?? 0) !== 1) {
+    throw new AuthError("系统恢复码不正确", 401);
+  }
   return { recoveryCode, sessionCookie: sessionCookie(session.token) };
 }
 
@@ -239,8 +282,11 @@ export async function logoutLocalAdmin(request: Request) {
   const token = readCookie(request.headers.get("cookie"), COOKIE_NAME);
   if (token) {
     const hashes = [await sessionHashV2(token)];
-    try { hashes.push(await legacyProtectedHash("session", token, "v1")); }
-    catch { /* The legacy deployment secret may no longer be available. */ }
+    const credentials = await readCredentials();
+    if (credentials && credentials.auth_version < AUTH_VERSION) {
+      try { hashes.push(await legacyProtectedHash("session", token, "v1")); }
+      catch { /* The legacy deployment secret may no longer be available. */ }
+    }
     for (const tokenHash of hashes) {
       await getPortfolioDb().prepare("DELETE FROM admin_sessions WHERE token_hash = ?").bind(tokenHash).run();
     }
@@ -311,7 +357,7 @@ async function readCredentials() {
       credentials.recovery_hash, credentials.recovery_salt,
       CASE WHEN state.auth_version IS NOT NULL THEN state.auth_version
         WHEN credentials.password_hash LIKE 'p2.%' THEN 2 ELSE 1 END AS auth_version,
-      state.confirmed_program_version, credentials.failed_attempts, credentials.locked_until
+      state.confirmed_program_version
       FROM admin_credentials credentials
       LEFT JOIN admin_auth_state state ON state.id = credentials.id
       WHERE credentials.id = ? LIMIT 1`)
@@ -329,28 +375,76 @@ async function ensureAuthStateTable() {
   )`).run();
 }
 
-function enforceLock(row: CredentialRow) {
-  if (!row.locked_until) return;
+async function ensureAdminLoginThrottleTable() {
+  const db = getPortfolioDb();
+  await db.prepare(`CREATE TABLE IF NOT EXISTS admin_login_throttle (
+    bucket_key text PRIMARY KEY NOT NULL,
+    failed_attempts integer DEFAULT 0 NOT NULL,
+    locked_until text,
+    updated_at text DEFAULT CURRENT_TIMESTAMP NOT NULL
+  )`).run();
+  await db.prepare(`CREATE INDEX IF NOT EXISTS admin_login_throttle_locked_until_idx
+    ON admin_login_throttle (locked_until)`).run();
+}
+
+function enforceLoginThrottle(row: LoginThrottleRow | null) {
+  if (!row?.locked_until) return;
   const remaining = Math.ceil((Date.parse(row.locked_until) - Date.now()) / 1000);
   if (remaining > 0) throw new AuthError(`尝试次数过多，请${Math.ceil(remaining / 60)}分钟后再试`, 429);
 }
 
-async function recordLoginFailure(previousFailures: number) {
-  const failures = previousFailures + 1;
-  const lockedUntil = failures >= MAX_FAILURES
-    ? new Date(Date.now() + LOCK_SECONDS * 1000).toISOString()
-    : null;
-  await getPortfolioDb()
-    .prepare("UPDATE admin_credentials SET failed_attempts = ?, locked_until = ?, updated_at = ? WHERE id = ?")
-    .bind(failures >= MAX_FAILURES ? 0 : failures, lockedUntil, new Date().toISOString(), CREDENTIAL_ID)
-    .run();
+async function readLoginThrottle(bucketKey: string) {
+  return getPortfolioDb()
+    .prepare("SELECT failed_attempts, locked_until FROM admin_login_throttle WHERE bucket_key = ? LIMIT 1")
+    .bind(bucketKey)
+    .first<LoginThrottleRow>();
 }
 
-async function clearLoginFailures() {
-  await getPortfolioDb()
-    .prepare("UPDATE admin_credentials SET failed_attempts = 0, locked_until = NULL, updated_at = ? WHERE id = ?")
-    .bind(new Date().toISOString(), CREDENTIAL_ID)
+async function recordPasswordFailure(bucketKey: string, expectedHash: string, expectedSalt: string) {
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const lockedUntil = new Date(now.getTime() + LOCK_SECONDS * 1000).toISOString();
+  const result = await getPortfolioDb()
+    .prepare(`INSERT INTO admin_login_throttle (bucket_key, failed_attempts, locked_until, updated_at)
+      SELECT ?, 1, NULL, ? FROM admin_credentials
+      WHERE id = ? AND password_hash = ? AND password_salt = ?
+      ON CONFLICT(bucket_key) DO UPDATE SET
+      failed_attempts = CASE
+        WHEN admin_login_throttle.locked_until IS NOT NULL
+          AND admin_login_throttle.locked_until > excluded.updated_at
+          THEN admin_login_throttle.failed_attempts
+        WHEN admin_login_throttle.failed_attempts + 1 >= ? THEN 0
+        ELSE admin_login_throttle.failed_attempts + 1
+      END,
+      locked_until = CASE
+        WHEN admin_login_throttle.locked_until IS NOT NULL
+          AND admin_login_throttle.locked_until > excluded.updated_at
+          THEN admin_login_throttle.locked_until
+        WHEN admin_login_throttle.failed_attempts + 1 >= ? THEN ?
+        ELSE NULL
+      END,
+      updated_at = excluded.updated_at
+      WHERE EXISTS (
+        SELECT 1 FROM admin_credentials
+        WHERE id = ? AND password_hash = ? AND password_salt = ?
+      )`)
+    .bind(
+      bucketKey, nowIso, CREDENTIAL_ID, expectedHash, expectedSalt,
+      MAX_FAILURES, MAX_FAILURES, lockedUntil,
+      CREDENTIAL_ID, expectedHash, expectedSalt,
+    )
     .run();
+  if (Number(result.meta.changes ?? 0) !== 1) return null;
+  return readLoginThrottle(bucketKey);
+}
+
+async function loginNetworkBucketKey(request: Request, passwordHash: string) {
+  const suppliedNetwork = request.headers.get("cf-connecting-ip")?.trim().toLowerCase() ?? "";
+  const network = suppliedNetwork ? suppliedNetwork.slice(0, 128) : "unknown";
+  const material = new TextEncoder().encode(`admin-login-throttle\nv1\n${passwordHash}\n${network}`);
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", material));
+  const bucket = (((digest[0] ?? 0) << 8) | (digest[1] ?? 0)) & (LOGIN_NETWORK_BUCKET_COUNT - 1);
+  return `b1-${bucket.toString(16).padStart(3, "0")}`;
 }
 
 async function credentialHashV2(purpose: "password" | "recovery", value: string, salt: string) {

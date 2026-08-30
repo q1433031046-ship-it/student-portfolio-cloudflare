@@ -1,4 +1,5 @@
 import { getPortfolioDb } from "../../_lib/portfolio-store";
+import { getLegacyMediaMigrationSummary } from "../../_lib/legacy-media";
 import { requirePortfolioManager } from "../../_lib/site-ownership";
 import { MEDIA_STORAGE_LIMIT, MEDIA_STORAGE_WARNING, VIDEO_UPLOAD_LIMIT } from "../../_lib/storage";
 
@@ -16,6 +17,7 @@ export async function GET(request: Request) {
       .first<{ used_bytes: number; file_count: number; video_count: number; other_count: number }>();
     const usedBytes = Math.max(0, Number(row?.used_bytes ?? 0));
     const remainingBytes = Math.max(0, MEDIA_STORAGE_LIMIT - usedBytes);
+    const legacyMigration = await getLegacyMediaMigrationSummary();
     return Response.json({
       usedBytes,
       limitBytes: MEDIA_STORAGE_LIMIT,
@@ -26,6 +28,7 @@ export async function GET(request: Request) {
       videoCount: Number(row?.video_count ?? 0),
       otherCount: Number(row?.other_count ?? 0),
       fullSizeVideosRemaining: Math.floor(remainingBytes / VIDEO_UPLOAD_LIMIT),
+      legacyMigration,
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     console.error(JSON.stringify({ message: "storage summary failed", error: errorMessage(error) }));

@@ -3,9 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
 import type { EndCoverSlide, HeroLayer } from "../portfolio/model";
+import { heroLayerStyle } from "../portfolio/hero-layer-style";
 import { clampHeroLayer, keyboardMoveDelta, moveHeroLayer, resizeHeroLayer } from "../portfolio/hero-layout";
 import { croppedImageStyle } from "../portfolio/media-crop";
-import { shouldFinishInlineEditing } from "./inline-editing";
+import { shouldFinishMultilineInlineEditing } from "./inline-editing";
 import styles from "./admin.module.css";
 
 const labels: Record<HeroLayer["kind"], string> = {
@@ -79,12 +80,7 @@ export function EndCoverLayoutEditor({
             className={styles.layoutLayer}
             data-selected={selectedId === layer.id}
             data-kind={layer.kind}
-            style={{
-              left: `${layer.x}%`, top: `${layer.y}%`, width: `${layer.width}%`, zIndex: layer.zIndex,
-              textAlign: layer.align, fontSize: `${layer.scale}em`,
-              color: layer.color === "system" ? undefined : layer.color,
-              fontFamily: layer.fontFamily === "custom" ? "PortfolioCustom, sans-serif" : undefined,
-            }}
+            style={heroLayerStyle(layer)}
             role="button"
             tabIndex={0}
             aria-label={`移动${labels[layer.kind]}`}
@@ -150,7 +146,7 @@ function InlineEditable({ value, placeholder, ariaLabel, onCommit, tag = "span" 
     onDoubleClick: (event: React.MouseEvent<HTMLElement>) => { event.preventDefault(); event.stopPropagation(); setEditing(true); },
     onPointerDown: (event: React.PointerEvent<HTMLElement>) => { if (editing) event.stopPropagation(); },
     onBlur: (event: React.FocusEvent<HTMLElement>) => { setEditing(false); onCommit(placeholder && event.currentTarget.innerText === value ? "" : normalizeEditableText(event.currentTarget.innerText)); },
-    onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => { if (editing && shouldFinishInlineEditing(event.nativeEvent)) { event.preventDefault(); event.currentTarget.blur(); } if (editing) event.stopPropagation(); },
+    onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => { if (editing && shouldFinishMultilineInlineEditing(event.nativeEvent)) { event.preventDefault(); event.currentTarget.blur(); } if (editing) event.stopPropagation(); },
     children: value,
   };
   if (tag === "strong") return <strong {...props} />;

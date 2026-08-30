@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { PROGRAM_VERSION, getUpgradePrompt } from "./admin-upgrade-content";
+import { parseValidationLocation, validationViewForReason } from "./validation-location";
 
 const fieldLabels: Array<[RegExp, string]> = [
   [/hero\.name/u, "姓名"],
@@ -10,9 +10,16 @@ const fieldLabels: Array<[RegExp, string]> = [
   [/hero\.email/u, "联系邮箱"],
   [/hero\.phone/u, "电话号码"],
   [/hero\.statement/u, "个人定位"],
+  [/hero\.availability/u, "状态短句"],
   [/settings\.siteTitle/u, "浏览器标签与站点名称"],
+  [/settings\.videoWatermarkText/u, "视频水印文字"],
+  [/settings\.workHeading\.lead/u, "第一行"],
+  [/settings\.workHeading\.accent/u, "第二行（主题弱化色）"],
+  [/settings\.contact\.eyebrow/u, "眉题"],
   [/(?:settings\.contact\.title|联系方式主标题)/u, "主标题"],
   [/settings\.contact\.note/u, "说明"],
+  [/projects\[\d+\]\.title/u, "作品名称"],
+  [/categories\[\d+\]\.label/u, "分类名称"],
   [/detailBlocks\[\d+\]\.eyebrow/u, "眉题"],
   [/detailBlocks\[\d+\]\.title/u, "标题"],
   [/detailBlocks\[\d+\]\.body/u, "正文"],
@@ -51,8 +58,6 @@ export function AdminInteractionEnhancements() {
     };
 
     const enhance = () => {
-      ensureUpgradeCenter();
-
       document.querySelectorAll("select").forEach((node) => {
         if (!(node instanceof Element)) return;
         const select = node as unknown as SelectLike;
@@ -60,10 +65,10 @@ export function AdminInteractionEnhancements() {
         if (field && fieldText(field).includes("显示模式")) applyHeroMode(select, false);
       });
 
-      const dialog = Array.from(document.querySelectorAll("[role='dialog']"))
-        .find((node) => node.textContent?.includes("OPERATION FAILED"));
+      const dialog = document.querySelector("[data-operation-error]");
       if (!dialog || getData(dialog, "autoLocated") === "true") return;
       setData(dialog, "autoLocated", "true");
+      if (getData(dialog, "operationLocatable") !== "true") return;
       const reason = dialog.textContent ?? "";
       const uploadFailure = /上传|文件|MP4|JPG|PNG|WebP|AVIF|WOFF|TTF|OTF|50 MB|8 MiB|10 MiB/u.test(reason);
       if (uploadFailure && lastUploadGroup?.isConnected) {
@@ -71,7 +76,10 @@ export function AdminInteractionEnhancements() {
         revealTarget(lastUploadGroup);
         return;
       }
-      const target = locateValidationProblem(reason);
+      const target = locateValidationProblem(reason, (located) => {
+        lastProblemTarget = located;
+        revealTarget(located);
+      });
       if (target) {
         lastProblemTarget = target;
         revealTarget(target);
@@ -117,157 +125,7 @@ export function AdminInteractionEnhancements() {
       outline-offset: 5px;
       border-radius: 8px;
     }
-    [data-program-upgrade-center] {
-      margin-top: 22px;
-      padding: 26px;
-      border: 1px solid rgba(255,255,255,.12);
-      border-radius: 18px;
-      background: linear-gradient(135deg, rgba(255,255,255,.055), rgba(255,255,255,.018));
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
-    }
-    [data-program-upgrade-center] .upgrade-head {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 24px;
-      margin-bottom: 22px;
-    }
-    [data-program-upgrade-center] .upgrade-kicker {
-      margin: 0 0 7px;
-      color: #8891a5;
-      font: 600 11px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
-      letter-spacing: .14em;
-    }
-    [data-program-upgrade-center] h2 {
-      margin: 0;
-      font-size: clamp(22px, 2vw, 32px);
-      line-height: 1.08;
-      letter-spacing: -.03em;
-    }
-    [data-program-upgrade-center] .upgrade-version {
-      display: grid;
-      gap: 4px;
-      min-width: 132px;
-      text-align: right;
-    }
-    [data-program-upgrade-center] .upgrade-version span {
-      color: #8a93a6;
-      font-size: 12px;
-    }
-    [data-program-upgrade-center] .upgrade-version strong {
-      font-size: 24px;
-      letter-spacing: -.03em;
-    }
-    [data-program-upgrade-center] .upgrade-grid {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 10px;
-      margin-bottom: 18px;
-    }
-    [data-program-upgrade-center] .upgrade-grid > div {
-      padding: 14px 16px;
-      border: 1px solid rgba(255,255,255,.08);
-      border-radius: 12px;
-      background: rgba(0,0,0,.16);
-    }
-    [data-program-upgrade-center] .upgrade-grid strong,
-    [data-program-upgrade-center] .upgrade-grid small { display: block; }
-    [data-program-upgrade-center] .upgrade-grid strong { margin-bottom: 4px; font-size: 14px; }
-    [data-program-upgrade-center] .upgrade-grid small { color: #929aad; line-height: 1.45; }
-    [data-program-upgrade-center] .upgrade-note {
-      margin: 0 0 18px;
-      color: #b7bdca;
-      line-height: 1.7;
-    }
-    [data-program-upgrade-center] .upgrade-actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      align-items: center;
-    }
-    [data-program-upgrade-center] button,
-    [data-program-upgrade-center] summary {
-      border: 1px solid rgba(255,255,255,.14);
-      border-radius: 10px;
-      background: rgba(255,255,255,.055);
-      color: inherit;
-      padding: 10px 14px;
-      font: inherit;
-      cursor: pointer;
-    }
-    [data-program-upgrade-center] button:hover,
-    [data-program-upgrade-center] summary:hover { background: rgba(255,255,255,.09); }
-    [data-program-upgrade-center] details { width: 100%; }
-    [data-program-upgrade-center] details[open] summary { margin-bottom: 12px; }
-    [data-program-upgrade-center] .upgrade-detail {
-      padding: 14px 16px;
-      border-radius: 12px;
-      background: rgba(0,0,0,.18);
-      color: #aab1c0;
-      line-height: 1.65;
-    }
-    [data-program-upgrade-center] .upgrade-detail p { margin: 0 0 10px; }
-    [data-program-upgrade-center] .upgrade-detail p:last-child { margin-bottom: 0; }
-    @media (max-width: 760px) {
-      [data-program-upgrade-center] { padding: 20px; }
-      [data-program-upgrade-center] .upgrade-head { display: grid; }
-      [data-program-upgrade-center] .upgrade-version { text-align: left; }
-      [data-program-upgrade-center] .upgrade-grid { grid-template-columns: 1fr; }
-    }
   `}</style>;
-}
-
-function ensureUpgradeCenter() {
-  if (document.querySelector("[data-program-upgrade-center]")) return;
-  const storagePanel = Array.from(document.querySelectorAll("section"))
-    .find((section) => section.textContent?.includes("WEBSITE STORAGE") && section.textContent?.includes("网站空间"));
-  const host = storagePanel?.parentElement;
-  if (!host) return;
-
-  const panel = document.createElement("section");
-  panel.setAttribute("data-program-upgrade-center", "true");
-  panel.innerHTML = `
-    <div class="upgrade-head">
-      <div>
-        <p class="upgrade-kicker">PROGRAM / UPGRADE</p>
-        <h2>程序升级中心</h2>
-      </div>
-      <div class="upgrade-version"><span>当前程序版本</span><strong>v${PROGRAM_VERSION}</strong></div>
-    </div>
-    <div class="upgrade-grid">
-      <div><strong>先保存最新恢复码</strong><small>正式升级后要在 /admin 确认一次，并保存系统生成的新码。</small></div>
-      <div><strong>D1 / KV 保留</strong><small>升级不得替换数据库、媒体空间和已有资源 ID。</small></div>
-      <div><strong>内容与账号保留</strong><small>管理员、草稿、发布内容、图片、视频和二维码全部保留。</small></div>
-    </div>
-    <p class="upgrade-note">先确认当前最新系统恢复码已离线保存（不要把内容发给 GPT），再把“升级指令”交给 GPT/Codex。升级流程必须确认当前 Worker、DB 和 MEDIA_KV，只更新程序代码与增量迁移。</p>
-    <div class="upgrade-actions">
-      <button type="button" data-upgrade-copy>复制给 GPT 的升级指令</button>
-      <details>
-        <summary>查看升级说明</summary>
-        <div class="upgrade-detail">
-          <p><strong>标准要求：</strong>最低使用 GPT-5.6 Sol，默认思考程度为“高”；遇到部署失败、资源绑定、数据库迁移或版本冲突时改为“超高”。</p>
-          <p><strong>绝对禁止：</strong>升级时新建第二套 Worker、D1、KV 或 R2，使用付费套餐，或用模板仓库的资源 ID 覆盖当前站点。</p>
-          <p><strong>升级完成后：</strong>验证账号与恢复、媒体、草稿与发布隔离、二维码、网站空间、并发播放和大陆网络访问。</p>
-        </div>
-      </details>
-    </div>
-  `;
-  host.appendChild(panel);
-
-  const copyButton = panel.querySelector("[data-upgrade-copy]");
-  copyButton?.addEventListener("click", () => {
-    const clipboard = (navigator as unknown as { clipboard?: { writeText?: (value: string) => Promise<void> } }).clipboard;
-    if (!clipboard?.writeText) {
-      copyButton.textContent = "浏览器不支持自动复制";
-      return;
-    }
-    void clipboard.writeText(getUpgradePrompt())
-      .then(() => {
-        copyButton.textContent = "已复制升级指令";
-        window.setTimeout(() => { copyButton.textContent = "复制给 GPT 的升级指令"; }, 1800);
-      })
-      .catch(() => { copyButton.textContent = "复制失败，请重试"; });
-  });
 }
 
 function applyHeroMode(select: SelectLike, shouldScroll: boolean) {
@@ -285,25 +143,15 @@ function applyHeroMode(select: SelectLike, shouldScroll: boolean) {
   });
 }
 
-function locateValidationProblem(reason: string): Element | null {
-  const view = validationView(reason);
+function locateValidationProblem(reason: string, onLocated: (target: Element) => void): Element | null {
+  const view = validationViewForReason(reason);
   if (view) {
     const navButton = Array.from(document.querySelectorAll("nav button"))
       .find((button) => button.textContent?.includes(view));
     clickElement(navButton);
   }
 
-  const projectIndexMatch = reason.match(/projects\[(\d+)\]/u);
-  if (projectIndexMatch) {
-    const index = Number(projectIndexMatch[1]);
-    window.requestAnimationFrame(() => {
-      const contentButtons = Array.from(document.querySelectorAll("button"))
-        .filter((button) => /^\d{2}/u.test(button.textContent?.trim() ?? "") && button.querySelector("strong"));
-      clickElement(contentButtons[index]);
-    });
-  }
-
-  const blockIndexMatch = reason.match(/detailBlocks\[(\d+)\]/u);
+  const location = parseValidationLocation(reason);
 
   let fieldLabel = "";
   for (const [pattern, label] of fieldLabels) {
@@ -312,12 +160,39 @@ function locateValidationProblem(reason: string): Element | null {
       break;
     }
   }
-  if (!fieldLabel) return document.querySelector("section");
+  if (!fieldLabel) return null;
 
-  const findField = () => Array.from((blockIndexMatch
-    ? document.querySelector(`[data-block-index="${Number(blockIndexMatch[1])}"]`)
-    : document)?.querySelectorAll("label") ?? [])
-    .find((label) => fieldText(label).includes(fieldLabel));
+  const findField = () => {
+    let root: Element | Document | null = document;
+    if (location.endCoverIndex !== null) root = document.querySelector(`[data-end-cover-card="${location.endCoverIndex}"]`);
+    if (location.categoryIndex !== null) root = document.querySelector(`[data-category-card="${location.categoryIndex}"]`);
+    if (location.projectIndex !== null) root = document.querySelector(`[data-project-form-index="${location.projectIndex}"]`);
+    if (location.blockIndex !== null) root = root?.querySelector(`[data-block-index="${location.blockIndex}"]`) ?? null;
+    return Array.from(root?.querySelectorAll("label, [aria-label]") ?? [])
+      .find((field) => fieldText(field).includes(fieldLabel) || field.getAttribute("aria-label")?.includes(fieldLabel));
+  };
+
+  if (location.projectIndex !== null) {
+    window.requestAnimationFrame(() => {
+      const contentButtons = Array.from(document.querySelectorAll("button"))
+        .filter((button) => /^\d{2}/u.test(button.textContent?.trim() ?? "") && button.querySelector("strong"));
+      clickElement(contentButtons[location.projectIndex as number]);
+      window.requestAnimationFrame(() => {
+        const target = findField();
+        if (target) onLocated(target);
+      });
+    });
+    return null;
+  }
+
+  if (location.endCoverIndex !== null || location.categoryIndex !== null || view) {
+    window.requestAnimationFrame(() => {
+      const target = findField();
+      if (target) onLocated(target);
+    });
+    return null;
+  }
+
   const immediate = findField();
   if (immediate) return immediate;
 
@@ -326,17 +201,6 @@ function locateValidationProblem(reason: string): Element | null {
     if (delayed) revealTarget(delayed, true);
   }, 40);
   return null;
-}
-
-function validationView(reason: string) {
-  if (/endCovers\.slides|封底/u.test(reason)) return "封底";
-  if (/settings\.contact|联系方式主标题/u.test(reason)) return "联系";
-  if (/hero\.(?:email|phone)/u.test(reason)) return "联系";
-  if (/hero\./u.test(reason)) return "首图与文字";
-  if (/categories\[/u.test(reason)) return "作品分类";
-  if (/projects\[/u.test(reason)) return "作品";
-  if (/settings\.siteTitle/u.test(reason)) return "概览";
-  return "";
 }
 
 function revealTarget(target: Element, focus = false) {

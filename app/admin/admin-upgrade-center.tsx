@@ -129,15 +129,15 @@ export function AdminUpgradeCenter() {
         </div>
         <div>
           <strong>沿用 D1 / KV</strong>
-          <small>数据库、图片、视频和媒体空间完整保留。</small>
+          <small>数据库、图片、视频和媒体空间完整保留；旧 R2 只在检测到历史记录时迁移。</small>
         </div>
         <div>
-          <strong>沿用管理员与内容</strong>
-          <small>密码验证、恢复状态、草稿、发布内容和二维码完整保留。</small>
+          <strong>保留身份与内容</strong>
+          <small>管理员身份与内容保留；正式确认会轮换恢复码并撤销旧管理员会话。</small>
         </div>
       </div>
       <p className="note">
-        GPT 会先核对当前 Worker、DB 和 MEDIA_KV，再更新程序代码与增量数据库迁移。升级过程以“现有资源不变、内容完整保留”为验收标准。
+        GPT 会先核对当前 Worker、DB、MEDIA_KV 和可选旧 BUCKET，记录资源指纹，再从发布标签读取并校验 SHA-256。升级过程以“目标指纹一致、内容完整保留、状态变化如实记录”为验收标准。
       </p>
       <div className="actions">
         <button className="primary" type="button" onClick={() => void copyPrompt()}>{copyLabel}</button>
@@ -146,10 +146,14 @@ export function AdminUpgradeCenter() {
           <summary>查看升级说明</summary>
           <div className="detail">
             <p><strong>入口：</strong>后台右上角“程序升级”，或“概览 → 网站空间 → 程序升级中心”。</p>
-            <p><strong>推荐配置：</strong>最低使用 GPT-5.6 Sol，思考程度使用“高”；资源绑定、数据库迁移或版本冲突时使用“超高”。</p>
+            <p><strong>推荐配置：</strong>能单独选择时优先 GPT-5.6 Sol；没有选择器时保留默认 Power。一般任务使用默认或 High，复杂迁移或故障按界面实际可用项使用 High 或 Extra High。</p>
             <p><strong>升级前读取：</strong>README.md、AGENTS.md、deployment/agent-manifest.json、deployment/template-version.json、deployment/upgrade-prompt.json。</p>
-            <p><strong>升级后检查：</strong>登录与恢复、图片、50 MB 分片视频与 Range 播放、草稿预览、正式发布、二维码、网站空间、10 会话播放及大陆网络访问。</p>
-            <p><strong>资源原则：</strong>沿用现有 Worker、D1、MEDIA_KV、Secrets 与资源 ID；禁止 R2、付费套餐和付款方式，保留管理员、媒体和内容数据。</p>
+            <p><strong>学生闭环：</strong>打开当前恢复码文件 → 复制指令 → 等待同站部署 → 返回原 /admin → 输入恢复码和两次密码 → 下载并打开“{'{hostname}'}-v1.2.1-系统恢复码-{'{YYYYMMDDTHHMMSSZ}'}.txt” → 进入后台 → 对照基线。</p>
+            <p><strong>升级前置：</strong>自动升级要求原站已有固定 D1 DB ID 和唯一 MEDIA_KV ID，当前 Worker 使用相同绑定。纯 v1.0 R2-only 站点没有 MEDIA_KV，本版本未支持直接自动升级；必须在指纹和部署前停止，不得创建、复用或认领新的 MEDIA_KV，不得改动任何远端资源。</p>
+            <p><strong>旧版工具：</strong>前置条件满足后，在原站仓库外的隔离工作树验证 v1.2.1；指纹脚本把 Wrangler 的运行目录固定在已验证标签工作树根目录，再用原站 wrangler.jsonc 只读记录指纹。已验证源码收敛到原站且恢复原配置后，再复核指纹和部署。自动 Builds 关闭失败不算升级。</p>
+            <p><strong>源码保护：</strong>切换到标签前记录原分支和 commit；发现未提交改动就停止并先做所有者确认的可恢复保存，不强制切换或清空工作树。</p>
+            <p><strong>升级后检查：</strong>无视频时验证可发布、00:00 与无播放按钮；有视频时再验证 Range，并用独立浏览器配置文件或 Cookie jar 建立 10 个会话。大陆网络由所有者人工检查。</p>
+            <p><strong>资源原则：</strong>沿用现有 Worker、D1、MEDIA_KV、Secrets 与资源 ID；有旧 R2 行时保留同一 BUCKET，固定原对象 ETag 并续跑逐块复制，再进入 final-verifying 最终 KV 复验，全量通过才 CAS 切换；源对象不自动删除。</p>
           </div>
         </details>
       </div>
@@ -157,9 +161,6 @@ export function AdminUpgradeCenter() {
   );
 
   return (
-    <>
-      <span data-program-upgrade-center hidden aria-hidden="true" />
-      {panelHost ? createPortal(panel, panelHost) : null}
-    </>
+    panelHost ? createPortal(panel, panelHost) : null
   );
 }

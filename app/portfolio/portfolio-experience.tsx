@@ -11,6 +11,8 @@ import {
 } from "./model";
 import styles from "../demo/portfolio-demo.module.css";
 import { createClientId } from "../lib/client-id";
+import { trimVisibleText } from "../lib/text-visibility";
+import { toUserFacingChineseError, userFacingError, userFacingResponseError } from "../lib/user-facing-error";
 import { HeroSequence } from "./hero-sequence";
 import { EndCoverSequence } from "./end-cover-sequence";
 import { CategoryTransition } from "./category-transition";
@@ -19,6 +21,8 @@ import { VideoWatermark } from "./video-watermark";
 import { resolveWatermarkText } from "./watermark";
 import { croppedImageStyle } from "./media-crop";
 import { createQrMatrix } from "../lib/qr-code";
+import { adminDraftVideoSource, hasPlayableVideo } from "./video-availability";
+import { hasContactContent } from "./contact-availability";
 
 type PlaybackState = {
   project: Project;
@@ -47,9 +51,14 @@ function ContactQr({ value }: { value: string }) {
 }
 
 function ContactDialog({ hero, contact, onClose }: { hero: PortfolioDocument["hero"]; contact: PortfolioDocument["settings"]["contact"]; onClose: () => void }) {
-  const qrValue = hero.email ? `mailto:${hero.email}` : hero.phone ? `tel:${hero.phone.replace(/[^\d+]/gu, "")}` : "";
+  const email = trimVisibleText(hero.email);
+  const phone = trimVisibleText(hero.phone);
+  const eyebrow = trimVisibleText(contact.eyebrow);
+  const title = trimVisibleText(contact.title);
+  const note = trimVisibleText(contact.note);
+  const qrValue = email ? `mailto:${email}` : phone ? `tel:${phone.replace(/[^\d+]/gu, "")}` : "";
   return (
-    <div className={styles.contactDialog} role="dialog" aria-modal="true" aria-labelledby={contact.title.trim() ? "contact-title" : undefined} aria-label={contact.title.trim() ? undefined : "联系方式"} onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <div className={styles.contactDialog} role="dialog" aria-modal="true" aria-labelledby={title ? "contact-title" : undefined} aria-label={title ? undefined : "联系方式"} onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <section className={styles.contactPanel} data-layout={contact.layout}>
         <div className={styles.contactVisual}>
           {contact.image.src
@@ -57,10 +66,10 @@ function ContactDialog({ hero, contact, onClose }: { hero: PortfolioDocument["he
             ? <img src={contact.image.src} alt={contact.image.alt} style={croppedImageStyle(contact.image)} />
             : qrValue ? <ContactQr value={qrValue} /> : <span>CONTACT</span>}
         </div>
-        {contact.eyebrow.trim() && <div className={styles.contactTextLayer} style={contactTextStyle(contact.eyebrowStyle, "var(--accent)")}><p>{contact.eyebrow}</p></div>}
-        {contact.title.trim() && <div className={styles.contactTextLayer} data-kind="title" style={contactTextStyle(contact.titleStyle, "var(--ink)")}><h2 id="contact-title">{contact.title}</h2></div>}
-        {(hero.email || hero.phone) && <div className={styles.contactTextLayer} data-kind="details" style={contactTextStyle(contact.detailsStyle, "var(--ink)")}>{hero.email && <a href={`mailto:${hero.email}`}>{hero.email}</a>}{hero.phone && <a href={`tel:${hero.phone.replace(/[^\d+]/gu, "")}`}>{hero.phone}</a>}</div>}
-        {contact.note && <div className={styles.contactTextLayer} data-kind="note" style={contactTextStyle(contact.noteStyle, "var(--muted)")}><small>{contact.note}</small></div>}
+        {eyebrow && <div className={styles.contactTextLayer} style={contactTextStyle(contact.eyebrowStyle, "var(--accent)")}><p>{eyebrow}</p></div>}
+        {title && <div className={styles.contactTextLayer} data-kind="title" style={contactTextStyle(contact.titleStyle, "var(--ink)")}><h2 id="contact-title">{title}</h2></div>}
+        {(email || phone) && <div className={styles.contactTextLayer} data-kind="details" style={contactTextStyle(contact.detailsStyle, "var(--ink)")}>{email && <a href={`mailto:${email}`}>{email}</a>}{phone && <a href={`tel:${phone.replace(/[^\d+]/gu, "")}`}>{phone}</a>}</div>}
+        {note && <div className={styles.contactTextLayer} data-kind="note" style={contactTextStyle(contact.noteStyle, "var(--muted)")}><small>{note}</small></div>}
         <button type="button" className={styles.contactClose} onClick={onClose} aria-label="关闭联系方式">×</button>
       </section>
     </div>
@@ -186,13 +195,24 @@ function ProjectContentBlock({ block }: { block: ProjectBlock }) {
 }
 
 function ProjectDetails({ project }: { project: Project }) {
+  const synopsis = trimVisibleText(project.synopsis);
+  const year = trimVisibleText(project.year);
+  const duration = trimVisibleText(project.duration);
+  const challenge = trimVisibleText(project.challenge);
+  const solution = trimVisibleText(project.solution);
   return (
     <div className={styles.projectDetails}>
       <section className={styles.projectIntro} aria-label={`${project.title}项目介绍`}>
         <div className={styles.introLead}>
           <p>PROJECT DETAILS</p>
-          <h3>创作过程与项目资产</h3>
+          <h3>{project.title}</h3>
+          {synopsis && <p className={styles.projectSynopsis}>{synopsis}</p>}
         </div>
+        {(year || duration || challenge || solution) && <dl>
+          {(year || duration) && <div><dt>年份 / 时长</dt><dd>{year}{year && duration && " · "}{duration}</dd></div>}
+          {challenge && <div><dt>项目难点</dt><dd>{challenge}</dd></div>}
+          {solution && <div><dt>解决思路</dt><dd>{solution}</dd></div>}
+        </dl>}
       </section>
       {project.detailBlocks.map((block) => <ProjectContentBlock key={block.id} block={block} />)}
     </div>
@@ -213,13 +233,15 @@ function ProjectCard({
   onPlay: (trigger: HTMLButtonElement) => void;
 }) {
   const detailId = `${project.id}-details`;
+  const year = trimVisibleText(project.year);
+  const duration = trimVisibleText(project.duration);
 
   return (
     <article className={styles.project} data-open={isOpen} style={{ "--project-accent": category.accent } as React.CSSProperties}>
       <div className={styles.projectRail}>
         <span>{String(project.order).padStart(2, "0")}</span>
         <span>{category.label}</span>
-        <span>{project.year}{project.year && project.duration && " · "}{project.duration}</span>
+        <span>{year}{year && duration && " · "}{duration}</span>
       </div>
 
       <ProjectCover project={project} category={category} isOpen={isOpen} onToggle={onToggle} onPlay={onPlay} />
@@ -421,7 +443,15 @@ export function PortfolioExperience({ initialPortfolio: portfolio, mode }: Portf
       playbackTriggerKeyRef.current = `${project.id}:final`;
     }
     const asset = project.finalVideo;
-    if (mode === "review" || asset.src) {
+    if (!hasPlayableVideo(asset)) return;
+    if (mode === "review") {
+      const src = adminDraftVideoSource(asset);
+      setPlayback(src
+        ? { project, asset: { ...asset, src }, status: "ready", recoveryCount: 0 }
+        : { project, asset, status: "error", error: "草稿视频暂时无法读取，请保存草稿后重试", recoveryCount: 0 });
+      return;
+    }
+    if (asset.src) {
       setPlayback({ project, asset, status: "ready", recoveryCount: 0 });
       return;
     }
@@ -444,11 +474,14 @@ export function PortfolioExperience({ initialPortfolio: portfolio, mode }: Portf
         body: JSON.stringify({ projectId: project.id, version: "final", sessionId: getPortfolioSessionId() }),
         signal: request.controller.signal,
       });
-      const body: unknown = await response.json();
-      if (!response.ok || !isRecord(body) || typeof body.url !== "string" || !body.url.startsWith("/api/media/")) {
-        const message = isRecord(body) && typeof body.error === "string" ? body.error : "暂时无法播放这个版本";
-        throw new Error(message);
+      let body: unknown;
+      try {
+        body = await response.json();
+      } catch {
+        throw userFacingError("播放响应暂时无法读取，请稍后重试");
       }
+      if (!response.ok) throw userFacingResponseError(body, "暂时无法播放这个版本");
+      if (!isRecord(body) || typeof body.url !== "string" || !body.url.startsWith("/api/media/")) throw userFacingError("播放连接响应无效，请稍后重试");
       if (playbackRequestRef.current?.id !== request.id) return;
       setPlayback({
         project,
@@ -461,7 +494,7 @@ export function PortfolioExperience({ initialPortfolio: portfolio, mode }: Portf
       });
     } catch (error) {
       if (request.controller.signal.aborted || playbackRequestRef.current?.id !== request.id) return;
-      const message = error instanceof Error ? error.message : "暂时无法播放这个版本";
+      const message = toUserFacingChineseError(error, "暂时无法播放这个版本，请检查网络后重试");
       setPlayback({ project, asset, status: "error", error: message, recoveryCount: recovery?.count ?? 0 });
       reportEvent("play_error", project.id, "final", getPortfolioSessionId());
     }
@@ -480,6 +513,10 @@ export function PortfolioExperience({ initialPortfolio: portfolio, mode }: Portf
   const customFontUrl = portfolio.settings.customFont.src?.startsWith("/api/media/")
     ? portfolio.settings.customFont.src
     : undefined;
+  const contactAvailable = hasContactContent(portfolio.hero, portfolio.settings.contact);
+  const workHeadingLead = trimVisibleText(portfolio.settings.workHeading.lead);
+  const workHeadingAccent = trimVisibleText(portfolio.settings.workHeading.accent);
+  const workHeadingAvailable = Boolean(workHeadingLead || workHeadingAccent);
 
   return (
     <main className={styles.demo} data-theme={theme} id="top">
@@ -496,12 +533,13 @@ export function PortfolioExperience({ initialPortfolio: portfolio, mode }: Portf
           window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
         }}
         onContact={() => setContactOpen(true)}
+        contactAvailable={contactAvailable}
       />
 
-      <section className={styles.workSection} id="works" aria-labelledby="work-heading" hidden={!entered}>
-        {(portfolio.settings.workHeading.lead.trim() || portfolio.settings.workHeading.accent.trim()) && <header className={styles.workHeading}>
+      <section className={styles.workSection} id="works" aria-labelledby={workHeadingAvailable ? "work-heading" : undefined} hidden={!entered}>
+        {workHeadingAvailable && <header className={styles.workHeading}>
           <p>SELECTED WORK · {yearRange}</p>
-          <h2 id="work-heading">{portfolio.settings.workHeading.lead}{portfolio.settings.workHeading.lead.trim() && portfolio.settings.workHeading.accent.trim() && <br />}{portfolio.settings.workHeading.accent.trim() && <span>{portfolio.settings.workHeading.accent}</span>}</h2>
+          <h2 id="work-heading">{workHeadingLead}{workHeadingLead && workHeadingAccent && <br />}{workHeadingAccent && <span>{workHeadingAccent}</span>}</h2>
         </header>}
 
         <div className={styles.categoryModules}>
@@ -541,8 +579,8 @@ export function PortfolioExperience({ initialPortfolio: portfolio, mode }: Portf
           <span>PORTFOLIO / {yearRange}</span>
           <strong>{portfolio.hero.name}</strong>
         </div>
-        {(portfolio.hero.role || portfolio.hero.targetRole) && <p>{portfolio.hero.role}{portfolio.hero.role && portfolio.hero.targetRole && <br />}{portfolio.hero.targetRole}</p>}
-        {portfolio.hero.email && <a href={`mailto:${portfolio.hero.email}`}>{portfolio.hero.email}</a>}
+        {(trimVisibleText(portfolio.hero.role) || trimVisibleText(portfolio.hero.targetRole)) && <p>{trimVisibleText(portfolio.hero.role)}{trimVisibleText(portfolio.hero.role) && trimVisibleText(portfolio.hero.targetRole) && <br />}{trimVisibleText(portfolio.hero.targetRole)}</p>}
+        {trimVisibleText(portfolio.hero.email) && <a href={`mailto:${trimVisibleText(portfolio.hero.email)}`}>{trimVisibleText(portfolio.hero.email)}</a>}
       </footer>
 
       {playback && (
@@ -555,7 +593,7 @@ export function PortfolioExperience({ initialPortfolio: portfolio, mode }: Portf
           onRetry={() => void startPlayback(playback.project)}
         />
       )}
-      {contactOpen && <ContactDialog hero={portfolio.hero} contact={portfolio.settings.contact} onClose={() => setContactOpen(false)} />}
+      {contactOpen && contactAvailable && <ContactDialog hero={portfolio.hero} contact={portfolio.settings.contact} onClose={() => setContactOpen(false)} />}
     </main>
   );
 }

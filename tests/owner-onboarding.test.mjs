@@ -125,7 +125,7 @@ test("admin UI exposes deployment-code setup, recovery and website-space status"
   assert.match(setupRoute, /createLocalAdministrator/u);
   assert.match(portfolioRoute, /requirePortfolioManager/u);
   assert.match(accessRoute, /requirePortfolioManager/u);
-  assert.match(mediaRoute, /requirePortfolioManager/u);
+  assert.match(mediaRoute, /requirePortfolioUploader/u);
 });
 
 async function createDatabase() {

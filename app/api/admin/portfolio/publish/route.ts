@@ -22,14 +22,14 @@ export async function POST(request: Request) {
       summary: { revision: published.revision, projects: published.draft.projects.length },
     });
     try {
-      await cleanupUnreferencedMedia(published.draft);
+      await cleanupUnreferencedMedia(published.draft, published.revision);
     } catch (error) {
-      console.error(JSON.stringify({ message: "unreferenced media cleanup failed", error: errorMessage(error) }));
+      console.error(JSON.stringify({ message: "未引用媒体自动清理失败", error: errorMessage(error) }));
     }
     return Response.json({ ok: true, revision: published.revision, publishedAt: published.publishedAt });
   } catch (error) {
     if (isRequestBodyError(error)) return Response.json({ error: error.message }, { status: error.status });
-    console.error(JSON.stringify({ message: "portfolio publish failed", error: errorMessage(error) }));
+    console.error(JSON.stringify({ message: "作品集发布失败", error: errorMessage(error) }));
     return Response.json({ error: "发布失败，请稍后重试" }, { status: 500 });
   }
 }

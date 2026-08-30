@@ -1,4 +1,4 @@
-name: Verify Key Areas
+name: Complete Verification
 
 on:
   push:
@@ -9,25 +9,54 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  verify-key-areas:
+  full-verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 25
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: '22.13.0'
+          node-version: 22.13.0
           cache: npm
 
       - name: Install
         run: npm ci
 
-      - name: Admin and guide regression checks
-        run: node --experimental-strip-types --test tests/admin-regressions.test.mjs tests/media-crop.test.mjs tests/hero-layout.test.mjs tests/agent-deployment-package.test.mjs tests/tutorial-ui-audit.test.mjs tests/update-notifier.test.mjs
+      - name: Production dependency audit
+        run: npm audit --omit=dev --audit-level=high
 
-      - name: Lint changed admin surfaces
-        run: npx eslint app/admin/admin-client.tsx app/admin/admin-guide-center.tsx app/admin/admin-guide-ui-audit.tsx app/admin/admin-update-notifier.tsx app/admin/admin-upgrade-center.tsx app/admin/admin-interaction-enhancements.tsx app/admin/media-crop-editor.tsx app/admin/page.tsx app/api/version/route.ts
+      - name: Deployment script syntax
+        run: |
+          bash -n scripts/*.sh
+          node --check scripts/*.mjs
+
+      - name: Migration metadata is current
+        run: |
+          npm run db:generate
+          migration_changes="$(git status --porcelain --untracked-files=all -- drizzle)"
+          if [[ -n "$migration_changes" ]]; then
+            printf '%s\n' "$migration_changes"
+            exit 1
+          fi
+
+      - name: Full tests and single production build
+        run: npm test
+
+      - name: Cloudflare deployment dry run
+        run: |
+          npx --no-install wrangler deploy --dry-run --keep-vars --config wrangler.jsonc
+          git diff --exit-code -- wrangler.jsonc
+
+      - name: Lint
+        run: npm run lint
+
+      - name: TypeScript
+        run: ./node_modules/.bin/tsc --noEmit

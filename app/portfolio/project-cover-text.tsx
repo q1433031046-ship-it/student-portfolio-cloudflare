@@ -1,4 +1,5 @@
 import type { CSSProperties, HTMLAttributes, ReactNode } from "react";
+import { trimVisibleText } from "../lib/text-visibility";
 import { createDefaultCoverPresentation, type CoverTextStyle, type Project } from "./model";
 import styles from "./project-cover-text.module.css";
 
@@ -30,6 +31,8 @@ export function ProjectCoverText({
   const presentation = project.coverPresentation;
   const defaults = createDefaultCoverPresentation();
   const text = (key: CoverTextKey, value: string) => renderText?.(key, value) ?? value;
+  const year = trimVisibleText(project.year);
+  const duration = trimVisibleText(project.duration);
 
   return (
     <div
@@ -70,7 +73,7 @@ export function ProjectCoverText({
           data-cover-layer="factsStyle"
           style={coverTextStyle(presentation.factsStyle ?? defaults.factsStyle)}
         >
-          {(project.year || project.duration) && <div><dt>年份 / 时长</dt><dd>{project.year && text("year", project.year)}{project.year && project.duration && " · "}{project.duration}</dd></div>}
+          {(year || duration) && <div><dt>年份 / 时长</dt><dd>{year && text("year", year)}{year && duration && " · "}{duration}</dd></div>}
           {project.challenge.trim() && <div><dt>项目难点</dt><dd>{text("challenge", project.challenge)}</dd></div>}
           {project.solution.trim() && <div><dt>解决思路</dt><dd>{text("solution", project.solution)}</dd></div>}
           {renderResizeHandle?.("factsStyle")}

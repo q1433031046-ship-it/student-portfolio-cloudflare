@@ -13,6 +13,12 @@ import {
 
 const SETTINGS_ID = "default";
 export const ACCESS_SESSION_SECONDS = 24 * 60 * 60;
+const ACCESS_PASS_STATE_TABLE_SQL = `CREATE TABLE IF NOT EXISTS portfolio_access_pass_state (
+  pass_id text PRIMARY KEY NOT NULL,
+  session_generation integer DEFAULT 1 NOT NULL,
+  updated_at text DEFAULT CURRENT_TIMESTAMP NOT NULL,
+  FOREIGN KEY (pass_id) REFERENCES portfolio_access_passes(id) ON UPDATE no action ON DELETE cascade
+)`;
 
 type AccessPolicyRow = { restriction_enabled: number; updated_at: string | null; updated_by: string | null };
 type AccessPassRow = {
@@ -27,6 +33,7 @@ type AccessPassRow = {
   last_used_at: string | null;
   created_by: string;
 };
+type AccessPassStateRow = { session_generation: number };
 
 export type AccessPassStatus = "active" | "paused" | "expired" | "exhausted";
 export type AccessPass = {
@@ -64,6 +71,14 @@ export type AccessPassInspection = {
   pass: Pick<AccessPass, "id" | "label" | "status" | "expiresAt">;
 };
 
+export class AccessPassConflictError extends Error {
+  readonly status = 409;
+
+  constructor() {
+    super("二维码刚刚被其他操作更新，请刷新后重试");
+  }
+}
+
 export async function getAccessConfiguration(origin: string): Promise<AccessConfiguration> {
   const [policy, rows] = await Promise.all([
     getAccessPolicy(),
@@ -98,35 +113,50 @@ export async function setAccessRestriction(enabled: boolean, actor: string) {
 export async function createAccessPass(input: { label: string; maxUses: number | null; expiresAt: string | null }, actor: string) {
   const id = `qr_${crypto.randomUUID().replaceAll("-", "")}`;
   const now = new Date().toISOString();
+  await ensureAccessPassStateTable();
   await getPortfolioDb()
     .prepare("INSERT INTO portfolio_access_passes (id, label, enabled, max_uses, used_count, expires_at, created_at, updated_at, created_by) VALUES (?, ?, 1, ?, 0, ?, ?, ?, ?)")
     .bind(id, input.label, input.maxUses, input.expiresAt, now, now, actor)
+    .run();
+  await getPortfolioDb()
+    .prepare("INSERT OR IGNORE INTO portfolio_access_pass_state (pass_id, session_generation, updated_at) VALUES (?, 1, ?)")
+    .bind(id, now)
     .run();
   return id;
 }
 
 export async function updateAccessPass(id: string, patch: { label?: string; enabled?: boolean; maxUses?: number | null; expiresAt?: string | null }) {
-  const current = await getPass(id);
-  if (!current) throw new Error("二维码不存在");
-  const next = {
-    ...current,
-    label: patch.label ?? current.label,
-    enabled: patch.enabled ?? current.enabled,
-    maxUses: patch.maxUses === undefined ? current.maxUses : patch.maxUses,
-    expiresAt: patch.expiresAt === undefined ? current.expiresAt : patch.expiresAt,
-  };
-  await preventVisitorLockout(id, next);
-  const now = new Date().toISOString();
-  await getPortfolioDb()
-    .prepare("UPDATE portfolio_access_passes SET label = ?, enabled = ?, max_uses = ?, expires_at = ?, updated_at = ? WHERE id = ?")
-    .bind(patch.label ?? current.label, patch.enabled === undefined ? current.enabled ? 1 : 0 : patch.enabled ? 1 : 0, patch.maxUses === undefined ? current.maxUses : patch.maxUses, patch.expiresAt === undefined ? current.expiresAt : patch.expiresAt, now, id)
-    .run();
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const current = await getPass(id);
+    if (!current) throw new Error("二维码不存在");
+    if (accessPassPatchMatches(current, patch)) return;
+
+    const nextUpdatedAt = nextAccessPassVersion(current.updatedAt);
+    await ensureAccessPassState(id, nextUpdatedAt);
+    const db = getPortfolioDb();
+    const { sql, values } = accessPassPatchUpdate(id, current.updatedAt, nextUpdatedAt, patch);
+    const statements = [db.prepare(sql).bind(...values)];
+    if (accessPassChangeRevokesSessions(current, patch, new Date())) {
+      statements.push(
+        db.prepare(`UPDATE portfolio_access_pass_state
+          SET session_generation = session_generation + 1, updated_at = ?
+          WHERE pass_id = ? AND changes() = 1`)
+          .bind(nextUpdatedAt, id),
+      );
+    }
+    const [updated] = await db.batch(statements);
+    if (Number(updated?.meta.changes ?? 0) === 1) return;
+  }
+  throw new AccessPassConflictError();
 }
 
 export async function deleteAccessPass(id: string) {
-  const current = await getPass(id);
-  if (current) await preventVisitorLockout(id, { ...current, enabled: false });
-  await getPortfolioDb().prepare("DELETE FROM portfolio_access_passes WHERE id = ?").bind(id).run();
+  await ensureAccessPassStateTable();
+  const db = getPortfolioDb();
+  await db.batch([
+    db.prepare("DELETE FROM portfolio_access_pass_state WHERE pass_id = ?").bind(id),
+    db.prepare("DELETE FROM portfolio_access_passes WHERE id = ?").bind(id),
+  ]);
 }
 
 export async function checkPortfolioAccess(request: Request): Promise<AccessDecision> {
@@ -140,6 +170,8 @@ export async function checkPortfolioAccess(request: Request): Promise<AccessDeci
   if (!session) return { allowed: false, restricted: true, reason: "expired" };
   const pass = await getPass(session.passId);
   if (!pass || !isAccessPassSessionValid(pass)) return { allowed: false, restricted: true, reason: "revoked" };
+  const sessionGeneration = await getAccessPassSessionGeneration(pass.id);
+  if (session.sessionGeneration !== sessionGeneration) return { allowed: false, restricted: true, reason: "revoked" };
   return { allowed: true, restricted: true, reason: "session", passId: pass.id };
 }
 
@@ -157,6 +189,11 @@ export async function inspectAccessPassToken(token: string): Promise<AccessPassI
 }
 
 export async function redeemAccessPass(request: Request, token: string, now = new Date()) {
+  const policy = await getAccessPolicy();
+  if (!policy.restrictionEnabled) {
+    return { ok: true as const, cookie: null, pass: null, reused: false as const, unrestricted: true as const };
+  }
+
   const secret = getAccessSigningKey();
   const passId = await verifyAccessToken(token, secret);
   if (!passId) return { ok: false as const, reason: "二维码无效" };
@@ -168,26 +205,52 @@ export async function redeemAccessPass(request: Request, token: string, now = ne
     if (session?.passId === passId) {
       const pass = await getPass(passId);
       if (pass && isAccessPassSessionValid(pass, now)) {
-        return { ok: true as const, cookie: accessSessionCookie(existing, session.expiresAt), pass, reused: true as const };
+        const sessionGeneration = await getAccessPassSessionGeneration(pass.id);
+        if (session.sessionGeneration === sessionGeneration) {
+          return { ok: true as const, cookie: accessSessionCookie(existing, session.expiresAt), pass, reused: true as const, unrestricted: false as const };
+        }
       }
     }
   }
 
   const nowIso = now.toISOString();
-  const result = await getPortfolioDb()
-    .prepare("UPDATE portfolio_access_passes SET used_count = used_count + 1, last_used_at = ?, updated_at = ? WHERE id = ? AND enabled = 1 AND (expires_at IS NULL OR expires_at > ?) AND (max_uses IS NULL OR used_count < max_uses)")
-    .bind(nowIso, nowIso, passId, nowIso)
-    .run();
-  if (Number(result.meta.changes ?? 0) !== 1) {
-    const pass = await getPass(passId);
+  await ensureAccessPassState(passId, nowIso);
+  const db = getPortfolioDb();
+  const [consumeResult, policyResult, passResult, stateResult] = await db.batch([
+    db.prepare(`UPDATE portfolio_access_passes
+      SET used_count = used_count + 1, last_used_at = ?
+      WHERE id = ? AND enabled = 1
+        AND (expires_at IS NULL OR expires_at > ?)
+        AND (max_uses IS NULL OR used_count < max_uses)
+        AND EXISTS (
+          SELECT 1 FROM portfolio_access_settings
+          WHERE id = ? AND restriction_enabled = 1
+        )`)
+      .bind(nowIso, passId, nowIso, SETTINGS_ID),
+    db.prepare("SELECT restriction_enabled, updated_at, updated_by FROM portfolio_access_settings WHERE id = ? LIMIT 1")
+      .bind(SETTINGS_ID),
+    db.prepare("SELECT id, label, enabled, max_uses, used_count, expires_at, created_at, updated_at, last_used_at, created_by FROM portfolio_access_passes WHERE id = ? LIMIT 1")
+      .bind(passId),
+    db.prepare("SELECT session_generation FROM portfolio_access_pass_state WHERE pass_id = ? LIMIT 1")
+      .bind(passId),
+  ]);
+  const policyRow = policyResult?.results?.[0] as AccessPolicyRow | undefined;
+  const passRow = passResult?.results?.[0] as AccessPassRow | undefined;
+  const stateRow = stateResult?.results?.[0] as AccessPassStateRow | undefined;
+  const pass = passRow ? mapPass(passRow) : null;
+  if (Number(consumeResult?.meta.changes ?? 0) !== 1) {
+    if (policyRow?.restriction_enabled !== 1) {
+      return { ok: true as const, cookie: null, pass: null, reused: false as const, unrestricted: true as const };
+    }
     return { ok: false as const, reason: unavailableReason(pass) };
   }
-
-  const pass = await getPass(passId);
-  if (!pass) return { ok: false as const, reason: "二维码无效" };
+  if (!pass || !stateRow || !Number.isSafeInteger(Number(stateRow.session_generation)) || Number(stateRow.session_generation) < 1) {
+    return { ok: false as const, reason: "二维码暂时不可用" };
+  }
+  const sessionGeneration = Number(stateRow.session_generation);
   const sessionExpiry = calculateAccessSessionExpiry(nowSeconds, pass.expiresAt);
-  const sessionValue = await createAccessSession(pass.id, sessionExpiry, secret);
-  return { ok: true as const, cookie: accessSessionCookie(sessionValue, sessionExpiry), pass, reused: false as const };
+  const sessionValue = await createAccessSession(pass.id, sessionGeneration, sessionExpiry, secret);
+  return { ok: true as const, cookie: accessSessionCookie(sessionValue, sessionExpiry), pass, reused: false as const, unrestricted: false as const };
 }
 
 export function calculateAccessSessionExpiry(nowSeconds: number, passExpiresAt: string | null) {
@@ -200,17 +263,20 @@ export function calculateAccessSessionExpiry(nowSeconds: number, passExpiresAt: 
 
 export function validateAccessPassInput(input: unknown, allowExpired = false) {
   if (!isRecord(input)) throw new Error("二维码设置格式无效");
-  const label = typeof input.label === "string" ? input.label.trim() : "";
-  if (label.length < 1 || label.length > 60) throw new Error("二维码名称需为 1–60 个字符");
-  const maxUses = input.maxUses === null || input.maxUses === "" || input.maxUses === undefined ? null : Number(input.maxUses);
-  if (maxUses !== null && (!Number.isInteger(maxUses) || maxUses < 1 || maxUses > 1_000_000)) throw new Error("访问次数需为 1–1000000，或留空表示不限");
-  let expiresAt: string | null = null;
-  if (input.expiresAt !== null && input.expiresAt !== "" && input.expiresAt !== undefined) {
-    const timestamp = new Date(String(input.expiresAt));
-    if (!Number.isFinite(timestamp.getTime()) || (!allowExpired && timestamp.getTime() <= Date.now())) throw new Error("过期时间必须晚于现在");
-    expiresAt = timestamp.toISOString();
-  }
-  return { label, maxUses, expiresAt };
+  return {
+    label: validateAccessPassLabel(input.label),
+    maxUses: validateAccessPassMaxUses(input.maxUses),
+    expiresAt: validateAccessPassExpiry(input.expiresAt, allowExpired),
+  };
+}
+
+export function validateAccessPassPatch(input: unknown) {
+  if (!isRecord(input)) throw new Error("二维码设置格式无效");
+  const patch: { label?: string; maxUses?: number | null; expiresAt?: string | null } = {};
+  if ("label" in input) patch.label = validateAccessPassLabel(input.label);
+  if ("maxUses" in input) patch.maxUses = validateAccessPassMaxUses(input.maxUses);
+  if ("expiresAt" in input) patch.expiresAt = validateAccessPassExpiry(input.expiresAt, true);
+  return patch;
 }
 
 export function accessPassStatus(pass: AccessPass, now = new Date()) {
@@ -228,17 +294,6 @@ async function hasUsableAccessPass() {
     .bind(now)
     .first<{ id: string }>();
   return Boolean(row);
-}
-
-async function preventVisitorLockout(excludedId: string, next: Pick<AccessPass, "enabled" | "expiresAt" | "maxUses" | "usedCount">) {
-  const policy = await getAccessPolicy();
-  if (!policy.restrictionEnabled || passStatus(next) === "active") return;
-  const now = new Date().toISOString();
-  const alternate = await getPortfolioDb()
-    .prepare("SELECT id FROM portfolio_access_passes WHERE id != ? AND enabled = 1 AND (expires_at IS NULL OR expires_at > ?) AND (max_uses IS NULL OR used_count < max_uses) LIMIT 1")
-    .bind(excludedId, now)
-    .first<{ id: string }>();
-  if (!alternate) throw new Error("访问限制开启时必须保留至少一张可用二维码");
 }
 
 async function isPortfolioAdmin(request: Request) {
@@ -286,6 +341,113 @@ function unavailableReason(pass: AccessPass | null) {
   if (status === "expired") return "二维码已过期";
   if (status === "exhausted") return "二维码使用次数已用完";
   return "二维码暂时不可用";
+}
+
+async function ensureAccessPassStateTable() {
+  await getPortfolioDb().prepare(ACCESS_PASS_STATE_TABLE_SQL).run();
+}
+
+async function ensureAccessPassState(passId: string, now = new Date().toISOString()) {
+  await ensureAccessPassStateTable();
+  await getPortfolioDb()
+    .prepare("INSERT OR IGNORE INTO portfolio_access_pass_state (pass_id, session_generation, updated_at) VALUES (?, 1, ?)")
+    .bind(passId, now)
+    .run();
+}
+
+async function getAccessPassSessionGeneration(passId: string) {
+  await ensureAccessPassState(passId);
+  const row = await getPortfolioDb()
+    .prepare("SELECT session_generation FROM portfolio_access_pass_state WHERE pass_id = ? LIMIT 1")
+    .bind(passId)
+    .first<AccessPassStateRow>();
+  if (!row || !Number.isSafeInteger(Number(row.session_generation)) || Number(row.session_generation) < 1) {
+    throw new Error("二维码访问会话状态无效");
+  }
+  return Number(row.session_generation);
+}
+
+function accessPassChangeRevokesSessions(
+  current: Pick<AccessPass, "enabled" | "expiresAt">,
+  patch: { enabled?: boolean; expiresAt?: string | null },
+  now: Date,
+) {
+  if (patch.enabled !== undefined && patch.enabled !== current.enabled) return true;
+  if (patch.expiresAt === undefined || patch.expiresAt === current.expiresAt) return false;
+  const currentExpiry = current.expiresAt ? new Date(current.expiresAt).getTime() : Number.POSITIVE_INFINITY;
+  const nextExpiry = patch.expiresAt ? new Date(patch.expiresAt).getTime() : Number.POSITIVE_INFINITY;
+  return nextExpiry < currentExpiry || currentExpiry <= now.getTime();
+}
+
+function accessPassPatchMatches(
+  current: Pick<AccessPass, "label" | "enabled" | "maxUses" | "expiresAt">,
+  patch: { label?: string; enabled?: boolean; maxUses?: number | null; expiresAt?: string | null },
+) {
+  return (patch.label === undefined || patch.label === current.label)
+    && (patch.enabled === undefined || patch.enabled === current.enabled)
+    && (patch.maxUses === undefined || patch.maxUses === current.maxUses)
+    && (patch.expiresAt === undefined || patch.expiresAt === current.expiresAt);
+}
+
+function accessPassPatchUpdate(
+  id: string,
+  expectedUpdatedAt: string,
+  nextUpdatedAt: string,
+  patch: { label?: string; enabled?: boolean; maxUses?: number | null; expiresAt?: string | null },
+) {
+  const assignments: string[] = [];
+  const values: unknown[] = [];
+  if (patch.label !== undefined) {
+    assignments.push("label = ?");
+    values.push(patch.label);
+  }
+  if (patch.enabled !== undefined) {
+    assignments.push("enabled = ?");
+    values.push(patch.enabled ? 1 : 0);
+  }
+  if (patch.maxUses !== undefined) {
+    assignments.push("max_uses = ?");
+    values.push(patch.maxUses);
+  }
+  if (patch.expiresAt !== undefined) {
+    assignments.push("expires_at = ?");
+    values.push(patch.expiresAt);
+  }
+  assignments.push("updated_at = ?");
+  values.push(nextUpdatedAt, id, expectedUpdatedAt);
+  return {
+    sql: `UPDATE portfolio_access_passes SET ${assignments.join(", ")} WHERE id = ? AND updated_at = ?`,
+    values,
+  };
+}
+
+function nextAccessPassVersion(current: string) {
+  const currentTime = Date.parse(current);
+  const nextTime = Math.max(Date.now(), Number.isFinite(currentTime) ? currentTime + 1 : 0);
+  return new Date(nextTime).toISOString();
+}
+
+function validateAccessPassLabel(value: unknown) {
+  const label = typeof value === "string" ? value.trim() : "";
+  if (label.length < 1 || label.length > 60) throw new Error("二维码名称需为 1–60 个字符");
+  return label;
+}
+
+function validateAccessPassMaxUses(value: unknown) {
+  const maxUses = value === null || value === "" || value === undefined ? null : Number(value);
+  if (maxUses !== null && (!Number.isInteger(maxUses) || maxUses < 1 || maxUses > 1_000_000)) {
+    throw new Error("访问次数需为 1–1000000，或留空表示不限");
+  }
+  return maxUses;
+}
+
+function validateAccessPassExpiry(value: unknown, allowExpired: boolean) {
+  if (value === null || value === "" || value === undefined) return null;
+  const timestamp = new Date(String(value));
+  if (!Number.isFinite(timestamp.getTime()) || (!allowExpired && timestamp.getTime() <= Date.now())) {
+    throw new Error("过期时间必须晚于现在");
+  }
+  return timestamp.toISOString();
 }
 
 function getAccessSigningKey() {

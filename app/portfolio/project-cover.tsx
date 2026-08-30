@@ -1,6 +1,7 @@
 import type { CategoryConfig, Project } from "./model";
 import { croppedImageStyle, croppedImageStyleForAspect } from "./media-crop";
 import { ProjectCoverText } from "./project-cover-text";
+import { hasPlayableVideo } from "./video-availability";
 import styles from "../demo/portfolio-demo.module.css";
 
 export function ProjectCover({
@@ -31,7 +32,7 @@ export function ProjectCover({
       />
       <div className={styles.projectCoverInfo}>
         <ProjectCoverText project={project} categoryLabel={category.label} accent={category.accent} />
-        <button
+        {hasPlayableVideo(project.finalVideo) && <button
           className={styles.projectPlay}
           type="button"
           data-playback-trigger={`${project.id}:final`}
@@ -44,7 +45,7 @@ export function ProjectCover({
           </span>
           <strong>播放视频</strong>
           <i aria-hidden="true">↗</i>
-        </button>
+        </button>}
       </div>
     </div>
   );

@@ -1,43 +1,178 @@
-name: Final Delivery Verification
+name: Verify And Tag Release
 
 on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths:
-      - "README.md"
-      - "AGENTS.md"
-      - "deployment/**"
-      - "app/api/version/route.ts"
-      - "app/admin/admin-guide-center.tsx"
-      - "app/admin/admin-guide-ui-audit.tsx"
-      - "app/admin/admin-update-notifier.tsx"
-      - "app/admin/admin-upgrade-center.tsx"
-      - "app/admin/page.tsx"
-      - "tests/agent-deployment-package.test.mjs"
-      - "tests/tutorial-ui-audit.test.mjs"
-      - "tests/update-notifier.test.mjs"
 
 permissions:
   contents: read
 
+concurrency:
+  group: release-tag-main
+  cancel-in-progress: false
+
 jobs:
-  full-verify:
+  release-verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
+    permissions:
+      contents: read
     steps:
-      - name: Checkout
+      - name: Checkout without write credentials
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
           node-version: 22.13.0
           cache: npm
+
       - name: Install
         run: npm ci
-      - name: Full tests and production build
+
+      - name: Production dependency audit
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Deployment script syntax
+        run: |
+          bash -n scripts/*.sh
+          node --check scripts/*.mjs
+
+      - name: Migration metadata is current
+        run: |
+          npm run db:generate
+          migration_changes="$(git status --porcelain --untracked-files=all -- drizzle)"
+          if [[ -n "$migration_changes" ]]; then
+            printf '%s\n' "$migration_changes"
+            exit 1
+          fi
+
+      - name: Full tests and single production build
         run: npm test
+
+      - name: Cloudflare deployment dry run
+        run: |
+          npx --no-install wrangler deploy --dry-run --keep-vars --config wrangler.jsonc
+          git diff --exit-code -- wrangler.jsonc
+
       - name: Lint
         run: npm run lint
+
       - name: TypeScript
         run: ./node_modules/.bin/tsc --noEmit
+
+  tag-release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: release-verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout the verified commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Validate immutable release contract
+        id: release_contract
+        shell: bash
+        run: |
+          node <<'NODE'
+          const { createHash } = require("node:crypto");
+          const { appendFileSync, readFileSync } = require("node:fs");
+
+          const readJson = (path) => JSON.parse(readFileSync(path, "utf8"));
+          const assert = (condition, message) => {
+            if (!condition) throw new Error(message);
+          };
+          const sha256 = (value) => createHash("sha256").update(value, "utf8").digest("hex");
+          const expectedVersion = "1.2.1";
+          const expectedTag = `v${expectedVersion}`;
+          const expectedSourceRef = `refs/tags/${expectedTag}`;
+
+          const packageJson = readJson("package.json");
+          const packageLock = readJson("package-lock.json");
+          const template = readJson("deployment/template-version.json");
+          const agent = readJson("deployment/agent-manifest.json");
+          const prompt = readJson("deployment/upgrade-prompt.json");
+
+          assert(packageJson.version === expectedVersion, "package.json version is not the release version");
+          assert(packageLock.version === expectedVersion, "package-lock.json version is not the release version");
+          assert(packageLock.packages?.[""]?.version === expectedVersion, "package-lock root version is not the release version");
+          assert(template.version === expectedVersion, "template version is not the release version");
+          assert(template.releaseTag === expectedTag, "template releaseTag is not immutable");
+          assert(template.upgradePolicy?.releaseSource === expectedSourceRef, "template release source is not the release tag");
+          assert(agent.releaseContract?.version === expectedVersion, "agent contract version is not the release version");
+          assert(agent.releaseContract?.releaseTag === expectedTag, "agent contract releaseTag is not immutable");
+          assert(agent.releaseContract?.sourceRef === expectedSourceRef, "agent contract sourceRef is not the release tag");
+          assert(prompt.promptVersion === expectedVersion, "upgrade prompt version is not the release version");
+          assert(prompt.releaseTag === expectedTag, "upgrade prompt releaseTag is not immutable");
+          assert(typeof prompt.prompt === "string" && prompt.prompt.length > 0, "upgrade prompt text is missing");
+
+          const promptDigest = sha256(prompt.prompt);
+          assert(prompt.promptSha256 === promptDigest, "upgrade prompt self digest does not match its UTF-8 text");
+          assert(template.upgradePromptManifest === "deployment/upgrade-prompt.json", "template prompt manifest path is invalid");
+          assert(template.upgradePromptSha256 === promptDigest, "template prompt digest does not match");
+          assert(agent.releaseContract?.upgradePromptManifest === "deployment/upgrade-prompt.json", "agent prompt manifest path is invalid");
+          assert(agent.releaseContract?.upgradePromptSha256 === promptDigest, "agent prompt digest does not match");
+
+          const migrationPath = "drizzle/0007_legacy_media_and_access_state.sql";
+          const migrationDigest = sha256(readFileSync(migrationPath, "utf8"));
+          assert(
+            agent.databaseMigrationPolicy?.migrationSha256?.["0007_legacy_media_and_access_state.sql"] === migrationDigest,
+            "0007 migration digest does not match the agent contract",
+          );
+
+          appendFileSync(process.env.GITHUB_OUTPUT, `release_tag=${expectedTag}\n`, "utf8");
+          NODE
+
+      - name: Create the release tag once
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.release_contract.outputs.release_tag }}
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "$RELEASE_TAG already exists; leaving it unchanged."
+            exit 0
+          fi
+
+          checked_sha="$(git rev-parse HEAD)"
+          if [[ "$checked_sha" != "$GITHUB_SHA" ]]; then
+            echo "Checked-out commit does not match GITHUB_SHA." >&2
+            exit 1
+          fi
+          remote_main_record="$(git ls-remote origin refs/heads/main)"
+          remote_main_sha="${remote_main_record%%$'\t'*}"
+          if [[ "$remote_main_sha" != "$GITHUB_SHA" ]]; then
+            echo "main advanced after this verification; the newer workflow will decide the release tag."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$RELEASE_TAG" "$GITHUB_SHA" -m "Release $RELEASE_TAG"
+          if ! git push origin "refs/tags/$RELEASE_TAG"; then
+            remote_tag_record="$(git ls-remote --tags origin "refs/tags/$RELEASE_TAG" "refs/tags/$RELEASE_TAG^{}")"
+            direct_target=""
+            peeled_target=""
+            while IFS=$'\t' read -r object_id ref_name; do
+              if [[ "$ref_name" == "refs/tags/$RELEASE_TAG^{}" ]]; then
+                peeled_target="$object_id"
+              elif [[ "$ref_name" == "refs/tags/$RELEASE_TAG" ]]; then
+                direct_target="$object_id"
+              fi
+            done <<< "$remote_tag_record"
+            remote_tag_target="${peeled_target:-$direct_target}"
+            if [[ "$remote_tag_target" == "$GITHUB_SHA" ]]; then
+              echo "$RELEASE_TAG was created concurrently at the verified commit; leaving it unchanged."
+              exit 0
+            fi
+            echo "$RELEASE_TAG appeared concurrently at a different target; refusing to treat the release as successful." >&2
+            exit 1
+          fi

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { toUserFacingChineseError, userFacingError } from "../lib/user-facing-error";
 import { PortfolioExperience } from "../portfolio/portfolio-experience";
 import { validatePortfolioDocument, type PortfolioDocument } from "../portfolio/model";
 
@@ -12,15 +13,20 @@ export function DraftPreview() {
     const controller = new AbortController();
     void fetch("/api/admin/portfolio", { credentials: "same-origin", cache: "no-store", signal: controller.signal })
       .then(async (response) => {
-        const body: unknown = await response.json();
-        if (!response.ok || !isRecord(body)) throw new Error("草稿暂时无法读取");
+        let body: unknown;
+        try {
+          body = await response.json();
+        } catch {
+          throw userFacingError("草稿响应暂时无法读取，请稍后重试");
+        }
+        if (!response.ok || !isRecord(body)) throw userFacingError("草稿暂时无法读取");
         const validation = validatePortfolioDocument(body.portfolio);
-        if (!validation.ok) throw new Error("草稿内容需要先修正");
+        if (!validation.ok) throw userFacingError("草稿内容需要先修正");
         setPortfolio(validation.value);
       })
       .catch((reason) => {
         if (reason instanceof DOMException && reason.name === "AbortError") return;
-        setError(reason instanceof Error ? reason.message : "草稿暂时无法读取");
+        setError(toUserFacingChineseError(reason, "草稿暂时无法读取，请检查网络后重试"));
       });
     return () => controller.abort();
   }, []);

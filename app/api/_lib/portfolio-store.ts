@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import { validatePortfolioDocument, type PortfolioDocument } from "../../portfolio/model";
+import { mediaAssetsInDocument, validatePortfolioDocument, type PortfolioDocument } from "../../portfolio/model";
 
 const DOCUMENT_ID = "default";
 
@@ -40,9 +40,17 @@ export async function getPortfolioRecord(): Promise<PortfolioRecord | null> {
 export async function savePortfolioDraft(document: PortfolioDocument, expectedRevision: number): Promise<PortfolioRecord | null> {
   const nextRevision = expectedRevision + 1;
   const updatedAt = new Date().toISOString();
+  const referencedMediaKeys = Array.from(new Set(mediaAssetsInDocument(document).flatMap((asset) => asset.key ? [asset.key] : [])));
   const result = await getPortfolioDb()
-    .prepare("UPDATE portfolio_documents SET draft_json = ?, revision = ?, updated_at = ? WHERE id = ? AND revision = ?")
-    .bind(JSON.stringify(document), nextRevision, updatedAt, DOCUMENT_ID, expectedRevision)
+    .prepare(`UPDATE portfolio_documents SET draft_json = ?, revision = ?, updated_at = ?
+      WHERE id = ? AND revision = ?
+        AND NOT EXISTS (
+          SELECT 1
+          FROM portfolio_media AS media
+          INNER JOIN json_each(?) AS referenced ON referenced.value = media.object_key
+          WHERE media.status != 'uploaded'
+        )`)
+    .bind(JSON.stringify(document), nextRevision, updatedAt, DOCUMENT_ID, expectedRevision, JSON.stringify(referencedMediaKeys))
     .run();
   if (Number(result.meta.changes ?? 0) !== 1) return null;
   return getPortfolioRecord();
