@@ -122,7 +122,7 @@ export function HeroSequence({
           </section>
         ))}
       </div>
-      {hero.slides.length > 1 && <div className={styles.heroMobileControls} aria-label="首图轮播控制">
+      {hero.slides.length > 1 && <div className={styles.heroMobileControls} role="group" aria-label="首图轮播控制">
         <button type="button" onClick={() => scrollToSlide(currentIndex - 1)} disabled={currentIndex === 0} aria-label="上一张首图">←</button>
         <div className={styles.heroPagination}>
           {hero.slides.map((slide, index) => <button

@@ -85,11 +85,13 @@ test("mobile project selection and records avoid horizontal-only desktop control
 });
 
 test("phone preview reuses the real portfolio tree without an iframe", async () => {
-  const [preview, experience, hero, endCover] = await Promise.all([
+  const [preview, experience, hero, endCover, portfolioCss, adminSuite] = await Promise.all([
     readFile(new URL("../app/admin/mobile-portfolio-preview.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/portfolio/portfolio-experience.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/portfolio/hero-sequence.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/portfolio/end-cover-sequence.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/demo/portfolio-demo.module.css", import.meta.url), "utf8"),
+    readFile(new URL("./e2e/admin-mobile.spec.ts", import.meta.url), "utf8"),
   ]);
   assert.match(preview, /createPortal/u);
   assert.match(preview, /<PortfolioExperience initialPortfolio=\{portfolio\} mode="review" embedded initialPreviewTarget=\{target\}/u);
@@ -97,6 +99,9 @@ test("phone preview reuses the real portfolio tree without an iframe", async () 
   assert.match(experience, /const Root = embedded \? "div" : "main"/u);
   assert.match(experience, /initialPreviewTarget/u);
   assert.match(hero, /data-hero-slide-id/u);
+  assert.match(hero, /role="group"[^>]*aria-label="首图轮播控制"/u);
+  assert.match(portfolioCss, /\.heroMobileEnter\s*\{[^}]*display:\s*(?:block|flex|grid|inline-flex)/su);
+  assert.match(adminSuite, /filter\(\{ hasText: \/\^作品名称\/u \}\)\.locator\("input"\)/u);
   assert.match(endCover, /data-end-cover-id/u);
 });
 

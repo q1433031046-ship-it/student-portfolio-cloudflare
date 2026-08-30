@@ -1539,6 +1539,7 @@
   .heroMobileEnter {
     position: sticky;
     z-index: 30;
+    display: block;
     bottom: max(12px, var(--safe-area-bottom));
     width: calc(100% - 32px - var(--safe-area-left) - var(--safe-area-right));
     min-height: 48px;

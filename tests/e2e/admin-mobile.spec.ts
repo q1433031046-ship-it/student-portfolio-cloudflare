@@ -23,7 +23,7 @@ test("admin navigation, project selection, more actions and phone preview fit 32
   await selector.selectOption({ index: 9 });
   await expect(selector).toHaveValue("project-mobile-10");
 
-  const titleInput = page.getByLabel("作品名称");
+  const titleInput = page.locator("label").filter({ hasText: /^作品名称/u }).locator("input").first();
   await expect(titleInput).toHaveCSS("font-size", "16px");
   await expect(page.getByText(/\/ 100/u).first()).toBeVisible();
 
