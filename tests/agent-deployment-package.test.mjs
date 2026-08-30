@@ -106,15 +106,25 @@ test("runs the complete production-safe gate for every main pull request", async
   }
 });
 
-test("tags the exact verified main commit only after an independent read-only release gate", async () => {
+test("tags only an explicitly verified release candidate from the protected main workflow", async () => {
   const workflow = await readFile(".github/workflows/release-verify.yml", "utf8");
-  const [verificationJob, tagJob = ""] = workflow.split(/\n  tag-release:\n/u);
+  const [verificationJobs, tagJob = ""] = workflow.split(/\n  tag-release:\n/u);
 
   assert.match(workflow, /push:\s*\n\s*branches: \[main\]/u);
+  assert.match(workflow, /workflow_dispatch:\s*\n\s*inputs:/u);
+  for (const input of ["candidate_sha", "base_main_sha", "confirm_version"]) {
+    assert.match(
+      workflow,
+      new RegExp(`${input}:\\s*\\n\\s*required: true\\s*\\n\\s*type: string`, "u"),
+    );
+  }
   assert.doesNotMatch(workflow, /^\s+paths:/mu);
-  assert.match(verificationJob, /release-verify:/u);
-  assert.match(verificationJob, /permissions:\s*\n\s*contents: read/u);
-  assert.match(verificationJob, /persist-credentials: false/u);
+  assert.match(verificationJobs, /release-verify:/u);
+  assert.match(verificationJobs, /permissions:\s*\n\s*contents: read/u);
+  assert.match(verificationJobs, /ref:.*inputs\.candidate_sha.*github\.sha/u);
+  assert.match(verificationJobs, /persist-credentials: false/u);
+  assert.match(verificationJobs, /refs\/heads\/release\/v/u);
+  assert.match(verificationJobs, /merge-base --is-ancestor/u);
   for (const command of [
     "npm ci",
     "npm audit --omit=dev --audit-level=high",
@@ -128,21 +138,28 @@ test("tags the exact verified main commit only after an independent read-only re
     "npm run lint",
     "./node_modules/.bin/tsc --noEmit",
   ]) {
-    assert.match(verificationJob, new RegExp(command.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")));
+    assert.match(verificationJobs, new RegExp(command.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")));
   }
 
-  assert.match(tagJob, /needs: release-verify/u);
-  assert.match(tagJob, /github\.event_name == 'push'.*github\.ref == 'refs\/heads\/main'/u);
+  assert.match(tagJob, /needs:\s*\[release-verify, macos-webkit\]/u);
+  assert.match(tagJob, /github\.event_name == 'workflow_dispatch'/u);
+  assert.match(tagJob, /github\.ref == 'refs\/heads\/main'/u);
   assert.match(tagJob, /permissions:\s*\n\s*contents: write/u);
-  assert.match(tagJob, /ref: \$\{\{ github\.sha \}\}/u);
+  assert.match(tagJob, /persist-credentials: true/u);
+  assert.match(tagJob, /INPUT_CANDIDATE_SHA/u);
+  assert.match(tagJob, /INPUT_BASE_MAIN_SHA/u);
+  assert.match(tagJob, /INPUT_CONFIRM_VERSION/u);
+  assert.match(tagJob, /\["show", `\$\{candidate\}:\$\{path\}`\]/u);
   assert.match(tagJob, /node <<'NODE'/u);
   assert.match(tagJob, /createHash\("sha256"\)/u);
   assert.match(tagJob, /promptSha256 === promptDigest/u);
-  assert.match(tagJob, /git tag -a "\$RELEASE_TAG" "\$GITHUB_SHA"/u);
+  assert.match(tagJob, /git tag -a "\$release_tag" "\$candidate_sha"/u);
   assert.match(tagJob, /git ls-remote origin refs\/heads\/main/u);
+  assert.match(tagJob, /refs\/tags\/\$release_tag\^\{\}/u);
   assert.match(tagJob, /git tag -a/u);
-  assert.match(tagJob, /git ls-remote --exit-code --tags origin/u);
   assert.doesNotMatch(tagJob, /npm (?:ci|install|run|test)/u);
+  assert.doesNotMatch(workflow, /expectedVersion/u);
+  assert.doesNotMatch(tagJob, /needs\.[^.]+\.outputs/u);
   assert.doesNotMatch(tagJob, /--force|-f\s+["']?\$RELEASE_TAG/u);
 });
 
