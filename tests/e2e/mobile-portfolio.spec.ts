@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { createDefaultPortfolioDocument } from "../../app/portfolio/default-document";
 
 const mobileViewports = [
   { width: 320, height: 700 },
@@ -39,14 +40,25 @@ for (const viewport of mobileViewports) {
 }
 
 test("hero carousel exposes persistent controls and only prioritizes the first image", async ({ page }) => {
-  await page.goto("/demo");
+  const portfolio = createDefaultPortfolioDocument();
+  const pixel = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Cpath fill='%23000' d='M0 0h2v2H0z'/%3E%3C/svg%3E";
+  portfolio.hero.slides = portfolio.hero.slides.map((slide) => ({
+    ...slide,
+    media: { ...slide.media, src: pixel },
+  }));
+  await page.route(/\/api\/admin\/portfolio(?:\?.*)?$/u, (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ portfolio }),
+  }));
+  await page.goto("/preview");
+  await expect(page.locator("[data-hero-slide-index='0'] img")).toHaveAttribute("loading", "eager");
+  await expect(page.locator("[data-hero-slide-index='1'] img")).toHaveAttribute("loading", "lazy");
   const controls = page.getByRole("group", { name: "首图轮播控制" });
   await expect(controls).toBeVisible();
   await expectTouchTarget(controls.getByRole("button", { name: "下一张首图" }));
   await controls.getByRole("button", { name: "下一张首图" }).click();
   await expect(controls.getByText(/第 2 张，共 2 张/u)).toBeAttached();
-  await expect(page.locator("[data-hero-slide-index='0'] img")).toHaveAttribute("loading", "eager");
-  await expect(page.locator("[data-hero-slide-index='1'] img")).toHaveAttribute("loading", "lazy");
 });
 
 async function expectNoHorizontalOverflow(page: Page) {
