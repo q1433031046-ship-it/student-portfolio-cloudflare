@@ -2,17 +2,17 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-test("version metadata advertises the v1.1.4 synchronized upgrade prompt", async () => {
+test("version metadata advertises the v1.1.5 fixed QR access flow", async () => {
   const [manifest, promptManifest] = await Promise.all([
     readFile("deployment/template-version.json", "utf8").then(JSON.parse),
     readFile("deployment/upgrade-prompt.json", "utf8").then(JSON.parse),
   ]);
 
-  assert.equal(manifest.version, "1.1.4");
+  assert.equal(manifest.version, "1.1.5");
   assert.equal(manifest.importance, "recommended");
   assert.equal(manifest.upgradePromptManifest, "deployment/upgrade-prompt.json");
-  assert.match(manifest.releaseNotes.join("\n"), /同步主仓库/u);
-  assert.match(manifest.releaseNotes.join("\n"), /内置的安全指令/u);
+  assert.match(manifest.releaseNotes.join("\n"), /确认页/u);
+  assert.match(manifest.releaseNotes.join("\n"), /固定 24 小时/u);
   assert.equal(promptManifest.schemaVersion, 1);
   assert.equal(promptManifest.program, manifest.program);
   assert.equal(promptManifest.promptVersion, manifest.version);

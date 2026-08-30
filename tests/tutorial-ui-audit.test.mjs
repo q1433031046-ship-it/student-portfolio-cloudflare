@@ -44,6 +44,8 @@ test("no-negative-echo audit keeps one final tutorial flow", async () => {
   assert.match(readme, /媒体已上传，等待草稿保存/);
   assert.match(readme, /无害的只读检查/);
   assert.match(readme, /从刚才中断的步骤继续/);
+  assert.match(readme, /固定 24 小时/);
+  assert.match(readme, /确认页不会扣除次数/);
   assert.match(guide, /在 ChatGPT 里具体怎么点/);
   assert.match(guide, /不需要启用 R2/);
   assert.match(guide, /桌面 16:9/);
@@ -51,6 +53,7 @@ test("no-negative-echo audit keeps one final tutorial flow", async () => {
   assert.match(guide, /媒体已上传，等待草稿保存/);
   assert.match(guide, /防止反复授权/);
   assert.match(guide, /从中断步骤继续/);
+  assert.match(guide, /二维码访客会话固定为 24 小时/);
   assert.match(guide, /data-admin-tools/);
   assert.match(guide, /portfolio:open-upgrade/);
   assert.match(upgrade, /addEventListener\(OPEN_UPGRADE_EVENT/);

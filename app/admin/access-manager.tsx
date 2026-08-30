@@ -81,7 +81,7 @@ export function AccessManager({ access, onChange, setMessage }: { access: Access
         <div>
           <span>QR ACCESS</span>
           <h2 id="access-manager-title">二维码访问接口</h2>
-          <p>二维码可以单独使用；只有开启限制后，普通链接才会被拦截。</p>
+          <p>二维码先进入确认页，打开确认页不扣次数；成功进入后当前浏览器获得固定 24 小时访问。重复打开不会再次扣次数，也不会延长原到期时间。</p>
         </div>
         <button className={styles.policySwitch} type="button" role="switch" aria-checked={access.restrictionEnabled} data-on={access.restrictionEnabled} disabled={busy} onClick={() => void updatePolicy()}>
           <i aria-hidden="true" />
@@ -90,11 +90,11 @@ export function AccessManager({ access, onChange, setMessage }: { access: Access
       </div>
 
       <div className={styles.accessFlow}>
-        <span><b>普通链接</b>{access.restrictionEnabled ? "需要有效访问会话" : "直接打开"}</span>
+        <span><b>确认页面</b>仅查看规则，不扣使用次数</span>
         <i aria-hidden="true">＋</i>
-        <span><b>二维码</b>每张都是独立密钥</span>
+        <span><b>成功进入</b>计 1 次，当前浏览器固定 24 小时</span>
         <i aria-hidden="true">＋</i>
-        <span><b>后台</b>管理员始终可进入</span>
+        <span><b>状态变化</b>耗尽不影响已有会话；暂停、删除或到期会立即失效</span>
       </div>
 
       <div className={styles.accessCreate}>

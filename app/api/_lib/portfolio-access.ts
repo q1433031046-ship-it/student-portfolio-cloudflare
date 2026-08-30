@@ -12,7 +12,7 @@ import {
 } from "./portfolio-access-security";
 
 const SETTINGS_ID = "default";
-const MAX_SESSION_SECONDS = 30 * 24 * 60 * 60;
+export const ACCESS_SESSION_SECONDS = 24 * 60 * 60;
 
 type AccessPolicyRow = { restriction_enabled: number; updated_at: string | null; updated_by: string | null };
 type AccessPassRow = {
@@ -53,6 +53,15 @@ export type AccessDecision = {
   restricted: boolean;
   reason: "open" | "admin" | "session" | "required" | "expired" | "revoked";
   passId?: string;
+};
+export type AccessPassInspection = {
+  validToken: false;
+  reason: "二维码无效";
+} | {
+  validToken: true;
+  redeemable: boolean;
+  reason: string | null;
+  pass: Pick<AccessPass, "id" | "label" | "status" | "expiresAt">;
 };
 
 export async function getAccessConfiguration(origin: string): Promise<AccessConfiguration> {
@@ -134,24 +143,40 @@ export async function checkPortfolioAccess(request: Request): Promise<AccessDeci
   return { allowed: true, restricted: true, reason: "session", passId: pass.id };
 }
 
-export async function redeemAccessPass(request: Request, token: string) {
+export async function inspectAccessPassToken(token: string): Promise<AccessPassInspection> {
+  const passId = await verifyAccessToken(token, getAccessSigningKey());
+  if (!passId) return { validToken: false, reason: "二维码无效" };
+  const pass = await getPass(passId);
+  if (!pass) return { validToken: false, reason: "二维码无效" };
+  return {
+    validToken: true,
+    redeemable: pass.status === "active",
+    reason: pass.status === "active" ? null : unavailableReason(pass),
+    pass: { id: pass.id, label: pass.label, status: pass.status, expiresAt: pass.expiresAt },
+  };
+}
+
+export async function redeemAccessPass(request: Request, token: string, now = new Date()) {
   const secret = getAccessSigningKey();
   const passId = await verifyAccessToken(token, secret);
   if (!passId) return { ok: false as const, reason: "二维码无效" };
 
+  const nowSeconds = Math.floor(now.getTime() / 1000);
   const existing = readCookie(request.headers.get("cookie"), PORTFOLIO_ACCESS_COOKIE);
   if (existing) {
-    const session = await verifyAccessSession(existing, secret);
+    const session = await verifyAccessSession(existing, secret, nowSeconds);
     if (session?.passId === passId) {
       const pass = await getPass(passId);
-      if (pass && isAccessPassSessionValid(pass)) return { ok: true as const, cookie: accessSessionCookie(existing, session.expiresAt), pass };
+      if (pass && isAccessPassSessionValid(pass, now)) {
+        return { ok: true as const, cookie: accessSessionCookie(existing, session.expiresAt), pass, reused: true as const };
+      }
     }
   }
 
-  const now = new Date().toISOString();
+  const nowIso = now.toISOString();
   const result = await getPortfolioDb()
     .prepare("UPDATE portfolio_access_passes SET used_count = used_count + 1, last_used_at = ?, updated_at = ? WHERE id = ? AND enabled = 1 AND (expires_at IS NULL OR expires_at > ?) AND (max_uses IS NULL OR used_count < max_uses)")
-    .bind(now, now, passId, now)
+    .bind(nowIso, nowIso, passId, nowIso)
     .run();
   if (Number(result.meta.changes ?? 0) !== 1) {
     const pass = await getPass(passId);
@@ -160,10 +185,17 @@ export async function redeemAccessPass(request: Request, token: string) {
 
   const pass = await getPass(passId);
   if (!pass) return { ok: false as const, reason: "二维码无效" };
-  const absoluteExpiry = pass.expiresAt ? Math.floor(new Date(pass.expiresAt).getTime() / 1000) : Number.POSITIVE_INFINITY;
-  const sessionExpiry = Math.min(Math.floor(Date.now() / 1000) + MAX_SESSION_SECONDS, absoluteExpiry);
+  const sessionExpiry = calculateAccessSessionExpiry(nowSeconds, pass.expiresAt);
   const sessionValue = await createAccessSession(pass.id, sessionExpiry, secret);
-  return { ok: true as const, cookie: accessSessionCookie(sessionValue, sessionExpiry), pass };
+  return { ok: true as const, cookie: accessSessionCookie(sessionValue, sessionExpiry), pass, reused: false as const };
+}
+
+export function calculateAccessSessionExpiry(nowSeconds: number, passExpiresAt: string | null) {
+  if (!passExpiresAt) return nowSeconds + ACCESS_SESSION_SECONDS;
+  const passExpiry = Math.floor(new Date(passExpiresAt).getTime() / 1000);
+  return Number.isSafeInteger(passExpiry)
+    ? Math.min(nowSeconds + ACCESS_SESSION_SECONDS, passExpiry)
+    : nowSeconds;
 }
 
 export function validateAccessPassInput(input: unknown, allowExpired = false) {

@@ -26,6 +26,11 @@ test("ships a machine-readable agent deployment contract", async () => {
   assert.equal(manifest.authorizationFlow.maximumAutomaticAuthorizationAttempts, 1);
   assert.equal(manifest.authorizationFlow.resumeInterruptedStep, true);
   assert.equal(manifest.authorizationFlow.restartDeploymentAfterAuthorization, false);
+  assert.equal(manifest.access.visitorSessionHours, 24);
+  assert.equal(manifest.access.slidingSession, false);
+  assert.equal(manifest.access.intermediateRoute, "/access");
+  assert.equal(manifest.access.redeemRoute, "/access/redeem");
+  assert.equal(manifest.authentication.sessionHours, 12);
   assert.ok(manifest.liveTests.length >= 10);
 });
 

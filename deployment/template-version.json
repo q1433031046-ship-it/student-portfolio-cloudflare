@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
   "program": "student-portfolio-cloudflare",
-  "version": "1.1.4",
-  "releasedAt": "2026-08-29",
+  "version": "1.1.5",
+  "releasedAt": "2026-08-30",
   "importance": "recommended",
   "releaseNotes": [
-    "升级中心会在检查版本时同步主仓库的最新版升级指令。",
-    "远程指令必须通过项目身份、版本和安全规则校验，异常时自动使用当前版本内置的安全指令。",
-    "教程展示、升级中心和兼容入口共用同一份指令，自动化测试会阻止内容不同步。"
+    "二维码先进入确认页，只有点击打开作品集才会计入一次成功使用。",
+    "成功进入后当前浏览器获得固定 24 小时访问，会话不会因刷新或重复扫码而续期或重复扣次数。",
+    "二维码耗尽只阻止新兑换；暂停、删除或到期会立即撤销关联访问会话。"
   ],
   "portfolioDocumentSchemaVersion": 4,
   "templateRepository": "https://github.com/q1433031046-ship-it/student-portfolio-cloudflare",
