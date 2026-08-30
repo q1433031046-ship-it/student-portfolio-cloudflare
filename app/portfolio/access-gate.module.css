@@ -1,4 +1,4 @@
-.gate { min-height: 100svh; padding: clamp(24px, 6vw, 84px); display: grid; place-items: center; color: #17181b; background: #f4f3ee; font-family: Arial, "PingFang SC", "Microsoft YaHei", sans-serif; }
+.gate { min-height: 100svh; min-height: 100dvh; max-inline-size: 100%; padding: max(clamp(24px, 6vw, 84px), var(--safe-area-top)) max(clamp(24px, 6vw, 84px), var(--safe-area-right)) max(clamp(24px, 6vw, 84px), var(--safe-area-bottom)) max(clamp(24px, 6vw, 84px), var(--safe-area-left)); display: grid; place-items: center; overflow-x: clip; color: #17181b; background: #f4f3ee; font-family: Arial, "PingFang SC", "Microsoft YaHei", sans-serif; }
 .panel { width: min(760px, 100%); padding: clamp(30px, 6vw, 72px); border: 1px solid #d6d5d0; border-radius: 18px; background: #fff; box-shadow: 0 30px 90px #17181b12; }
 .brand { display: flex; align-items: center; gap: 14px; }
 .brand i { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 50%; color: white; background: #17181b; font-style: normal; font-size: 10px; font-weight: 800; }
@@ -9,4 +9,6 @@
 .actions { margin-top: 42px; display: flex; align-items: center; gap: 18px; }
 .actions a { min-height: 46px; padding: 0 18px; display: inline-flex; align-items: center; border: 1px solid #17181b; border-radius: 999px; color: #17181b; font-size: 11px; font-weight: 750; text-decoration: none; }
 .actions span { color: #8a8c91; font-size: 10px; }
-@media (max-width: 600px) { .panel { border-radius: 12px; } .actions { align-items: flex-start; flex-direction: column; } }
+@media (max-width: 600px) { .gate { padding-inline: max(16px, var(--safe-area-left)); } .panel { padding: 28px 18px; border-radius: 12px; } .panel h1 { font-size: clamp(38px, 14vw, 62px); overflow-wrap: anywhere; } .actions { align-items: stretch; flex-direction: column; } .actions a { justify-content: center; min-height: 48px; } }
+
+@media (max-height: 560px) and (pointer: coarse) { .gate { place-items: start center; } .panel { padding-block: 18px; } .panel h1 { margin-top: 24px; } .actions { margin-top: 24px; } }

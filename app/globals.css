@@ -1,6 +1,10 @@
 @import "tailwindcss";
 
 :root {
+  --safe-area-top: env(safe-area-inset-top, 0px);
+  --safe-area-right: env(safe-area-inset-right, 0px);
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-left: env(safe-area-inset-left, 0px);
   color-scheme: light dark;
 }
 
@@ -11,12 +15,14 @@
 }
 
 html {
+  max-inline-size: 100%;
   scroll-behavior: smooth;
 }
 
 body {
   margin: 0;
-  overflow-x: hidden;
+  max-inline-size: 100%;
+  overflow-x: clip;
   color: #f5f4ef;
   background: #101114;
   font-family: Arial, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
@@ -28,16 +34,6 @@ input,
 textarea,
 select {
   font: inherit;
-}
-
-@media (max-width: 720px) {
-  [data-orientation="portrait"] > figure {
-    aspect-ratio: 3 / 4 !important;
-  }
-
-  [data-orientation="landscape"] > figure {
-    aspect-ratio: 4 / 3 !important;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

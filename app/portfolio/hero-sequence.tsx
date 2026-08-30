@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { HeroConfig, HeroSlide } from "./model";
 import { trimVisibleText } from "../lib/text-visibility";
 import { heroLayerStyle } from "./hero-layer-style";
@@ -21,7 +22,7 @@ export function HeroSequence({
   entered: boolean;
   onEnter: () => void;
   onExit: () => void;
-  onContact: () => void;
+  onContact: (trigger: HTMLButtonElement) => void;
   contactAvailable: boolean;
   yearRange: string;
   projectCount: number;
@@ -30,6 +31,32 @@ export function HeroSequence({
   const email = trimVisibleText(hero.email);
   const phone = trimVisibleText(hero.phone);
   const availability = trimVisibleText(hero.availability);
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const scrollFrameRef = useRef<number | null>(null);
+  const [activeIndex, setActiveIndex] = useState(0);
+
+  useEffect(() => () => {
+    if (scrollFrameRef.current !== null) window.cancelAnimationFrame(scrollFrameRef.current);
+  }, []);
+  const currentIndex = Math.min(activeIndex, Math.max(0, hero.slides.length - 1));
+
+  function scrollToSlide(index: number) {
+    const next = Math.max(0, Math.min(index, hero.slides.length - 1));
+    const target = scrollerRef.current?.querySelector<HTMLElement>(`[data-hero-slide-index="${next}"]`);
+    target?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "start" });
+    setActiveIndex(next);
+  }
+
+  function updateActiveSlide() {
+    if (scrollFrameRef.current !== null) return;
+    scrollFrameRef.current = window.requestAnimationFrame(() => {
+      scrollFrameRef.current = null;
+      const scroller = scrollerRef.current;
+      if (!scroller || scroller.clientWidth === 0) return;
+      setActiveIndex(Math.max(0, Math.min(hero.slides.length - 1, Math.round(scroller.scrollLeft / scroller.clientWidth))));
+    });
+  }
+
   return (
     <>
       <header className={styles.siteHeader}>
@@ -47,13 +74,19 @@ export function HeroSequence({
         </div>
         <nav aria-label="页面导航">
           <a href="#works" onClick={(event) => { if (!entered) { event.preventDefault(); onEnter(); } }}>作品</a>
-          {contactAvailable && <button className={styles.contactAction} type="button" onClick={onContact}>
+          {contactAvailable && <button className={styles.contactAction} type="button" onClick={(event) => onContact(event.currentTarget)}>
             <span>联系</span><strong>{email || phone || "查看联系方式"}</strong>
           </button>}
         </nav>
         {availability && <span>{availability}</span>}
       </header>
-      <div className={styles.heroSequence} data-entered={entered}>
+      <div
+        ref={scrollerRef}
+        className={styles.heroSequence}
+        data-entered={entered}
+        data-hero-slide-count={hero.slides.length}
+        onScroll={updateActiveSlide}
+      >
         {hero.slides.map((slide, index) => (
           <section
             className={styles.heroSlide}
@@ -61,39 +94,66 @@ export function HeroSequence({
             data-effect={slide.effect}
             data-animation={slide.animationEnabled ? "on" : "off"}
             data-custom-media={Boolean(slide.media.src)}
+            data-custom-crop={Boolean(slide.media.crop && slide.media.sourceAspectRatio)}
             data-hero-slide-index={index}
+            data-hero-slide-id={slide.id}
             data-enter-target={index === hero.slides.length - 1 && !entered}
             key={slide.id}
             aria-label={`首图 ${index + 1}`}
-            style={slide.media.crop && slide.media.sourceAspectRatio ? { aspectRatio: mediaCropAspect(slide.media), minHeight: "auto" } : undefined}
+            style={{
+              "--media-aspect-desktop": mediaCropAspect(slide.media),
+              "--media-aspect-mobile": 4 / 5,
+            } as CSSProperties}
             onClick={(event) => {
               if (entered || index !== hero.slides.length - 1) return;
               if ((event.target as HTMLElement).closest("a, button")) return;
               onEnter();
             }}
           >
-          <HeroArtwork slide={slide} projectCount={projectCount} yearRange={yearRange} />
-          {slide.contentMode !== "image-only" && <HeroLayers hero={hero} slide={slide} yearRange={yearRange} />}
+            <HeroArtwork slide={slide} projectCount={projectCount} yearRange={yearRange} priority={index === 0} />
+            {slide.contentMode !== "image-only" && <HeroLayers hero={hero} slide={slide} yearRange={yearRange} />}
 
-          {index === hero.slides.length - 1 && !entered && (
-            <button className={styles.heroEnter} type="button" aria-controls="works" aria-expanded={entered} onClick={onEnter}>
-              <span>点击展开作品</span><i aria-hidden="true">↓</i>
-            </button>
-          )}
-          {index > 0 && <span className={styles.heroSlideIndex}>{String(index + 1).padStart(2, "0")}</span>}
+            {index === hero.slides.length - 1 && !entered && (
+              <button className={styles.heroEnter} type="button" aria-controls="works" aria-expanded={entered} onClick={onEnter}>
+                <span>查看作品</span><i aria-hidden="true">↓</i>
+              </button>
+            )}
+            {index > 0 && <span className={styles.heroSlideIndex}>{String(index + 1).padStart(2, "0")}</span>}
           </section>
         ))}
       </div>
+      {hero.slides.length > 1 && <div className={styles.heroMobileControls} aria-label="首图轮播控制">
+        <button type="button" onClick={() => scrollToSlide(currentIndex - 1)} disabled={currentIndex === 0} aria-label="上一张首图">←</button>
+        <div className={styles.heroPagination}>
+          {hero.slides.map((slide, index) => <button
+            key={slide.id}
+            type="button"
+            aria-label={`转到第 ${index + 1} 张首图`}
+            aria-current={index === currentIndex ? "true" : undefined}
+            onClick={() => scrollToSlide(index)}
+          />)}
+        </div>
+        <span aria-live="polite" className={styles.srOnly}>第 {currentIndex + 1} 张，共 {hero.slides.length} 张</span>
+        <button type="button" onClick={() => scrollToSlide(currentIndex + 1)} disabled={currentIndex === hero.slides.length - 1} aria-label="下一张首图">→</button>
+      </div>}
+      {!entered && <button className={styles.heroMobileEnter} type="button" aria-controls="works" aria-expanded={entered} onClick={onEnter}>查看作品</button>}
     </>
   );
 }
 
-function HeroArtwork({ slide, projectCount, yearRange }: { slide: HeroSlide; projectCount: number; yearRange: string }) {
+function HeroArtwork({ slide, projectCount, yearRange, priority }: { slide: HeroSlide; projectCount: number; yearRange: string; priority: boolean }) {
   return (
     <div className={styles.heroArtwork} aria-hidden="true">
       {slide.media.src
         // eslint-disable-next-line @next/next/no-img-element
-        ? <img src={slide.media.src} alt="" decoding="async" fetchPriority="high" style={croppedImageStyle(slide.media, "contain")} />
+        ? <img
+          src={slide.media.src}
+          alt=""
+          loading={priority ? "eager" : "lazy"}
+          decoding="async"
+          fetchPriority={priority ? "high" : "auto"}
+          style={croppedImageStyle(slide.media, "contain")}
+        />
         : <div className={styles.heroFallback} data-visual={slide.media.visualKey}><span /></div>}
       <span className={styles.heroHalo} />
       <span className={styles.heroScan} />

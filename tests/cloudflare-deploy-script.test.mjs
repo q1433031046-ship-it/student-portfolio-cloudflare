@@ -791,9 +791,9 @@ exit 64
         FAKE_RACE_TARGET: remoteTarget,
         INPUT_CANDIDATE_SHA: "verified-main-sha",
         INPUT_BASE_MAIN_SHA: "verified-base-sha",
-        INPUT_CONFIRM_VERSION: "1.2.1",
+        INPUT_CONFIRM_VERSION: "1.3.0",
         GITHUB_SHA: "verified-main-sha",
-        RELEASE_TAG: "v1.2.1",
+        RELEASE_TAG: "v1.3.0",
       },
     });
     return { status: 0, stdout: result.stdout, stderr: result.stderr };

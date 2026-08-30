@@ -1,6 +1,6 @@
 {
   "name": "zkyl-student-showcase",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
@@ -17,6 +17,9 @@
     "cloudflare:package": "bash scripts/package-cloudflare.sh",
     "start": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext start",
     "test": "npm run build && node --experimental-strip-types --test tests/*.test.mjs",
+    "test:e2e": "node scripts/run-playwright-suite.mjs mobile",
+    "test:e2e:codec:chrome": "node scripts/run-playwright-suite.mjs codec-chrome",
+    "test:e2e:codec:webkit": "node scripts/run-playwright-suite.mjs codec-webkit",
     "lint": "bash scripts/sites-env.sh -- eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern cloudflare-pages-dist",
     "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate"
   },
@@ -41,8 +44,9 @@
     "react-dom": "19.2.8"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "5.20260830.1",
     "@cloudflare/vite-plugin": "1.54.2",
+    "@cloudflare/workers-types": "5.20260830.1",
+    "@playwright/test": "1.62.1",
     "@tailwindcss/postcss": "4.2.1",
     "@types/node": "22.19.19",
     "@types/react": "19.2.14",

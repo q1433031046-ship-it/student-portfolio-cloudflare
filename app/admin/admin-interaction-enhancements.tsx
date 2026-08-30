@@ -69,7 +69,7 @@ export function AdminInteractionEnhancements() {
       if (!dialog || getData(dialog, "autoLocated") === "true") return;
       setData(dialog, "autoLocated", "true");
       if (getData(dialog, "operationLocatable") !== "true") return;
-      const reason = dialog.textContent ?? "";
+      const reason = dialog.querySelector("[data-operation-raw-reason]")?.textContent ?? dialog.textContent ?? "";
       const uploadFailure = /上传|文件|MP4|JPG|PNG|WebP|AVIF|WOFF|TTF|OTF|50 MB|8 MiB|10 MiB/u.test(reason);
       if (uploadFailure && lastUploadGroup?.isConnected) {
         lastProblemTarget = lastUploadGroup;
@@ -146,7 +146,7 @@ function applyHeroMode(select: SelectLike, shouldScroll: boolean) {
 function locateValidationProblem(reason: string, onLocated: (target: Element) => void): Element | null {
   const view = validationViewForReason(reason);
   if (view) {
-    const navButton = Array.from(document.querySelectorAll("nav button"))
+    const navButton = Array.from(document.querySelectorAll("[data-admin-section-nav] button"))
       .find((button) => button.textContent?.includes(view));
     clickElement(navButton);
   }
@@ -174,9 +174,15 @@ function locateValidationProblem(reason: string, onLocated: (target: Element) =>
 
   if (location.projectIndex !== null) {
     window.requestAnimationFrame(() => {
-      const contentButtons = Array.from(document.querySelectorAll("button"))
-        .filter((button) => /^\d{2}/u.test(button.textContent?.trim() ?? "") && button.querySelector("strong"));
-      clickElement(contentButtons[location.projectIndex as number]);
+      const projectSelect = document.querySelector("select[aria-label='选择当前作品']") as unknown as HTMLSelectElement | null;
+      if (projectSelect && projectSelect.options[location.projectIndex as number]) {
+        projectSelect.value = projectSelect.options[location.projectIndex as number].value;
+        projectSelect.dispatchEvent(new Event("change", { bubbles: true }));
+      } else {
+        const contentButtons = Array.from(document.querySelectorAll("button"))
+          .filter((button) => /^\d{2}/u.test(button.textContent?.trim() ?? "") && button.querySelector("strong"));
+        clickElement(contentButtons[location.projectIndex as number]);
+      }
       window.requestAnimationFrame(() => {
         const target = findField();
         if (target) onLocated(target);

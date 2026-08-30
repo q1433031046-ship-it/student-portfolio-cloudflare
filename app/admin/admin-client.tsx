@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ChangeEvent, DragEvent, ReactNode } from "react";
+import { createContext, isValidElement, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import type { ChangeEvent, CSSProperties, Dispatch, DragEvent, ReactNode } from "react";
 import type {
   CategoryConfig,
   CoverTextStyle,
@@ -30,10 +30,17 @@ import { buildRecoveryCodeDownload } from "./recovery-download";
 import { migrateLegacyMediaUntilComplete, type LegacyMediaMigrationSummary } from "./legacy-media-migration";
 import { replacementKeyForUpload } from "./media-upload-policy";
 import { hasPlayableVideo, optionalVideoReset } from "../portfolio/video-availability";
+import { useVisualViewport } from "../lib/use-visual-viewport";
+import { useScrollLock } from "../lib/use-scroll-lock";
+import { ADMIN_MOBILE_MORE_CLOSE_EVENT } from "./mobile-more-contract";
+import { activeUploadReducer, createActiveUploadMap, failedUploads, hasBlockingUploads, type UploadAction } from "./upload-state";
+import { humanizeValidationMessage } from "./validation-message";
+import { MobilePortfolioPreview, type PortfolioPreviewTarget } from "./mobile-portfolio-preview";
+import { graphemeCountLabel } from "./grapheme";
 
-type View = "overview" | "identity" | "categories" | "projects" | "end-covers" | "contact" | "publish" | "records";
+export type AdminView = "overview" | "identity" | "categories" | "projects" | "end-covers" | "contact" | "publish" | "records";
 type Operation = "idle" | "saving" | "previewing" | "publishing";
-type OperationError = { title: string; reason: string; solution: string; locatable: boolean };
+type OperationError = { title: string; reason: string; rawReason: string; solution: string; locatable: boolean };
 type SetupPayload = {
   state: "initial_setup" | "upgrade_required" | "ready";
   identity: string | null;
@@ -90,19 +97,21 @@ type StoragePayload = {
   legacyMigration: LegacyMediaMigrationSummary;
 };
 
-const views: Array<{ id: View; label: string; index: string }> = [
+const UploadDispatchContext = createContext<Dispatch<UploadAction> | null>(null);
+
+const views: Array<{ id: AdminView; label: string; index: string }> = [
   { id: "overview", label: "概览", index: "01" },
   { id: "contact", label: "联系方式", index: "02" },
   { id: "identity", label: "首图与文字", index: "03" },
   { id: "categories", label: "作品分类", index: "04" },
   { id: "projects", label: "作品", index: "05" },
-  { id: "end-covers", label: "封底（尾图）", index: "06" },
+  { id: "end-covers", label: "封底", index: "06" },
   { id: "publish", label: "发布", index: "07" },
   { id: "records", label: "记录", index: "08" },
 ];
 
 export function AdminClient({ initialEmail, signInHref, signOutHref }: { initialEmail: string | null; signInHref: string | null; signOutHref: string | null }) {
-  const [view, setView] = useState<View>("overview");
+  const [view, setView] = useState<AdminView>("overview");
   const [setupBusy, setSetupBusy] = useState(false);
   const [data, setData] = useState<AdminPayload | null>(null);
   const [portfolio, setPortfolio] = useState<PortfolioDocument | null>(null);
@@ -121,13 +130,60 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
   const [events, setEvents] = useState<EventItem[]>([]);
   const [audits, setAudits] = useState<AuditItem[]>([]);
   const [operationError, setOperationError] = useState<OperationError | null>(null);
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
+  const [mobilePreviewTarget, setMobilePreviewTarget] = useState<PortfolioPreviewTarget | null>(null);
+  const [uploads, dispatchUpload] = useReducer(activeUploadReducer, undefined, createActiveUploadMap);
   const changeVersionRef = useRef(0);
-  const busy = operation !== "idle" || setupBusy;
+  const mobileMoreRef = useRef<HTMLElement>(null);
+  const mobileMoreCloseRef = useRef<HTMLButtonElement>(null);
+  const mobileMoreReturnFocusRef = useRef<HTMLElement | null>(null);
+  const visualViewport = useVisualViewport();
+  const uploadsBlocking = hasBlockingUploads(uploads);
+  const uploadFailures = failedUploads(uploads);
+  const busy = operation !== "idle" || setupBusy || uploadsBlocking;
+  useScrollLock(mobileMoreOpen);
 
   const notify = useCallback((nextMessage: string) => {
     setMessage(nextMessage);
     if (isFailureMessage(nextMessage)) setOperationError(failureGuidance(nextMessage));
   }, []);
+
+  const navigate = useCallback((nextView: AdminView) => {
+    if (uploadsBlocking) {
+      notify("文件仍在上传，请等待上传完成后再切换栏目");
+      return;
+    }
+    setView(nextView);
+    setMobileMoreOpen(false);
+  }, [notify, uploadsBlocking]);
+
+  useEffect(() => {
+    const close = () => setMobileMoreOpen(false);
+    window.addEventListener(ADMIN_MOBILE_MORE_CLOSE_EVENT, close);
+    return () => window.removeEventListener(ADMIN_MOBILE_MORE_CLOSE_EVENT, close);
+  }, []);
+
+  useEffect(() => {
+    if (visualViewport.keyboardInset <= 120) return;
+    const timer = window.setTimeout(() => setMobileMoreOpen(false), 0);
+    return () => window.clearTimeout(timer);
+  }, [visualViewport.keyboardInset]);
+
+  useEffect(() => {
+    if (!mobileMoreOpen) return;
+    mobileMoreReturnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const frame = window.requestAnimationFrame(() => mobileMoreCloseRef.current?.focus());
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMobileMoreOpen(false);
+      if (event.key === "Tab" && mobileMoreRef.current) trapAdminFocus(event, mobileMoreRef.current);
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("keydown", handleKey);
+      window.setTimeout(() => mobileMoreReturnFocusRef.current?.focus({ preventScroll: true }), 0);
+    };
+  }, [mobileMoreOpen]);
 
   const load = useCallback(async () => {
     setState("loading");
@@ -378,6 +434,12 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
 
   async function openQuickPreview() {
     if (busy) return;
+    if (window.matchMedia("(max-width: 720px)").matches) {
+      setMobilePreviewTarget(previewTargetForView(view, selectedProjectId));
+      setMobileMoreOpen(false);
+      setMessage("正在显示当前草稿的手机最终效果");
+      return;
+    }
     const previewWindow = window.open("about:blank", "portfolio-draft-preview");
     if (!previewWindow) {
       notify("浏览器拦截了快速预览窗口，请允许本站打开新窗口");
@@ -465,8 +527,16 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
     return <StatePanel label="服务状态" title="管理台暂时没有连上" detail={message}><button className={styles.primaryAction} onClick={() => void load()}>重新连接</button></StatePanel>;
   }
 
+  const currentUpload = Array.from(uploads.values()).find((upload) => upload.status === "uploading");
+  const viewportStyle = {
+    "--admin-visual-height": `${visualViewport.height}px`,
+    "--admin-visual-offset-top": `${visualViewport.offsetTop}px`,
+    "--admin-keyboard-inset": `${visualViewport.keyboardInset}px`,
+  } as CSSProperties;
+
   return (
-    <>
+    <UploadDispatchContext.Provider value={dispatchUpload}>
+    <div className={styles.adminClient} data-admin-root style={viewportStyle}>
       <header className={styles.adminHeader}>
         <button type="button" className={styles.headerPreview} disabled={busy} onClick={() => void openQuickPreview()}>
           <span aria-hidden="true">↗</span><strong>快速预览</strong><small>保存草稿后打开</small>
@@ -481,9 +551,9 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
           <strong>{portfolio.hero.name}</strong>
           <small>{data.identity.email || initialEmail}</small>
         </div>
-        <nav aria-label="后台功能">
+        <nav data-admin-section-nav aria-label="后台功能">
           {views.map((item) => (
-            <button key={item.id} type="button" data-active={view === item.id} onClick={() => setView(item.id)}>
+            <button key={item.id} type="button" data-active={view === item.id} aria-current={view === item.id ? "page" : undefined} disabled={uploadsBlocking} onClick={() => navigate(item.id)}>
               <span>{item.index}</span>{item.label}
             </button>
           ))}
@@ -498,8 +568,9 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
       </aside>
 
       <section className={styles.content}>
-        {view === "overview" && <Overview data={data} portfolio={portfolio} access={access} storage={storage} setAccess={setAccess} onLegacyMigrationChange={(legacyMigration) => setStorage((current) => current ? { ...current, legacyMigration } : current)} change={change} onNavigate={setView} setMessage={notify} />}
-        {view === "identity" && <IdentityEditor portfolio={portfolio} change={change} setMessage={notify} />}
+        {(["identity", "projects", "contact", "end-covers"] as AdminView[]).includes(view) && <button className={styles.mobileFinalPreviewButton} type="button" disabled={busy} onClick={() => setMobilePreviewTarget(previewTargetForView(view, selectedProjectId))}>查看手机最终效果</button>}
+        {view === "overview" && <Overview data={data} portfolio={portfolio} access={access} storage={storage} setAccess={setAccess} onLegacyMigrationChange={(legacyMigration) => setStorage((current) => current ? { ...current, legacyMigration } : current)} change={change} onNavigate={navigate} setMessage={notify} />}
+        {view === "identity" && <IdentityEditor portfolio={portfolio} change={change} setMessage={notify} onMobilePreview={(target) => setMobilePreviewTarget(target)} />}
         {view === "categories" && <CategoryEditor portfolio={portfolio} savedCategoryIds={new Set(data.portfolio.categories.map((category) => category.id))} change={change} setMessage={notify} />}
         {view === "projects" && (
           <ProjectEditor
@@ -507,23 +578,50 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
             selectedProject={selectedProject}
             selectedProjectId={selectedProjectId}
             setSelectedProjectId={setSelectedProjectId}
+            navigationDisabled={uploadsBlocking}
             savedProjectIds={new Set(data.portfolio.projects.map((project) => project.id))}
             change={change}
             setMessage={notify}
           />
         )}
         {view === "contact" && <ContactEditor portfolio={portfolio} change={change} setMessage={notify} />}
-        {view === "end-covers" && <EndCoverEditor portfolio={portfolio} savedEndCoverSlideIds={new Set(data.portfolio.endCovers.slides.map((slide) => slide.id))} change={change} setMessage={notify} />}
+        {view === "end-covers" && <EndCoverEditor portfolio={portfolio} savedEndCoverSlideIds={new Set(data.portfolio.endCovers.slides.map((slide) => slide.id))} change={change} setMessage={notify} onMobilePreview={(target) => setMobilePreviewTarget(target)} />}
         {view === "publish" && <PublishPanel portfolio={portfolio} data={data} dirty={dirty} busy={busy} publish={publish} />}
         {view === "records" && <RecordsPanel events={events} audits={audits} />}
       </section>
       {operationError && <OperationErrorDialog error={operationError} onClose={() => setOperationError(null)} />}
       </div>
-    </>
+      <div className={styles.mobileActions} data-admin-mobile-actions data-keyboard-open={visualViewport.keyboardInset > 120 ? "true" : "false"}>
+        <div className={styles.mobileSaveState} data-dirty={dirty} role="status" aria-live="polite">
+          <i />
+          <span>{currentUpload ? `上传 ${currentUpload.progress}%` : dirty ? "有修改待保存" : message}</span>
+        </div>
+        <button type="button" className={styles.mobileSaveButton} disabled={!dirty || busy} onClick={() => void saveDraft()}>{operation === "saving" ? "保存中" : "保存"}</button>
+        <button type="button" className={styles.mobileMoreButton} aria-expanded={mobileMoreOpen} aria-controls="admin-mobile-more" onClick={() => setMobileMoreOpen((current) => !current)}>更多</button>
+      </div>
+      <div id="admin-mobile-more" className={styles.mobileMoreBackdrop} data-admin-mobile-more data-open={mobileMoreOpen ? "true" : "false"} aria-hidden={!mobileMoreOpen} inert={!mobileMoreOpen} onMouseDown={(event) => { if (event.currentTarget === event.target) setMobileMoreOpen(false); }}>
+        <section ref={mobileMoreRef} className={styles.mobileMoreSheet} role="dialog" aria-modal="true" aria-label="更多后台操作">
+          <header><strong>更多操作</strong><button ref={mobileMoreCloseRef} type="button" onClick={() => setMobileMoreOpen(false)} aria-label="关闭更多操作">×</button></header>
+          <div className={styles.mobileMorePrimaryActions}>
+            <button type="button" disabled={busy} onClick={() => void openQuickPreview()}>快速预览</button>
+            <button type="button" disabled={uploadsBlocking} onClick={() => navigate("publish")}>检查并发布</button>
+            <a href="/" target="_blank" rel="noreferrer">打开已发布前台</a>
+          </div>
+          <div data-admin-mobile-more-actions />
+          {uploadFailures.length > 0 && <div className={styles.mobileUploadFailures}>
+            <strong>需要处理的上传</strong>
+            {uploadFailures.map((upload) => <div key={upload.id}><span>{upload.filename}</span><small>{upload.error}</small><button type="button" onClick={() => { navigate(upload.targetView as AdminView); dispatchUpload({ type: "dismiss", id: upload.id }); }}>定位</button></div>)}
+          </div>}
+          <button className={styles.mobileLogout} type="button" onClick={() => void logout()}>安全退出</button>
+        </section>
+      </div>
+      {mobilePreviewTarget && <MobilePortfolioPreview open portfolio={portfolio} target={mobilePreviewTarget} onClose={() => setMobilePreviewTarget(null)} />}
+    </div>
+    </UploadDispatchContext.Provider>
   );
 }
 
-function Overview({ data, portfolio, access, storage, setAccess, onLegacyMigrationChange, change, onNavigate, setMessage }: { data: AdminPayload; portfolio: PortfolioDocument; access: AccessPayload; storage: StoragePayload; setAccess: (next: AccessPayload) => void; onLegacyMigrationChange: (summary: LegacyMediaMigrationSummary) => void; change: (mutator: (document: PortfolioDocument) => PortfolioDocument) => void; onNavigate: (view: View) => void; setMessage: (message: string) => void }) {
+function Overview({ data, portfolio, access, storage, setAccess, onLegacyMigrationChange, change, onNavigate, setMessage }: { data: AdminPayload; portfolio: PortfolioDocument; access: AccessPayload; storage: StoragePayload; setAccess: (next: AccessPayload) => void; onLegacyMigrationChange: (summary: LegacyMediaMigrationSummary) => void; change: (mutator: (document: PortfolioDocument) => PortfolioDocument) => void; onNavigate: (view: AdminView) => void; setMessage: (message: string) => void }) {
   const [migrationBusy, setMigrationBusy] = useState(false);
   const [migrationError, setMigrationError] = useState("");
   const [migrationCompleted, setMigrationCompleted] = useState(false);
@@ -641,7 +739,7 @@ function LegacyMediaMigrationCard({ summary, busy, error, showCompleted, onStart
   );
 }
 
-function IdentityEditor({ portfolio, change, setMessage }: { portfolio: PortfolioDocument; change: (mutator: (document: PortfolioDocument) => PortfolioDocument) => void; setMessage: (message: string) => void }) {
+function IdentityEditor({ portfolio, change, setMessage, onMobilePreview }: { portfolio: PortfolioDocument; change: (mutator: (document: PortfolioDocument) => PortfolioDocument) => void; setMessage: (message: string) => void; onMobilePreview: (target: PortfolioPreviewTarget) => void }) {
   function heroField(field: keyof PortfolioDocument["hero"], value: string) {
     change((document) => ({ ...document, hero: { ...document.hero, [field]: value } }));
   }
@@ -689,6 +787,7 @@ function IdentityEditor({ portfolio, change, setMessage }: { portfolio: Portfoli
               <header>
                 <div><span>首图 {String(index + 1).padStart(2, "0")}</span><strong>{slide.media.label || "等待上传图片"}</strong></div>
                 <div>
+                  <button className={styles.cardMobilePreview} type="button" onClick={() => onMobilePreview({ kind: "hero", slideId: slide.id })}>手机效果</button>
                   <button type="button" disabled={index === 0} onClick={() => change((document) => ({ ...document, hero: { ...document.hero, slides: moveItem(document.hero.slides, slide.id, -1) } }))}>↑</button>
                   <button type="button" disabled={index === portfolio.hero.slides.length - 1} onClick={() => change((document) => ({ ...document, hero: { ...document.hero, slides: moveItem(document.hero.slides, slide.id, 1) } }))}>↓</button>
                   <button type="button" onClick={() => duplicateSlide(slide)}>复制</button>
@@ -709,11 +808,11 @@ function IdentityEditor({ portfolio, change, setMessage }: { portfolio: Portfoli
       <div className={styles.formSection}>
         <SectionTitle index="02" title="首图文字" />
         <div className={styles.formGrid}>
-          <Field label="姓名"><input value={portfolio.hero.name} placeholder="请输入你的姓名" onChange={(event) => heroField("name", event.target.value)} /></Field>
-          <Field label="职业标题"><input value={portfolio.hero.role} onChange={(event) => heroField("role", event.target.value)} /></Field>
-          <Field label="求职方向"><input value={portfolio.hero.targetRole} onChange={(event) => heroField("targetRole", event.target.value)} /></Field>
-          <Field label="个人定位" wide><textarea rows={4} value={portfolio.hero.statement} onChange={(event) => heroField("statement", event.target.value)} /></Field>
-          <Field label="状态短句" wide><input value={portfolio.hero.availability} onChange={(event) => heroField("availability", event.target.value)} /></Field>
+          <Field label="姓名"><input maxLength={60} value={portfolio.hero.name} placeholder="请输入你的姓名" onChange={(event) => heroField("name", event.target.value)} /></Field>
+          <Field label="职业标题"><input maxLength={80} value={portfolio.hero.role} onChange={(event) => heroField("role", event.target.value)} /></Field>
+          <Field label="求职方向"><input maxLength={120} value={portfolio.hero.targetRole} onChange={(event) => heroField("targetRole", event.target.value)} /></Field>
+          <Field label="个人定位" wide><textarea rows={4} maxLength={260} value={portfolio.hero.statement} onChange={(event) => heroField("statement", event.target.value)} /></Field>
+          <Field label="状态短句" wide><input maxLength={100} value={portfolio.hero.availability} onChange={(event) => heroField("availability", event.target.value)} /></Field>
         </div>
       </div>
       <div className={styles.formSection}>
@@ -755,15 +854,15 @@ function ContactEditor({ portfolio, change, setMessage }: { portfolio: Portfolio
   }
   return (
     <>
-      <ViewHeader eyebrow="02 / CONTACT" title="联系资料与弹层" detail="直接在右侧画布拖动排版，双击文字即可修改内容。" />
+      <ViewHeader eyebrow="02 / CONTACT" title="联系资料与弹层" detail="直接在右侧画布拖动排版，轻点文字即可修改内容。" />
       <div className={styles.contactEditorGrid}>
         <div className={styles.formSection}>
           <SectionTitle index="01" title="联系内容" />
           <div className={styles.formGrid}>
             <Field label="眉题"><input maxLength={60} value={contact.eyebrow} onChange={(event) => updateContact({ eyebrow: event.target.value })} /></Field>
             <Field label="主标题"><input maxLength={100} value={contact.title} onChange={(event) => updateContact({ title: event.target.value })} /></Field>
-            <Field label="联系邮箱"><input type="email" value={portfolio.hero.email} onChange={(event) => updateHero("email", event.target.value)} /></Field>
-            <Field label="电话号码"><input value={portfolio.hero.phone} onChange={(event) => updateHero("phone", event.target.value)} /></Field>
+            <Field label="联系邮箱"><input type="email" maxLength={160} value={portfolio.hero.email} onChange={(event) => updateHero("email", event.target.value)} /></Field>
+            <Field label="电话号码"><input maxLength={30} value={portfolio.hero.phone} onChange={(event) => updateHero("phone", event.target.value)} /></Field>
             <Field label="排版"><select value={contact.layout} onChange={(event) => {
               const layout = event.target.value as typeof contact.layout;
               const textX = layout === "image-left" ? 50 : 6;
@@ -821,7 +920,7 @@ function ContactLayoutPreview({ portfolio, updateContact, updateHero, updateStyl
   }
   const styleFor = (style: CoverTextStyle, key: typeof selected): React.CSSProperties => ({ left: `${style.x}%`, top: `${style.y}%`, width: `${style.width}%`, transform: `translateY(-50%) scale(${style.scale})`, transformOrigin: "left center", textAlign: style.align, color: style.color === "system" ? key === "eyebrowStyle" ? "#8da4ff" : key === "noteStyle" ? "#aeb3bf" : "#ffffff" : style.color, fontFamily: style.fontFamily === "custom" ? "PortfolioCustom, sans-serif" : undefined });
   function layerProps(key: typeof selected) {
-    return { "data-selected": selected === key, onPointerDown: (event: React.PointerEvent<HTMLElement>) => start(event, key, "move"), onPointerMove: move, onPointerUp: stop, onPointerCancel: stop };
+    return { "data-selected": selected === key, onPointerDown: (event: React.PointerEvent<HTMLElement>) => start(event, key, "move"), onPointerMove: move, onPointerUp: stop, onPointerCancel: stop, onLostPointerCapture: stop };
   }
   return (
     <section className={styles.contactAdminPreview} data-layout={contact.layout} data-contact-canvas aria-label="联系弹层预览">
@@ -897,7 +996,7 @@ function CategoryEditor({ portfolio, savedCategoryIds, change, setMessage }: { p
   );
 }
 
-function EndCoverEditor({ portfolio, savedEndCoverSlideIds, change, setMessage }: { portfolio: PortfolioDocument; savedEndCoverSlideIds: ReadonlySet<string>; change: (mutator: (document: PortfolioDocument) => PortfolioDocument) => void; setMessage: (message: string) => void }) {
+function EndCoverEditor({ portfolio, savedEndCoverSlideIds, change, setMessage, onMobilePreview }: { portfolio: PortfolioDocument; savedEndCoverSlideIds: ReadonlySet<string>; change: (mutator: (document: PortfolioDocument) => PortfolioDocument) => void; setMessage: (message: string) => void; onMobilePreview: (target: PortfolioPreviewTarget) => void }) {
   function updateConfig(updater: (current: PortfolioDocument["endCovers"]) => PortfolioDocument["endCovers"]) {
     change((document) => ({ ...document, endCovers: updater(document.endCovers) }));
   }
@@ -931,7 +1030,7 @@ function EndCoverEditor({ portfolio, savedEndCoverSlideIds, change, setMessage }
 
   return (
     <>
-      <ViewHeader eyebrow="06 / END COVERS" title="封底（尾图）" detail="作品全部展示完后，封底会按这里的顺序逐张连续出现；每张图片、文字、裁切和排版互不影响。" action={<button type="button" onClick={addSlide}>＋ 新建封底</button>} />
+      <ViewHeader eyebrow="06 / END COVERS" title="封底" detail="作品全部展示完后，封底会按这里的顺序逐张连续出现；每张图片、文字、裁切和排版互不影响。" action={<button type="button" onClick={addSlide}>＋ 新建封底</button>} />
       <div className={styles.formSection}>
         <label className={styles.checkControl}>
           <input type="checkbox" checked={portfolio.endCovers.enabled} disabled={portfolio.endCovers.slides.length === 0} onChange={(event) => updateConfig((current) => ({ ...current, enabled: event.target.checked }))} />
@@ -939,13 +1038,14 @@ function EndCoverEditor({ portfolio, savedEndCoverSlideIds, change, setMessage }
         </label>
         <p className={styles.sectionHint}>封底位于所有作品之后、页脚之前。没有封底时前台保持原样；文字均可留空，留空后自动隐藏。</p>
       </div>
-      {portfolio.endCovers.slides.length === 0 ? <p className={styles.emptyState}>还没有封底。点击“新建封底”，上传你的尾图。</p> : (
+      {portfolio.endCovers.slides.length === 0 ? <p className={styles.emptyState}>还没有封底。点击“新建封底”，上传你的封底图片。</p> : (
         <div className={styles.endCoverList}>
           {portfolio.endCovers.slides.map((slide, index) => (
             <article className={styles.endCoverCard} key={slide.id} data-end-cover-card={index}>
               <header>
                 <div><span>{String(index + 1).padStart(2, "0")}</span><strong>封底 {index + 1}</strong></div>
                 <div>
+                  <button className={styles.cardMobilePreview} type="button" onClick={() => onMobilePreview({ kind: "end-cover", slideId: slide.id })}>手机效果</button>
                   <button type="button" disabled={index === 0} onClick={() => moveSlide(slide.id, -1)}>↑ 前移</button>
                   <button type="button" disabled={index === portfolio.endCovers.slides.length - 1} onClick={() => moveSlide(slide.id, 1)}>↓ 后移</button>
                   <button type="button" onClick={() => copySlide(slide)}>复制</button>
@@ -975,16 +1075,25 @@ function EndCoverEditor({ portfolio, savedEndCoverSlideIds, change, setMessage }
 }
 
 function ProjectEditor({
-  portfolio, selectedProject, selectedProjectId, setSelectedProjectId, savedProjectIds, change, setMessage,
+  portfolio, selectedProject, selectedProjectId, setSelectedProjectId, navigationDisabled, savedProjectIds, change, setMessage,
 }: {
   portfolio: PortfolioDocument;
   selectedProject: Project | null;
   selectedProjectId: string | null;
   setSelectedProjectId: (id: string | null) => void;
+  navigationDisabled: boolean;
   savedProjectIds: ReadonlySet<string>;
   change: (mutator: (document: PortfolioDocument) => PortfolioDocument) => void;
   setMessage: (message: string) => void;
 }) {
+  const selectedIndex = selectedProject ? portfolio.projects.findIndex((project) => project.id === selectedProject.id) : -1;
+  function selectAt(index: number) {
+    if (navigationDisabled) {
+      setMessage("文件仍在上传，请等待上传完成后再切换作品");
+      return;
+    }
+    setSelectedProjectId(portfolio.projects[index]?.id ?? null);
+  }
   function updateProject(projectId: string, updater: (project: Project) => Project) {
     change((document) => ({ ...document, projects: document.projects.map((project) => project.id === projectId ? updater(project) : project) }));
   }
@@ -1020,9 +1129,14 @@ function ProjectEditor({
         </div>
       </div>
       <div className={styles.projectWorkspace}>
+        <div className={styles.projectMobileSelector} aria-label="当前编辑作品">
+          <button type="button" disabled={navigationDisabled || selectedIndex <= 0} onClick={() => selectAt(selectedIndex - 1)} aria-label="上一个作品">←</button>
+          <label><span>当前作品</span><select aria-label="选择当前作品" value={selectedProjectId ?? ""} disabled={navigationDisabled || portfolio.projects.length === 0} onChange={(event) => setSelectedProjectId(event.target.value || null)}>{portfolio.projects.map((project, index) => <option key={project.id} value={project.id}>{String(index + 1).padStart(2, "0")} · {project.title}</option>)}</select></label>
+          <button type="button" disabled={navigationDisabled || selectedIndex < 0 || selectedIndex >= portfolio.projects.length - 1} onClick={() => selectAt(selectedIndex + 1)} aria-label="下一个作品">→</button>
+        </div>
         <aside className={styles.projectList}>
           {portfolio.projects.map((project, index) => (
-            <button key={project.id} type="button" data-selected={selectedProjectId === project.id} onClick={() => setSelectedProjectId(project.id)}>
+            <button key={project.id} type="button" disabled={navigationDisabled} data-selected={selectedProjectId === project.id} onClick={() => setSelectedProjectId(project.id)}>
               <span>{String(index + 1).padStart(2, "0")}</span>
               <strong>{project.title}</strong>
               <small>{portfolio.categories.find((category) => category.id === project.categoryId)?.label}</small>
@@ -1076,12 +1190,12 @@ function ProjectForm({ project, categories, update, remove, move, setMessage, cu
     <>
       <div className={styles.projectTools}><button type="button" onClick={() => move(-1)}>↑ 前移</button><button type="button" onClick={() => move(1)}>↓ 后移</button><button type="button" className={styles.danger} onClick={remove}>删除作品</button></div>
       <div className={styles.formGrid}>
-        <Field label="作品名称" wide><input value={project.title} onChange={(event) => field("title", event.target.value)} /></Field>
+        <Field label="作品名称" wide><input maxLength={100} value={project.title} onChange={(event) => field("title", event.target.value)} /></Field>
         <Field label="分类"><select value={project.categoryId} onChange={(event) => field("categoryId", event.target.value)}>{categories.map((category) => <option key={category.id} value={category.id}>{category.label}</option>)}</select></Field>
-        <Field label="年份"><input value={project.year} onChange={(event) => field("year", event.target.value)} /></Field>
-        <Field label="作品简介" wide><textarea rows={4} value={project.synopsis} onChange={(event) => field("synopsis", event.target.value)} /></Field>
-        <Field label="项目难点" wide><textarea rows={3} value={project.challenge} onChange={(event) => field("challenge", event.target.value)} /></Field>
-        <Field label="解决思路" wide><textarea rows={3} value={project.solution} onChange={(event) => field("solution", event.target.value)} /></Field>
+        <Field label="年份"><input maxLength={4} inputMode="numeric" value={project.year} onChange={(event) => field("year", event.target.value)} /></Field>
+        <Field label="作品简介" wide><textarea rows={4} maxLength={1200} value={project.synopsis} onChange={(event) => field("synopsis", event.target.value)} /></Field>
+        <Field label="项目难点" wide><textarea rows={3} maxLength={1200} value={project.challenge} onChange={(event) => field("challenge", event.target.value)} /></Field>
+        <Field label="解决思路" wide><textarea rows={3} maxLength={1200} value={project.solution} onChange={(event) => field("solution", event.target.value)} /></Field>
       </div>
       <SectionTitle index="MEDIA" title="封面与成稿视频" />
       <div className={styles.mediaGrid}>
@@ -1281,6 +1395,7 @@ function CoverLayoutPreview({ project, previewSrc, categoryLabel, categoryAccent
       onPointerMove={movePointer}
       onPointerUp={stopPointer}
       onPointerCancel={stopPointer}
+      onLostPointerCapture={stopPointer}
     />;
   }
   return (
@@ -1333,9 +1448,10 @@ function DirectText({ value, label, onCommit, tag = "span" }: { value: string; l
     contentEditable: editing,
     suppressContentEditableWarning: true,
     role: "textbox",
-    "aria-label": `双击修改${label}`,
+    "aria-label": `点击修改${label}`,
     "data-editing": editing,
     onDoubleClick: (event: React.MouseEvent<HTMLElement>) => { event.preventDefault(); event.stopPropagation(); setEditing(true); },
+    onClick: (event: React.MouseEvent<HTMLElement>) => { if (!editing) { event.preventDefault(); event.stopPropagation(); setEditing(true); } },
     onPointerDown: (event: React.PointerEvent<HTMLElement>) => { if (editing) event.stopPropagation(); },
     onBlur: (event: React.FocusEvent<HTMLElement>) => { setEditing(false); onCommit(event.currentTarget.textContent?.trim() ?? ""); },
     onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => { if (editing && shouldFinishInlineEditing(event.nativeEvent)) { event.preventDefault(); event.currentTarget.blur(); } if (editing) event.stopPropagation(); },
@@ -1363,12 +1479,15 @@ function CoverStyleControls({ label, style, customFontReady, onChange }: { label
 }
 
 function MediaUpload({ projectId, slot, title, asset, cropAspect = 16 / 9, freeCrop = false, replacementEligible = true, disabledReason, setMessage, onUploaded, onCropChange, onPreviewChange }: { projectId: string; slot: "hero" | "transition" | "cover" | "final" | "detail" | "font" | "contact" | "end-cover"; title: string; asset: MediaAsset; cropAspect?: number; freeCrop?: boolean; replacementEligible?: boolean; disabledReason?: string; setMessage: (message: string) => void; onUploaded: (asset: MediaAsset, metadata?: { durationSeconds?: number }) => void; onCropChange?: (crop: MediaCrop, sourceAspectRatio: number) => void; onPreviewChange?: (source?: string) => void }) {
+  const uploadDispatch = useContext(UploadDispatchContext);
   const [uploading, setUploading] = useState(false);
+  const [failedFile, setFailedFile] = useState<{ file: File; message: string } | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const [previewSrc, setPreviewSrc] = useState<string | undefined>(asset.src);
   const [previewStatus, setPreviewStatus] = useState<"idle" | "checking" | "ready" | "waiting" | "error">(asset.src ? "ready" : "idle");
   const localPreviewRef = useRef<string | null>(null);
   const previewCheckRef = useRef(0);
+  const uploadStateId = `${projectId}:${slot}:${asset.id}`;
 
   const updatePreview = useCallback((source?: string) => {
     setPreviewSrc(source);
@@ -1450,6 +1569,8 @@ function MediaUpload({ projectId, slot, title, asset, cropAspect = 16 / 9, freeC
       return;
     }
     setUploading(true);
+    setFailedFile(null);
+    uploadDispatch?.({ type: "start", upload: { id: uploadStateId, filename: file.name, targetView: viewForUploadSlot(slot), targetId: projectId } });
     setMessage(`正在上传 ${file.name}…`);
     try {
       const uploadFile = await prepareUploadFile(file, asset.kind);
@@ -1483,11 +1604,14 @@ function MediaUpload({ projectId, slot, title, asset, cropAspect = 16 / 9, freeC
       if (!initialized.uploadId || !initialized.chunkSize || !initialized.chunkCount) {
         throw userFacingError("服务器没有返回完整的分片上传信息");
       }
+      uploadDispatch?.({ type: "progress", id: uploadStateId, progress: 1 });
       for (let index = 0; index < initialized.chunkCount; index += 1) {
         const start = index * initialized.chunkSize;
         const chunk = uploadFile.slice(start, Math.min(uploadFile.size, start + initialized.chunkSize));
         await uploadChunkWithRetry(`${uploadPath}?uploadId=${encodeURIComponent(initialized.uploadId)}&chunk=${index}`, chunk);
-        setMessage(`正在上传 ${file.name} · ${Math.round(((index + 1) / initialized.chunkCount) * 100)}%`);
+        const progress = Math.round(((index + 1) / initialized.chunkCount) * 95);
+        uploadDispatch?.({ type: "progress", id: uploadStateId, progress });
+        setMessage(`正在上传 ${file.name} · ${progress}%`);
       }
       const result = await api<{ asset: MediaAsset }>(`${uploadPath}?uploadId=${encodeURIComponent(initialized.uploadId)}&complete=1`, {
         method: "POST",
@@ -1499,9 +1623,13 @@ function MediaUpload({ projectId, slot, title, asset, cropAspect = 16 / 9, freeC
         ? freeCrop ? fullMediaCrop() : fitCropToAspect(sourceAspectRatio, cropAspect)
         : asset.crop;
       onUploaded({ ...result.asset, alt: asset.alt, objectPosition: asset.objectPosition, sourceAspectRatio, crop: nextCrop }, { durationSeconds });
+      uploadDispatch?.({ type: "finish", id: uploadStateId });
       setMessage(`${file.name} 已上传，请保存草稿`);
     } catch (error) {
-      setMessage(errorMessage(error));
+      const message = errorMessage(error);
+      setFailedFile({ file, message });
+      uploadDispatch?.({ type: "fail", id: uploadStateId, error: message });
+      setMessage(message);
     } finally {
       setUploading(false);
     }
@@ -1549,6 +1677,11 @@ function MediaUpload({ projectId, slot, title, asset, cropAspect = 16 / 9, freeC
         <input type="file" disabled={uploading || Boolean(disabledReason)} accept={accept} onChange={onInput} />
         <i>{disabledReason ? "保存后即可上传" : asset.key ? "拖入替换或点击选择" : "拖入上传或点击选择"}</i>
       </label>
+      {failedFile && <div className={styles.uploadFailure} role="alert">
+        <div><strong>上传未完成</strong><span>{failedFile.message}</span></div>
+        <button type="button" disabled={uploading} onClick={() => void upload(failedFile.file)}>重试</button>
+        <button type="button" disabled={uploading} onClick={() => { setFailedFile(null); uploadDispatch?.({ type: "dismiss", id: uploadStateId }); }}>取消</button>
+      </div>}
       {asset.kind === "image" && onCropChange && <MediaCropEditor key={[
         asset.key ?? asset.id,
         asset.sourceAspectRatio ?? "unknown",
@@ -1593,7 +1726,7 @@ function RecordsPanel({ events, audits }: { events: EventItem[]; audits: AuditIt
     <>
       <ViewHeader eyebrow="08 / RECORDS" title="访问与安全记录" detail="定位异常来源与播放请求；网络标识已做不可逆散列。" />
       <SectionTitle index="VISITS" title="最近访问" />
-      <div className={styles.tableWrap}><table><thead><tr><th>时间</th><th>事件</th><th>作品</th><th>地区</th><th>设备</th><th>来源 / 网络</th><th>风险</th></tr></thead><tbody>{events.length ? events.map((event) => <tr key={event.id}><td>{formatDate(event.lastSeenAt ?? event.occurredAt)}</td><td>{eventLabel(event.eventType)}{event.mediaVersion ? ` · ${event.mediaVersion}` : ""}{event.eventCount > 1 ? ` ×${event.eventCount}` : ""}</td><td>{event.projectId ?? "—"}</td><td>{[event.country, event.region, event.city].filter(Boolean).join(" · ") || "未知"}</td><td>{[event.deviceType, event.browser, event.operatingSystem].filter(Boolean).join(" · ")}</td><td>{event.referrer ?? event.asOrganization ?? (event.networkHash ? `网络 ${event.networkHash.slice(0, 8)}` : "未知")}</td><td><span className={styles.risk} data-risk={event.riskLevel}>{event.action === "block" ? "已拦截" : event.riskLevel}</span>{event.riskReason && <small>{event.riskReason}</small>}</td></tr>) : <tr><td colSpan={7}>暂无访问记录。前台接入事件接口后会显示在这里。</td></tr>}</tbody></table></div>
+      <div className={styles.tableWrap}><table><thead><tr><th>时间</th><th>事件</th><th>作品</th><th>地区</th><th>设备</th><th>来源 / 网络</th><th>风险</th></tr></thead><tbody>{events.length ? events.map((event) => <tr key={event.id}><td data-label="时间">{formatDate(event.lastSeenAt ?? event.occurredAt)}</td><td data-label="事件">{eventLabel(event.eventType)}{event.mediaVersion ? ` · ${event.mediaVersion}` : ""}{event.eventCount > 1 ? ` ×${event.eventCount}` : ""}</td><td data-label="作品">{event.projectId ?? "—"}</td><td data-label="地区">{[event.country, event.region, event.city].filter(Boolean).join(" · ") || "未知"}</td><td data-label="设备">{[event.deviceType, event.browser, event.operatingSystem].filter(Boolean).join(" · ")}</td><td data-label="来源 / 网络">{event.referrer ?? event.asOrganization ?? (event.networkHash ? `网络 ${event.networkHash.slice(0, 8)}` : "未知")}</td><td data-label="风险"><span className={styles.risk} data-risk={event.riskLevel}>{event.action === "block" ? "已拦截" : event.riskLevel}</span>{event.riskReason && <small>{event.riskReason}</small>}</td></tr>) : <tr><td colSpan={7}>暂无访问记录。前台接入事件接口后会显示在这里。</td></tr>}</tbody></table></div>
       <SectionTitle index="AUDIT" title="管理操作" />
       <div className={styles.auditList}>{audits.length ? audits.map((item) => <div key={item.id}><span>{formatDate(item.occurredAt)}</span><strong>{auditLabel(item.action)}</strong><small>{item.actorEmail}</small></div>) : <p>暂无管理操作记录。</p>}</div>
     </>
@@ -1602,7 +1735,14 @@ function RecordsPanel({ events, audits }: { events: EventItem[]; audits: AuditIt
 
 function ViewHeader({ eyebrow, title, detail, action }: { eyebrow: string; title: string; detail: string; action?: ReactNode }) { return <header className={styles.viewHeader}><div><p>{eyebrow}</p><h1>{title}</h1><span>{detail}</span></div>{action}</header>; }
 function SectionTitle({ index, title }: { index: string; title: string }) { return <div className={styles.sectionTitle}><span>{index}</span><h2>{title}</h2></div>; }
-function Field({ label, wide = false, children }: { label: string; wide?: boolean; children: ReactNode }) { return <label className={wide ? styles.wideField : undefined}><span>{label}</span>{children}</label>; }
+function Field({ label, wide = false, children }: { label: string; wide?: boolean; children: ReactNode }) {
+  let count: string | null = null;
+  if (isValidElement(children)) {
+    const props = children.props as { value?: unknown; maxLength?: unknown };
+    if (typeof props.value === "string" && typeof props.maxLength === "number") count = graphemeCountLabel(props.value, props.maxLength);
+  }
+  return <label className={wide ? styles.wideField : undefined}><span>{label}</span>{children}{count && <small className={styles.characterCount} aria-live="polite">{count}</small>}</label>;
+}
 function Metric({ value, label }: { value: string | number; label: string }) { return <div className={styles.metric}><strong>{value}</strong><span>{label}</span></div>; }
 function StatePanel({ label, title, detail, children }: { label: string; title: string; detail: string; children?: ReactNode }) { return <section className={styles.statePanel}><p>{label}</p><h1>{title}</h1><span>{detail}</span>{children}</section>; }
 
@@ -1616,6 +1756,7 @@ function OperationErrorDialog({ error, onClose }: { error: OperationError; onClo
           <div><dt>失败原因</dt><dd>{error.reason}</dd></div>
           <div><dt>解决方法</dt><dd>{error.solution}</dd></div>
         </dl>
+        <span data-operation-raw-reason hidden>{error.rawReason}</span>
         <button type="button" autoFocus onClick={onClose}>{error.locatable ? "定位并修改" : "知道了"}</button>
       </section>
     </div>
@@ -1676,12 +1817,42 @@ function formatStorage(value: number) { return value >= 1024 * 1024 * 1024 ? `${
 function errorMessage(error: unknown) { return toUserFacingChineseError(error, "操作失败，请稍后重试"); }
 function isFailureMessage(message: string) { return /失败|不能|无法|无效|超过|不存在|请先|需要|格式不正确|暂时|中断|冲突|权限/u.test(message); }
 function failureGuidance(message: string): OperationError {
-  if (/(?:settings|hero)\.[A-Za-z]+|projects\[\d+\]\.|categories\[\d+\]\.label|endCovers\.slides\[\d+\]\.|联系方式主标题/u.test(message)) return { title: "已找到需要修改的位置", reason: message, solution: "点击“定位并修改”，系统会打开对应作品、分类或封底，滚动到具体字段并高亮输入框。中文可直接输入，允许留空的字段不会再报长度错误。", locatable: true };
-  if (/超过|过大|50 MB|10 MiB|8 MiB|空间不足/u.test(message)) return { title: "文件没有上传", reason: message, solution: "压缩文件、删除不再使用的媒体，或重新选择更小的文件后再上传。", locatable: true };
-  if (/登录|身份|权限/u.test(message)) return { title: "当前操作没有完成", reason: message, solution: "重新输入管理员密码后再试。", locatable: false };
-  if (/草稿已|冲突|修订/u.test(message)) return { title: "版本已经变化", reason: message, solution: "刷新后台读取最新草稿，再重新应用并保存本次修改。", locatable: false };
-  if (/格式|JPG|MP4|WOFF|字体|视频|图片/u.test(message)) return { title: "文件格式不符合要求", reason: message, solution: "按上传框标注的格式重新导出文件，然后再次拖入。", locatable: true };
-  return { title: "操作没有完成", reason: message, solution: "检查网络后重试；如果仍失败，返回对应编辑项并重新提交。", locatable: false };
+  const reason = humanizeValidationMessage(message);
+  if (/(?:settings|hero)\.[A-Za-z]+|projects\[\d+\]\.|categories\[\d+\]\.label|endCovers\.slides\[\d+\]\.|联系方式主标题/u.test(message)) return { title: "已找到需要修改的位置", reason, rawReason: message, solution: "点击“定位并修改”，系统会打开对应作品、分类或封底，滚动到具体字段并高亮输入框。中文可直接输入，允许留空的字段不会再报长度错误。", locatable: true };
+  if (/超过|过大|50 MB|10 MiB|8 MiB|空间不足/u.test(message)) return { title: "文件没有上传", reason, rawReason: message, solution: "压缩文件、删除不再使用的媒体，或重新选择更小的文件后再上传。", locatable: true };
+  if (/登录|身份|权限/u.test(message)) return { title: "当前操作没有完成", reason, rawReason: message, solution: "重新输入管理员密码后再试。", locatable: false };
+  if (/草稿已|冲突|修订/u.test(message)) return { title: "版本已经变化", reason, rawReason: message, solution: "刷新后台读取最新草稿，再重新应用并保存本次修改。", locatable: false };
+  if (/格式|JPG|MP4|WOFF|字体|视频|图片/u.test(message)) return { title: "文件格式不符合要求", reason, rawReason: message, solution: "按上传框标注的格式重新导出文件，然后再次拖入。", locatable: true };
+  return { title: "操作没有完成", reason, rawReason: message, solution: "检查网络后重试；如果仍失败，返回对应编辑项并重新提交。", locatable: false };
+}
+
+function viewForUploadSlot(slot: "hero" | "transition" | "cover" | "final" | "detail" | "font" | "contact" | "end-cover"): AdminView {
+  if (slot === "hero" || slot === "font") return "identity";
+  if (slot === "transition") return "categories";
+  if (slot === "contact") return "contact";
+  if (slot === "end-cover") return "end-covers";
+  return "projects";
+}
+
+function previewTargetForView(view: AdminView, projectId: string | null): PortfolioPreviewTarget {
+  if (view === "projects" && projectId) return { kind: "project", projectId };
+  if (view === "contact") return { kind: "contact" };
+  if (view === "end-covers") return { kind: "end-cover" };
+  return { kind: "hero" };
+}
+
+function trapAdminFocus(event: KeyboardEvent, root: HTMLElement) {
+  const items = Array.from(root.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+  if (items.length === 0) return;
+  const first = items[0];
+  const last = items[items.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
 }
 async function prepareUploadFile(file: File, kind: MediaAsset["kind"]) {
   if (kind !== "image" || file.type === "image/avif") return file;

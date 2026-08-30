@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { PROGRAM_VERSION, UPGRADE_PROMPT_SYNC_EVENT, getUpgradePrompt } from "./admin-upgrade-content";
+import { useScrollLock } from "../lib/use-scroll-lock";
+import { closeAdminMobileMore } from "./mobile-more-contract";
 
 const CENTRAL_GUIDE_URL = "https://github.com/q1433031046-ship-it/student-portfolio-cloudflare#readme";
 const DEPLOY_URL = "https://deploy.workers.cloudflare.com/?url=https://github.com/q1433031046-ship-it/student-portfolio-cloudflare";
@@ -117,6 +119,7 @@ export function AdminGuideCenter() {
   const [upgradePrompt, setUpgradePrompt] = useState(getUpgradePrompt);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  useScrollLock(open);
 
   useEffect(() => {
     const locate = () => {
@@ -125,13 +128,17 @@ export function AdminGuideCenter() {
           node.textContent?.includes("ONLINE") && node.textContent?.includes("打开已发布前台"),
         )
         ?? null;
-      const actionHost = header?.querySelector<HTMLElement>(":scope > div") ?? header?.querySelector<HTMLElement>("div") ?? null;
+      const mobileHost = document.querySelector<HTMLElement>("[data-admin-mobile-more-actions]");
+      const headerHost = header?.querySelector<HTMLElement>(":scope > div") ?? header?.querySelector<HTMLElement>("div") ?? null;
+      const actionHost = window.matchMedia("(max-width: 720px)").matches && mobileHost ? mobileHost : headerHost;
       setHost((current) => current === actionHost ? current : actionHost);
     };
     locate();
+    const media = window.matchMedia("(max-width: 720px)");
+    media.addEventListener("change", locate);
     const observer = new MutationObserver(locate);
     observer.observe(document.body, { childList: true, subtree: true });
-    return () => observer.disconnect();
+    return () => { media.removeEventListener("change", locate); observer.disconnect(); };
   }, []);
 
   useEffect(() => {
@@ -153,8 +160,6 @@ export function AdminGuideCenter() {
 
   useEffect(() => {
     if (!open) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
     const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") closeGuide(); };
     window.addEventListener("keydown", closeOnEscape);
     const timer = window.setTimeout(() => {
@@ -164,12 +169,12 @@ export function AdminGuideCenter() {
     }, 20);
     return () => {
       window.clearTimeout(timer);
-      document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", closeOnEscape);
     };
   }, [open, targetSection]);
 
   function openGuide(sectionId?: string) {
+    closeAdminMobileMore();
     previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setTargetSection(sectionId ?? null);
     setOpen(true);
@@ -182,6 +187,7 @@ export function AdminGuideCenter() {
   }
 
   function openUpgradeCenter() {
+    closeAdminMobileMore();
     setOpen(false);
     setTargetSection(null);
     window.setTimeout(() => window.dispatchEvent(new Event(OPEN_UPGRADE_EVENT)), 0);
@@ -338,10 +344,10 @@ export function AdminGuideCenter() {
               <article className="card"><h3>首图与文字</h3><p>多张首图、纯图片 / 系统排版 / 自由排版、主题、字体和个人定位。</p></article>
               <article className="card"><h3>作品分类</h3><p>新建分类先填名称并保存草稿，再上传 8:1 自定义过渡图；还可调整颜色和顺序。</p></article>
               <article className="card"><h3>作品</h3><p>新建作品先填名称、选分类并保存草稿，再上传 16:9 封面或“成稿视频（可选）”。无视频可发布并显示 00:00；已有视频可点“移除成稿视频”后保存、发布。</p></article>
-              <article className="card"><h3>封底（尾图）</h3><p>多张封底分别上传、裁切、复制、排序、删除和排版，显示在全部作品之后、页脚之前。</p></article>
+              <article className="card"><h3>封底</h3><p>多张封底分别上传、裁切、复制、排序、删除和排版，显示在全部作品之后、页脚之前。</p></article>
               <article className="card"><h3>发布</h3><p>检查必要媒体并生成公开快照。</p></article>
               <article className="card"><h3>记录</h3><p>访问、播放请求、播放错误和管理操作。</p></article>
-              <article className="card"><h3>帮助工具</h3><p>宽屏时右上角显示“使用教程”和“程序升级”；窄屏时两个按钮固定在右下角。</p></article>
+              <article className="card"><h3>帮助工具</h3><p>宽屏时右上角显示“使用教程”和“程序升级”；手机从底部操作栏打开“更多”，再进入对应入口。</p></article>
             </div>
           </section>
 
@@ -353,7 +359,7 @@ export function AdminGuideCenter() {
               <tr><td>联系图片</td><td>1:1</td><td>1600 × 1600</td><td>主体居中并留边。</td></tr>
               <tr><td>分类过渡图</td><td>8:1</td><td>2560 × 320</td><td>横向纹理、环境或大留白。</td></tr>
               <tr><td>项目封面</td><td>16:9</td><td>1920 × 1080 / 2560 × 1440</td><td>重要内容放安全区。</td></tr>
-              <tr><td>封底（尾图）</td><td>16:9</td><td>1920 × 1080 / 2560 × 1440</td><td>每张独立构图，主体放中央安全区。</td></tr>
+              <tr><td>封底</td><td>16:9</td><td>1920 × 1080 / 2560 × 1440</td><td>每张独立构图，主体放中央安全区。</td></tr>
               <tr><td>图文混排</td><td>4:3</td><td>2000 × 1500</td><td>左右保留空间。</td></tr>
               <tr><td>图片组竖图</td><td>3:4</td><td>1500 × 2000</td><td>同组统一色调和主体比例。</td></tr>
               <tr><td>图片组横图</td><td>4:3</td><td>2000 × 1500</td><td>同组统一视觉风格。</td></tr>
@@ -372,9 +378,12 @@ export function AdminGuideCenter() {
               <li>点击“调整裁切”后显示裁切框；完成后点击“确认裁切”。</li>
               <li>项目封面、图文、图片组和通栏图按各自比例裁切。</li>
               <li>首图支持自由裁切。</li>
-              <li>文字可在真实画布中拖动，双击文字可直接修改。</li>
+              <li>文字可在真实画布中拖动，轻点文字可直接修改。</li>
               <li>中文可直接输入；中文输入法按 Enter 选词时不会提前结束编辑。</li>
               <li>项目封面以“桌面 16:9”检查字号、位置与换行。</li>
+              <li>手机快速预览复用同一份草稿，可直接定位首图、当前作品、联系模块或封底，不会保存另一套手机坐标或裁切。</li>
+              <li>手机裁切以全屏方式打开，支持拖动、双指缩放、重置、取消恢复和确认写入。</li>
+              <li>上传进行中不能切换栏目、预览、保存或发布；失败后可重试、关闭提示或定位。</li>
               <li>封面与联系模块会即时显示排版结果。</li>
               <li>出现“媒体已上传，等待草稿保存”时，本地预览会保留；先保存草稿，再点“重新检查”。</li>
               <li>联系标题、作品区标题、项目说明和内容块文字等可选字段允许留空，前台会自动隐藏。</li>
@@ -421,8 +430,8 @@ export function AdminGuideCenter() {
               <li>恢复码使用后自动轮换，新码需要重新保存。</li>
               <li>每次正式升级后，使用升级前保存的当前最新恢复码确认一次；确认后下载并保存新码。</li>
               <li>从 v1.2.0 起，确认完成后的管理员密码、恢复码和会话不再依赖一次性部署口令。</li>
-              <li>v1.2.1 正式确认会撤销旧管理员会话；当前浏览器随后获得新的 12 小时会话。</li>
-              <li>新文件名为“{'{hostname}'}-v1.2.1-系统恢复码-{'{YYYYMMDDTHHMMSSZ}'}.txt”；下载后实际打开，核对站点和版本。</li>
+              <li>v1.3.0 正式确认会撤销旧管理员会话；当前浏览器随后获得新的 12 小时会话。</li>
+              <li>新文件名为“{'{hostname}'}-v1.3.0-系统恢复码-{'{YYYYMMDDTHHMMSSZ}'}.txt”；下载后实际打开，核对站点和版本。</li>
               <li>管理员密码和最新恢复码分开离线保存。</li>
             </ul>
           </section>
@@ -438,9 +447,9 @@ export function AdminGuideCenter() {
           <section className="guide" id="admin-guide-upgrade">
             <GuideHeader eyebrow="12 / UPGRADE" title="程序升级" />
             <p>满足资源前置条件的升级会沿用当前 Worker、地址、D1、MEDIA_KV、Secrets、管理员身份和全部内容。版本清单可以从主模板发现更新；升级指令只从对应发布标签读取，并通过 SHA-256 后显示。</p>
-            <div className="callout safe"><strong>先打开当前恢复码文件</strong><p>确认文件属于当前 workers.dev 站点，只向 GPT 说明“已经保存”，不要发送内容。v1.2.1 确认会轮换恢复码、重设密码验证并撤销旧管理员会话。</p></div>
+            <div className="callout safe"><strong>先打开当前恢复码文件</strong><p>确认文件属于当前 workers.dev 站点，只向 GPT 说明“已经保存”，不要发送内容。v1.3.0 确认会轮换恢复码、重设密码验证并撤销旧管理员会话。</p></div>
             <div className="callout"><strong>先核对升级前置资源</strong><p>自动升级要求原站已有固定 D1 DB ID 和唯一 MEDIA_KV ID，当前 Worker 也使用相同绑定。纯 v1.0 R2-only 站点没有 MEDIA_KV，本版本未支持直接自动升级；GPT 必须在指纹和部署前停止，不得创建、复用或认领新的 MEDIA_KV，不得改动任何远端资源。</p></div>
-            <div className="callout"><strong>旧仓库使用已验证工具</strong><p>前置条件满足后，GPT 会在原站仓库外的隔离工作树验证 v1.2.1；指纹脚本把 Wrangler 的运行目录固定在已验证标签工作树根目录，再用原站 wrangler.jsonc 只读记录指纹。然后把已验证源码收敛进原站工作树，恢复原资源配置并再比对一次指纹。升级前基线用 0600 权限只捕获一次，跨失败续跑保留；隔离工作树不部署。</p></div>
+            <div className="callout"><strong>旧仓库使用已验证工具</strong><p>前置条件满足后，GPT 会在原站仓库外的隔离工作树验证 v1.3.0；指纹脚本把 Wrangler 的运行目录固定在已验证标签工作树根目录，再用原站 wrangler.jsonc 只读记录指纹。然后把已验证源码收敛进原站工作树，恢复原资源配置并再比对一次指纹。升级前基线用 0600 权限只捕获一次，跨失败续跑保留；隔离工作树不部署。</p></div>
             <div className="callout"><strong>旧 R2 只走条件分支</strong><p>没有 R2 媒体行时继续使用 MEDIA_KV。有旧行时，“概览”会显示“R2 → MEDIA_KV”；保留同一 BUCKET，点击“开始逐块迁移并校验”。程序会固定原 R2 对象 ETag，逐块复制校验后进入可续跑的 final-verifying 最终 KV 复验；每次重读一块并核对字节数、SHA-256，全量复验通过才切换。旧 50–90 MiB 媒体保留，程序不会自动删除 R2 源对象。</p></div>
             <div className="callout"><strong>新版本提醒</strong><p>登录后台后会检查版本；发现更新时右上角“程序升级”显示小红点。远程标签或摘要校验失败时继续使用当前版本内置的安全指令。</p></div>
             <h3>学生要做的 8 步</h3>
@@ -450,7 +459,7 @@ export function AdminGuideCenter() {
               <div className="step"><strong>确认前置资源并等待部署</strong><p>先确认 GPT 报告固定 DB ID、唯一 MEDIA_KV ID 与当前 Worker 绑定一致；缺少时停止。满足后，确认它已记录原分支和 commit、检查未提交改动；有改动就先停止并做可恢复保存。再用隔离工作树和原站配置记录升级前指纹，在原站更新源码后复核指纹并运行严格升级。自动 Builds 的关闭失败不算升级结果。</p></div>
               <div className="step"><strong>返回原来的 /admin</strong><p>使用升级前记录的同一个 workers.dev 地址。</p></div>
               <div className="step"><strong>完成一次升级确认</strong><p>输入“当前最新系统恢复码”“管理员密码”“再次输入密码”，点击“确认升级并进入后台 →”。</p></div>
-              <div className="step"><strong>下载并打开新文件</strong><p>文件名为“{'{hostname}'}-v1.2.1-系统恢复码-{'{YYYYMMDDTHHMMSSZ}'}.txt”；核对站点与版本 v1.2.1。</p></div>
+              <div className="step"><strong>下载并打开新文件</strong><p>文件名为“{'{hostname}'}-v1.3.0-系统恢复码-{'{YYYYMMDDTHHMMSSZ}'}.txt”；核对站点与版本 v1.3.0。</p></div>
               <div className="step"><strong>进入后台</strong><p>离线保存文件后，点击“我已妥善保存，进入后台 →”。</p></div>
               <div className="step"><strong>完成旧媒体并对照基线</strong><p>若“概览”出现“R2 → MEDIA_KV”，点“开始逐块迁移并校验”直到完成并抽查；再核对 Worker、地址、D1、MEDIA_KV、可选 BUCKET、数据计数与迁移状态。无生产证据的项目记为“未验证”。</p></div>
             </div>
@@ -477,7 +486,7 @@ export function AdminGuideCenter() {
           <section className="guide" id="admin-guide-checks">
             <GuideHeader eyebrow="14 / CHECK" title="最终验收清单" />
             <ul className="checks">
-              <li>仓库、Worker 属于当前学生。</li><li>D1 / KV 为本网站独立资源；有旧 R2 时 BUCKET 属于同站。</li><li>前台和后台可打开。</li><li>恢复码已离线保存。</li><li>正式升级后已保存并打开新的站点专属恢复码文件，旧恢复码和旧管理员会话失效。</li><li>安全退出后重新进入要密码。</li><li>首图、联系图、封面“调整裁切”正常。</li><li>封面桌面 16:9 的字号、位置与换行正常。</li><li>多张封底独立编辑并位于作品之后、页脚之前。</li><li>中文和空白可选字段保存正常，错误可精确定位。</li><li>上传后未保存并切换栏目仍能预览。</li><li>图片组与通栏图正常。</li><li>无视频可发布、显示 00:00 且无播放按钮；有视频时可播放和拖动。</li><li>有视频时，用独立浏览器配置文件或独立 Cookie jar 建立 10 个独立 Cookie 会话。</li><li>保存草稿不改变前台。</li><li>快速预览可打开并先自动保存修改。</li><li>“保存并发布 →”“发布当前草稿 →”状态正确。</li><li>先“生成二维码密钥”再开启限制访问，“停用”“启用”规则正常。</li><li>网站空间统计正常。</li><li>使用教程可打开。</li><li>程序升级可定位并复制已校验指令。</li><li>大陆手机流量和常用宽带由所有者人工验收。</li>
+              <li>仓库、Worker 属于当前学生。</li><li>D1 / KV 为本网站独立资源；有旧 R2 时 BUCKET 属于同站。</li><li>前台和后台可打开。</li><li>恢复码已离线保存。</li><li>正式升级后已保存并打开新的站点专属恢复码文件，旧恢复码和旧管理员会话失效。</li><li>安全退出后重新进入要密码。</li><li>首图、联系图、封面“调整裁切”正常。</li><li>封面桌面 16:9 的字号、位置与换行正常。</li><li>320、360 和 390 px 手机宽度下前台无整页水平滚动，首图、作品、联系、视频和封底正常。</li><li>手机后台只有一条底部操作栏，栏目导航、“更多”、保存状态和错误定位可用。</li><li>手机预览复用真实作品树并可定位内容；全屏裁切、取消恢复和确认写入正常。</li><li>上传进行中阻止切换、预览、保存和发布；失败后可重试、关闭或定位。</li><li>多张封底独立编辑并位于作品之后、页脚之前。</li><li>中文和空白可选字段保存正常，错误可精确定位。</li><li>上传后未保存并切换栏目仍能预览。</li><li>图片组与通栏图正常。</li><li>无视频可发布、显示 00:00 且无播放按钮；有视频时可播放和拖动。</li><li>有视频时，用独立浏览器配置文件或独立 Cookie jar 建立 10 个独立 Cookie 会话。</li><li>保存草稿不改变前台。</li><li>快速预览可打开并先自动保存修改。</li><li>“保存并发布 →”“发布当前草稿 →”状态正确。</li><li>先“生成二维码密钥”再开启限制访问，“停用”“启用”规则正常。</li><li>网站空间统计正常。</li><li>使用教程可打开。</li><li>程序升级可定位并复制已校验指令。</li><li>大陆手机流量和常用宽带由所有者人工验收。</li>
             </ul>
           </section>
         </div>

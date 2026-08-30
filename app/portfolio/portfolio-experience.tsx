@@ -23,6 +23,8 @@ import { croppedImageStyle } from "./media-crop";
 import { createQrMatrix } from "../lib/qr-code";
 import { adminDraftVideoSource, hasPlayableVideo } from "./video-availability";
 import { hasContactContent } from "./contact-availability";
+import { useScrollLock } from "../lib/use-scroll-lock";
+import type { PortfolioPreviewTarget } from "./preview-target";
 
 type PlaybackState = {
   project: Project;
@@ -33,11 +35,14 @@ type PlaybackState = {
   recoveryCount: number;
   restoreTime?: number;
   shouldResume?: boolean;
+  autoplayRejected: boolean;
 } | null;
 
 export type PortfolioExperienceProps = {
   initialPortfolio: PortfolioDocument;
   mode: "review" | "live";
+  embedded?: boolean;
+  initialPreviewTarget?: PortfolioPreviewTarget;
 };
 
 function ContactQr({ value }: { value: string }) {
@@ -50,15 +55,36 @@ function ContactQr({ value }: { value: string }) {
   );
 }
 
-function ContactDialog({ hero, contact, onClose }: { hero: PortfolioDocument["hero"]; contact: PortfolioDocument["settings"]["contact"]; onClose: () => void }) {
+function ContactDialog({ hero, contact, onClose, returnFocus }: { hero: PortfolioDocument["hero"]; contact: PortfolioDocument["settings"]["contact"]; onClose: () => void; returnFocus: HTMLButtonElement | null }) {
   const email = trimVisibleText(hero.email);
   const phone = trimVisibleText(hero.phone);
   const eyebrow = trimVisibleText(contact.eyebrow);
   const title = trimVisibleText(contact.title);
   const note = trimVisibleText(contact.note);
   const qrValue = email ? `mailto:${email}` : phone ? `tel:${phone.replace(/[^\d+]/gu, "")}` : "";
+  const closeRef = useRef<HTMLButtonElement>(null);
+  useScrollLock(true);
+  useEffect(() => {
+    closeRef.current?.focus();
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("keydown", closeOnEscape);
+      window.setTimeout(() => returnFocus?.focus({ preventScroll: true }), 0);
+    };
+  }, [onClose, returnFocus]);
   return (
-    <div className={styles.contactDialog} role="dialog" aria-modal="true" aria-labelledby={title ? "contact-title" : undefined} aria-label={title ? undefined : "联系方式"} onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <div
+      className={styles.contactDialog}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={title ? "contact-title" : undefined}
+      aria-label={title ? undefined : "联系方式"}
+      onKeyDown={trapDialogFocus}
+      onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}
+    >
       <section className={styles.contactPanel} data-layout={contact.layout}>
         <div className={styles.contactVisual}>
           {contact.image.src
@@ -70,10 +96,27 @@ function ContactDialog({ hero, contact, onClose }: { hero: PortfolioDocument["he
         {title && <div className={styles.contactTextLayer} data-kind="title" style={contactTextStyle(contact.titleStyle, "var(--ink)")}><h2 id="contact-title">{title}</h2></div>}
         {(email || phone) && <div className={styles.contactTextLayer} data-kind="details" style={contactTextStyle(contact.detailsStyle, "var(--ink)")}>{email && <a href={`mailto:${email}`}>{email}</a>}{phone && <a href={`tel:${phone.replace(/[^\d+]/gu, "")}`}>{phone}</a>}</div>}
         {note && <div className={styles.contactTextLayer} data-kind="note" style={contactTextStyle(contact.noteStyle, "var(--muted)")}><small>{note}</small></div>}
-        <button type="button" className={styles.contactClose} onClick={onClose} aria-label="关闭联系方式">×</button>
+        <button ref={closeRef} type="button" className={styles.contactClose} onClick={onClose} aria-label="关闭联系方式">×</button>
       </section>
     </div>
   );
+}
+
+function trapDialogFocus(event: React.KeyboardEvent<HTMLElement>) {
+  if (event.key !== "Tab") return;
+  const focusable = Array.from(event.currentTarget.querySelectorAll<HTMLElement>(
+    "button:not([disabled]), input:not([disabled]), video[controls], [href], [tabindex]:not([tabindex='-1'])",
+  ));
+  if (focusable.length === 0) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
 }
 
 function contactTextStyle(style: CoverTextStyle, systemColor: string): React.CSSProperties {
@@ -108,16 +151,22 @@ function MediaFrame({
   media,
   className = "",
   priority = false,
-  aspectRatio,
+  desktopAspectRatio,
+  mobileAspectRatio,
 }: {
   media: MediaAsset;
   className?: string;
   priority?: boolean;
-  aspectRatio?: number;
+  desktopAspectRatio?: number;
+  mobileAspectRatio?: number;
 }) {
+  const responsiveStyle = desktopAspectRatio || mobileAspectRatio ? {
+    "--media-aspect-desktop": desktopAspectRatio,
+    "--media-aspect-mobile": mobileAspectRatio ?? desktopAspectRatio,
+  } as React.CSSProperties : undefined;
   if (media.src) {
     return (
-      <figure className={`${styles.mediaFrame} ${className}`} style={aspectRatio ? { aspectRatio } : undefined}>
+      <figure className={`${styles.mediaFrame} ${className}`} style={responsiveStyle}>
         {/* Media is resized and compressed before private object storage upload. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
@@ -138,6 +187,7 @@ function MediaFrame({
       data-visual={media.visualKey}
       role="img"
       aria-label={media.alt}
+      style={responsiveStyle}
     >
       <span className={styles.mediaAtmosphere} aria-hidden="true" />
       <span className={styles.mediaPlane} aria-hidden="true" />
@@ -164,7 +214,7 @@ function ProjectContentBlock({ block }: { block: ProjectBlock }) {
           className={`${styles.mediaTextBlock} ${block.side === "right" ? styles.mediaRight : ""}`}
           aria-labelledby={block.title.trim() ? `${block.id}-title` : undefined}
         >
-          <MediaFrame media={block.media} className={styles.detailMedia} aspectRatio={4 / 3} />
+          <MediaFrame media={block.media} className={styles.detailMedia} desktopAspectRatio={4 / 3} mobileAspectRatio={4 / 3} />
           {(block.eyebrow.trim() || block.title.trim() || block.body.trim()) && <div className={styles.blockCopy}>
             {block.eyebrow.trim() && <p>{block.eyebrow}</p>}
             {block.title.trim() && <h4 id={`${block.id}-title`}>{block.title}</h4>}
@@ -180,14 +230,14 @@ function ProjectContentBlock({ block }: { block: ProjectBlock }) {
             {block.title.trim() && <h4 id={`${block.id}-title`}>{block.title}</h4>}
           </header>}
           <div className={styles.galleryGrid} data-count={block.items.length} data-orientation={block.orientation}>
-            {block.items.map((item) => <MediaFrame key={item.id} media={item} aspectRatio={block.orientation === "landscape" ? 4 / 3 : 3 / 4} />)}
+            {block.items.map((item) => <MediaFrame key={item.id} media={item} desktopAspectRatio={block.orientation === "landscape" ? 4 / 3 : 3 / 4} mobileAspectRatio={block.orientation === "landscape" ? 4 / 3 : 3 / 4} />)}
           </div>
         </section>
       );
     case "full-media":
       return (
         <section className={styles.fullMediaBlock}>
-          <MediaFrame media={block.media} aspectRatio={16 / 9} />
+          <MediaFrame media={block.media} desktopAspectRatio={16 / 9} mobileAspectRatio={16 / 9} />
           {block.caption.trim() && <p>{block.caption}</p>}
         </section>
       );
@@ -205,7 +255,7 @@ function ProjectDetails({ project }: { project: Project }) {
       <section className={styles.projectIntro} aria-label={`${project.title}项目介绍`}>
         <div className={styles.introLead}>
           <p>PROJECT DETAILS</p>
-          <h3>{project.title}</h3>
+          <h3 id={`${project.id}-project-heading`}>{project.title}</h3>
           {synopsis && <p className={styles.projectSynopsis}>{synopsis}</p>}
         </div>
         {(year || duration || challenge || solution) && <dl>
@@ -237,7 +287,7 @@ function ProjectCard({
   const duration = trimVisibleText(project.duration);
 
   return (
-    <article className={styles.project} data-open={isOpen} style={{ "--project-accent": category.accent } as React.CSSProperties}>
+    <article className={styles.project} data-project-id={project.id} data-open={isOpen} style={{ "--project-accent": category.accent } as React.CSSProperties}>
       <div className={styles.projectRail}>
         <span>{String(project.order).padStart(2, "0")}</span>
         <span>{category.label}</span>
@@ -248,7 +298,7 @@ function ProjectCard({
 
       <div className={styles.detailReveal} data-open={isOpen} id={detailId} aria-hidden={!isOpen}>
         <div className={styles.detailRevealInner}>
-          <ProjectDetails project={project} />
+          {isOpen && <ProjectDetails project={project} />}
         </div>
       </div>
     </article>
@@ -262,6 +312,8 @@ function PlaybackModal({
   onClose,
   onMediaError,
   onRetry,
+  onAutoplayRejected,
+  onPlaybackStarted,
 }: {
   playback: Exclude<PlaybackState, null>;
   watermarkText: string;
@@ -269,15 +321,42 @@ function PlaybackModal({
   onClose: () => void;
   onMediaError: (snapshot: { currentTime: number; shouldResume: boolean }) => void;
   onRetry: () => void;
+  onAutoplayRejected: () => void;
+  onPlaybackStarted: () => void;
 }) {
-  const { project, asset, status, error, restoreTime, shouldResume } = playback;
+  const { project, asset, status, error, restoreTime, shouldResume, autoplayRejected } = playback;
   const closeRef = useRef<HTMLButtonElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const [watermarkStarted, setWatermarkStarted] = useState(false);
   const [videoPlaying, setVideoPlaying] = useState(false);
+  useScrollLock(true);
 
   useEffect(() => {
     closeRef.current?.focus();
   }, []);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    const pauseWhenHidden = () => {
+      if (document.visibilityState === "hidden") video?.pause();
+    };
+    document.addEventListener("visibilitychange", pauseWhenHidden);
+    return () => {
+      document.removeEventListener("visibilitychange", pauseWhenHidden);
+      video?.pause();
+    };
+  }, []);
+
+  function closeModal() {
+    videoRef.current?.pause();
+    onClose();
+  }
+
+  function tryManualPlayback() {
+    const video = videoRef.current;
+    if (!video) return;
+    void video.play().then(onPlaybackStarted).catch(onAutoplayRejected);
+  }
 
   return (
     <div
@@ -285,43 +364,31 @@ function PlaybackModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby="playback-title"
-      onKeyDown={(event) => {
-        if (event.key !== "Tab") return;
-        const focusable = Array.from(event.currentTarget.querySelectorAll<HTMLElement>(
-          "button:not([disabled]), video[controls], [href], [tabindex]:not([tabindex='-1'])",
-        ));
-        if (focusable.length === 0) return;
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-        if (event.shiftKey && document.activeElement === first) {
-          event.preventDefault();
-          last.focus();
-        } else if (!event.shiftKey && document.activeElement === last) {
-          event.preventDefault();
-          first.focus();
-        }
-      }}
+      onKeyDown={trapDialogFocus}
       onMouseDown={(event) => {
-        if (event.currentTarget === event.target) onClose();
+        if (event.currentTarget === event.target) closeModal();
       }}
     >
       <div className={styles.modalPanel}>
         <div className={styles.playerSurface}>
           {status === "ready" && asset.src ? (
             <video
+              ref={videoRef}
               src={asset.src}
               controls
               autoPlay
               playsInline
               preload="metadata"
-              onPlay={() => { setWatermarkStarted(true); setVideoPlaying(true); }}
+              onPlay={() => { onPlaybackStarted(); setWatermarkStarted(true); setVideoPlaying(true); }}
               onPause={() => setVideoPlaying(false)}
               onEnded={() => setVideoPlaying(false)}
               onLoadedMetadata={(event) => {
                 if (typeof restoreTime === "number" && Number.isFinite(restoreTime)) {
                   event.currentTarget.currentTime = Math.min(restoreTime, event.currentTarget.duration || restoreTime);
                 }
-                if (shouldResume) void event.currentTarget.play().catch(() => undefined);
+                if (shouldResume || event.currentTarget.autoplay) {
+                  void event.currentTarget.play().then(onPlaybackStarted).catch(onAutoplayRejected);
+                }
               }}
               onError={(event) => onMediaError({
                 currentTime: event.currentTarget.currentTime,
@@ -332,6 +399,9 @@ function PlaybackModal({
             <MediaFrame media={asset} className={styles.playerPlaceholder} />
           )}
           {watermarkStarted && <VideoWatermark text={watermarkText} moving={videoPlaying} appearance={watermarkAppearance} />}
+          {status === "ready" && asset.src && autoplayRejected && (
+            <button className={styles.manualPlay} type="button" onClick={tryManualPlayback}>手动播放</button>
+          )}
           {(status !== "ready" || !asset.src) && (
             <div className={styles.playerReady}>
               <span><PlayIcon /></span>
@@ -341,7 +411,7 @@ function PlaybackModal({
           )}
         </div>
         <h2 className={styles.srOnly} id="playback-title">{project.title}</h2>
-        <button ref={closeRef} className={styles.modalClose} type="button" onClick={onClose} aria-label="关闭播放器">
+        <button ref={closeRef} className={styles.modalClose} type="button" onClick={closeModal} aria-label="关闭播放器">
           <span aria-hidden="true">←</span>
         </button>
       </div>
@@ -349,22 +419,38 @@ function PlaybackModal({
   );
 }
 
-export function PortfolioExperience({ initialPortfolio: portfolio, mode }: PortfolioExperienceProps) {
+export function PortfolioExperience({ initialPortfolio: portfolio, mode, embedded = false, initialPreviewTarget }: PortfolioExperienceProps) {
   const theme = portfolio.settings.activeTheme;
-  const [entered, setEntered] = useState(false);
+  const previewEntered = initialPreviewTarget?.kind === "project" || initialPreviewTarget?.kind === "end-cover";
+  const [entered, setEntered] = useState(previewEntered);
   const expansionMode = portfolio.settings.expansionMode;
-  const [openProjects, setOpenProjects] = useState<string[]>([]);
+  const [openProjects, setOpenProjects] = useState<string[]>(initialPreviewTarget?.kind === "project" ? [initialPreviewTarget.projectId] : []);
   const [playback, setPlayback] = useState<PlaybackState>(null);
-  const [contactOpen, setContactOpen] = useState(false);
+  const [contactOpen, setContactOpen] = useState(initialPreviewTarget?.kind === "contact");
   const playbackRequestRef = useRef<{ id: number; controller: AbortController } | null>(null);
   const playbackRequestIdRef = useRef(0);
   const playbackTriggerRef = useRef<HTMLButtonElement | null>(null);
   const playbackTriggerKeyRef = useRef<string | null>(null);
   const restorePlaybackFocusRef = useRef(false);
+  const [contactReturnFocus, setContactReturnFocus] = useState<HTMLButtonElement | null>(null);
 
   useEffect(() => {
+    if (embedded) return;
     document.title = portfolio.settings.siteTitle;
-  }, [portfolio.settings.siteTitle]);
+  }, [embedded, portfolio.settings.siteTitle]);
+
+  useEffect(() => {
+    if (!initialPreviewTarget || initialPreviewTarget.kind === "contact") return;
+    const frame = window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+      const selector = initialPreviewTarget.kind === "hero"
+        ? initialPreviewTarget.slideId ? `[data-hero-slide-id="${CSS.escape(initialPreviewTarget.slideId)}"]` : "[data-hero-slide-index='0']"
+        : initialPreviewTarget.kind === "project"
+          ? `[data-project-id="${CSS.escape(initialPreviewTarget.projectId)}"]`
+          : initialPreviewTarget.slideId ? `[data-end-cover-id="${CSS.escape(initialPreviewTarget.slideId)}"]` : "[data-end-cover-index='0']";
+      document.querySelector<HTMLElement>(selector)?.scrollIntoView({ block: "start" });
+    }));
+    return () => window.cancelAnimationFrame(frame);
+  }, [initialPreviewTarget]);
 
   function closePlayback() {
     playbackRequestRef.current?.controller.abort();
@@ -397,16 +483,11 @@ export function PortfolioExperience({ initialPortfolio: portfolio, mode }: Portf
 
   useEffect(() => {
     if (!playback) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") closePlayback();
     };
     window.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", closeOnEscape);
-    };
+    return () => window.removeEventListener("keydown", closeOnEscape);
   }, [playback]);
 
   useEffect(() => {
@@ -426,11 +507,18 @@ export function PortfolioExperience({ initialPortfolio: portfolio, mode }: Portf
   useEffect(() => () => playbackRequestRef.current?.controller.abort(), []);
 
   function toggleProject(projectId: string) {
+    const closing = openProjects.includes(projectId);
+    if (playback && (playback.project.id === projectId || (!closing && expansionMode === "single"))) closePlayback();
     setOpenProjects((current) => {
       if (current.includes(projectId)) return current.filter((id) => id !== projectId);
       if (mode === "live") reportEvent("project_open", projectId, undefined, getPortfolioSessionId());
       return expansionMode === "single" ? [projectId] : [...current, projectId];
     });
+    if (!closing) {
+      window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+        document.getElementById(`${projectId}-project-heading`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }));
+    }
   }
 
   async function startPlayback(
@@ -447,12 +535,12 @@ export function PortfolioExperience({ initialPortfolio: portfolio, mode }: Portf
     if (mode === "review") {
       const src = adminDraftVideoSource(asset);
       setPlayback(src
-        ? { project, asset: { ...asset, src }, status: "ready", recoveryCount: 0 }
-        : { project, asset, status: "error", error: "草稿视频暂时无法读取，请保存草稿后重试", recoveryCount: 0 });
+        ? { project, asset: { ...asset, src }, status: "ready", recoveryCount: 0, autoplayRejected: false }
+        : { project, asset, status: "error", error: "草稿视频暂时无法读取，请保存草稿后重试", recoveryCount: 0, autoplayRejected: false });
       return;
     }
     if (asset.src) {
-      setPlayback({ project, asset, status: "ready", recoveryCount: 0 });
+      setPlayback({ project, asset, status: "ready", recoveryCount: 0, autoplayRejected: false });
       return;
     }
 
@@ -466,6 +554,7 @@ export function PortfolioExperience({ initialPortfolio: portfolio, mode }: Portf
       recoveryCount: recovery?.count ?? 0,
       restoreTime: recovery?.currentTime,
       shouldResume: recovery?.shouldResume,
+      autoplayRejected: false,
     });
     try {
       const response = await fetch("/api/playback", {
@@ -491,11 +580,12 @@ export function PortfolioExperience({ initialPortfolio: portfolio, mode }: Portf
         recoveryCount: recovery?.count ?? 0,
         restoreTime: recovery?.currentTime,
         shouldResume: recovery?.shouldResume,
+        autoplayRejected: false,
       });
     } catch (error) {
       if (request.controller.signal.aborted || playbackRequestRef.current?.id !== request.id) return;
       const message = toUserFacingChineseError(error, "暂时无法播放这个版本，请检查网络后重试");
-      setPlayback({ project, asset, status: "error", error: message, recoveryCount: recovery?.count ?? 0 });
+      setPlayback({ project, asset, status: "error", error: message, recoveryCount: recovery?.count ?? 0, autoplayRejected: false });
       reportEvent("play_error", project.id, "final", getPortfolioSessionId());
     }
   }
@@ -517,22 +607,34 @@ export function PortfolioExperience({ initialPortfolio: portfolio, mode }: Portf
   const workHeadingLead = trimVisibleText(portfolio.settings.workHeading.lead);
   const workHeadingAccent = trimVisibleText(portfolio.settings.workHeading.accent);
   const workHeadingAvailable = Boolean(workHeadingLead || workHeadingAccent);
+  const hasEndCover = portfolio.endCovers.enabled && portfolio.endCovers.slides.length > 0;
 
+  function enterWorks() {
+    setEntered(true);
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+      document.getElementById("works")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }));
+  }
+
+  const Root = embedded ? "div" : "main";
   return (
-    <main className={styles.demo} data-theme={theme} id="top">
+    <Root className={styles.demo} data-theme={theme} data-has-end-cover={hasEndCover ? "true" : "false"} data-embedded={embedded ? "true" : undefined} id={embedded ? undefined : "top"}>
       {customFontUrl && <style>{`@font-face{font-family:PortfolioCustom;src:url("${customFontUrl}");font-display:swap;}`}</style>}
       <HeroSequence
         hero={portfolio.hero}
         entered={entered}
         yearRange={yearRange}
         projectCount={portfolio.projects.length}
-        onEnter={() => setEntered(true)}
+        onEnter={enterWorks}
         onExit={() => {
           setEntered(false);
           setOpenProjects([]);
           window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
         }}
-        onContact={() => setContactOpen(true)}
+        onContact={(trigger) => {
+          setContactReturnFocus(trigger);
+          setContactOpen(true);
+        }}
         contactAvailable={contactAvailable}
       />
 
@@ -591,10 +693,17 @@ export function PortfolioExperience({ initialPortfolio: portfolio, mode }: Portf
           onClose={closePlayback}
           onMediaError={recoverPlayback}
           onRetry={() => void startPlayback(playback.project)}
+          onAutoplayRejected={() => setPlayback((current) => current ? { ...current, autoplayRejected: true } : current)}
+          onPlaybackStarted={() => setPlayback((current) => current ? { ...current, autoplayRejected: false } : current)}
         />
       )}
-      {contactOpen && contactAvailable && <ContactDialog hero={portfolio.hero} contact={portfolio.settings.contact} onClose={() => setContactOpen(false)} />}
-    </main>
+      {contactOpen && contactAvailable && <ContactDialog
+        hero={portfolio.hero}
+        contact={portfolio.settings.contact}
+        onClose={() => setContactOpen(false)}
+        returnFocus={contactReturnFocus}
+      />}
+    </Root>
   );
 }
 

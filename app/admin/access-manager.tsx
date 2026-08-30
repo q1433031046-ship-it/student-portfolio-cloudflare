@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { createQrMatrix, qrSvg } from "../lib/qr-code";
 import { toUserFacingChineseError, userFacingError, userFacingResponseError } from "../lib/user-facing-error";
 import styles from "./admin.module.css";
@@ -147,6 +147,8 @@ function AccessPassCard({ pass, busy, onSave, onToggle, onDelete, setMessage }: 
   const [label, setLabel] = useState(pass.label);
   const [maxUses, setMaxUses] = useState(pass.maxUses === null ? "" : String(pass.maxUses));
   const [expiresAt, setExpiresAt] = useState(toLocalDateTime(pass.expiresAt));
+  const [manualLinkVisible, setManualLinkVisible] = useState(false);
+  const manualLinkRef = useRef<HTMLInputElement>(null);
   const matrix = useMemo(() => createQrMatrix(pass.accessUrl), [pass.accessUrl]);
   const changed = label.trim() !== pass.label || (maxUses ? Number(maxUses) : null) !== pass.maxUses || (expiresAt ? new Date(expiresAt).toISOString() : null) !== pass.expiresAt;
 
@@ -155,19 +157,30 @@ function AccessPassCard({ pass, busy, onSave, onToggle, onDelete, setMessage }: 
       await navigator.clipboard.writeText(pass.accessUrl);
       setMessage(`“${pass.label}”访问链接已复制`);
     } catch {
-      setMessage("复制失败，请使用下载二维码");
+      setManualLinkVisible(true);
+      window.requestAnimationFrame(() => { manualLinkRef.current?.focus(); manualLinkRef.current?.select(); });
+      setMessage("自动复制未成功，请长按下方链接手动复制");
     }
   }
 
   function downloadQr() {
     const blob = new Blob([qrSvg(pass.accessUrl, { title: pass.label })], { type: "image/svg+xml" });
     const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `${safeFilename(pass.label)}-二维码.svg`;
-    anchor.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 0);
-    setMessage(`“${pass.label}”二维码已下载`);
+    try {
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `${safeFilename(pass.label)}-二维码.svg`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      setMessage(`“${pass.label}”二维码已下载`);
+    } catch {
+      setManualLinkVisible(true);
+      window.requestAnimationFrame(() => { manualLinkRef.current?.focus(); manualLinkRef.current?.select(); });
+      setMessage("下载没有开始，请长按下方链接在新页面打开并保存二维码");
+    } finally {
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    }
   }
 
   return (
@@ -193,6 +206,7 @@ function AccessPassCard({ pass, busy, onSave, onToggle, onDelete, setMessage }: 
           <button type="button" disabled={busy} onClick={() => void onToggle()}>{pass.enabled ? "停用" : "启用"}</button>
           <button type="button" disabled={busy} onClick={() => { if (window.confirm(`确认删除“${pass.label}”？已授权的浏览器也会立即失效。`)) void onDelete(); }}>删除</button>
         </div>
+        <label className={styles.accessLinkFallback} data-visible={manualLinkVisible ? "true" : "false"}><span>手动复制访问链接</span><input ref={manualLinkRef} className={styles.accessManualLink} readOnly value={pass.accessUrl} onFocus={(event) => event.currentTarget.select()} /></label>
       </div>
     </article>
   );
