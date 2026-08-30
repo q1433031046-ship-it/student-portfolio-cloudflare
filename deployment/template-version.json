@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
   "program": "student-portfolio-cloudflare",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "releasedAt": "2026-08-30",
   "importance": "recommended",
   "releaseNotes": [
-    "二维码先进入确认页，只有点击打开作品集才会计入一次成功使用。",
-    "成功进入后当前浏览器获得固定 24 小时访问，会话不会因刷新或重复扫码而续期或重复扣次数。",
-    "二维码耗尽只阻止新兑换；暂停、删除或到期会立即撤销关联访问会话。"
+    "修复画布直接编辑时中文输入法按 Enter 选词会提前结束编辑的问题。",
+    "联系方式主标题支持直接输入中文，空标题或超长标题会显示明确中文提示。",
+    "联系方式标题校验失败后会自动返回并定位到对应的主标题输入框。"
   ],
   "portfolioDocumentSchemaVersion": 4,
   "templateRepository": "https://github.com/q1433031046-ship-it/student-portfolio-cloudflare",

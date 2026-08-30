@@ -148,6 +148,19 @@ test("accepts an extensible portfolio document", () => {
   assert.equal(result.value.themes.some((theme) => theme.id === "white"), true);
 });
 
+test("accepts a Chinese contact title and explains an empty title in plain language", () => {
+  const normalized = validatePortfolioDocument(documentFixture());
+  assert.equal(normalized.ok, true);
+  const value = structuredClone(normalized.value);
+  value.settings.contact.title = "欢迎与我联系";
+  assert.equal(validatePortfolioDocument(value).ok, true);
+
+  value.settings.contact.title = "　";
+  const invalid = validatePortfolioDocument(value);
+  assert.equal(invalid.ok, false);
+  assert.match(invalid.errors.join("\n"), /联系方式主标题不能为空，最多输入 100 个字符，支持直接输入中文/u);
+});
+
 test("carries the published cover overlay setting into each existing project", () => {
   const value = documentFixture();
   value.settings.coverOverlayMode = "fixed";

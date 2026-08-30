@@ -441,7 +441,7 @@ export function validatePortfolioDocument(input: unknown): ValidationResult {
     const contact = expectRecord(settings.contact, "settings.contact", errors);
     if (contact) {
       validateText(contact.eyebrow, "settings.contact.eyebrow", 0, 60, errors);
-      validateText(contact.title, "settings.contact.title", 1, 100, errors);
+      validateContactTitle(contact.title, errors);
       validateText(contact.note, "settings.contact.note", 0, 300, errors);
       if (!isStringIn(contact.layout, CONTACT_LAYOUTS)) errors.push("settings.contact.layout 无效");
       validateMedia(contact.image, "settings.contact.image", "image", new Set<string>(), errors);
@@ -824,6 +824,12 @@ function validateId(value: unknown, path: string, ids: Set<string>, errors: stri
 
 function validateText(value: unknown, path: string, min: number, max: number, errors: string[]) {
   if (typeof value !== "string" || value.trim().length < min || value.length > max) errors.push(`${path} 长度无效`);
+}
+
+function validateContactTitle(value: unknown, errors: string[]) {
+  if (typeof value !== "string" || value.trim().length < 1 || Array.from(value).length > 100) {
+    errors.push("settings.contact.title：联系方式主标题不能为空，最多输入 100 个字符，支持直接输入中文");
+  }
 }
 
 function validateNumber(value: unknown, path: string, min: number, max: number, errors: string[]) {

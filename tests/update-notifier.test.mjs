@@ -2,17 +2,17 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-test("version metadata advertises the v1.1.5 fixed QR access flow", async () => {
+test("version metadata advertises the v1.1.6 Chinese input fix", async () => {
   const [manifest, promptManifest] = await Promise.all([
     readFile("deployment/template-version.json", "utf8").then(JSON.parse),
     readFile("deployment/upgrade-prompt.json", "utf8").then(JSON.parse),
   ]);
 
-  assert.equal(manifest.version, "1.1.5");
+  assert.equal(manifest.version, "1.1.6");
   assert.equal(manifest.importance, "recommended");
   assert.equal(manifest.upgradePromptManifest, "deployment/upgrade-prompt.json");
-  assert.match(manifest.releaseNotes.join("\n"), /确认页/u);
-  assert.match(manifest.releaseNotes.join("\n"), /固定 24 小时/u);
+  assert.match(manifest.releaseNotes.join("\n"), /中文输入法/u);
+  assert.match(manifest.releaseNotes.join("\n"), /联系方式主标题/u);
   assert.equal(promptManifest.schemaVersion, 1);
   assert.equal(promptManifest.program, manifest.program);
   assert.equal(promptManifest.promptVersion, manifest.version);
@@ -66,6 +66,7 @@ test("all admin upgrade entry points copy the synchronized prompt", async () => 
     "至少 10 个独立会话",
     "无害的只读检查",
     "从中断步骤继续",
+    "中文输入法选词不会被 Enter 提前结束",
   ]) {
     assert.match(promptManifest.prompt, new RegExp(phrase));
     assert.match(readme, new RegExp(phrase));
