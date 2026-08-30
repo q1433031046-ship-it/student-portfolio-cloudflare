@@ -5,6 +5,7 @@ import type { KeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
 import type { HeroConfig, HeroLayer, HeroSlide } from "../portfolio/model";
 import { clampHeroLayer, keyboardMoveDelta, moveHeroLayer, resizeHeroLayer } from "../portfolio/hero-layout";
 import { croppedImageStyle, mediaCropAspect } from "../portfolio/media-crop";
+import { shouldFinishInlineEditing } from "./inline-editing";
 import styles from "./admin.module.css";
 
 const labels: Record<HeroLayer["kind"], string> = {
@@ -173,7 +174,7 @@ function InlineEditable({ value, ariaLabel, onCommit, tag = "span" }: { value: s
     onPointerDown: (event: React.PointerEvent<HTMLElement>) => { if (editing) event.stopPropagation(); },
     onBlur: (event: React.FocusEvent<HTMLElement>) => { setEditing(false); onCommit(event.currentTarget.textContent?.trim() ?? ""); },
     onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => {
-      if (editing && event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); }
+      if (editing && shouldFinishInlineEditing(event.nativeEvent)) { event.preventDefault(); event.currentTarget.blur(); }
       if (editing) event.stopPropagation();
     },
     children: value,

@@ -11,7 +11,7 @@ const fieldLabels: Array<[RegExp, string]> = [
   [/hero\.phone/u, "电话号码"],
   [/hero\.statement/u, "个人定位"],
   [/settings\.siteTitle/u, "浏览器标签与站点名称"],
-  [/settings\.contact\.title/u, "主标题"],
+  [/(?:settings\.contact\.title|联系方式主标题)/u, "主标题"],
   [/settings\.contact\.note/u, "说明"],
   [/\.year/u, "年份"],
   [/\.synopsis/u, "作品简介"],
@@ -318,7 +318,7 @@ function locateValidationProblem(reason: string): Element | null {
 }
 
 function validationView(reason: string) {
-  if (/settings\.contact/u.test(reason)) return "联系";
+  if (/settings\.contact|联系方式主标题/u.test(reason)) return "联系";
   if (/hero\.(?:email|phone)/u.test(reason)) return "联系";
   if (/hero\./u.test(reason)) return "首图与文字";
   if (/categories\[/u.test(reason)) return "作品分类";

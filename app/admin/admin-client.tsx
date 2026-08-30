@@ -22,6 +22,7 @@ import { resolveWatermarkText } from "../portfolio/watermark";
 import { croppedImageStyle, croppedImageStyleForAspect, fitCropToAspect, fullMediaCrop, validAspect } from "../portfolio/media-crop";
 import { ProjectCoverText, type CoverLayerKey, type CoverTextKey, type CoverViewport } from "../portfolio/project-cover-text";
 import { AccessManager, type AccessPayload } from "./access-manager";
+import { shouldFinishInlineEditing } from "./inline-editing";
 
 type View = "overview" | "identity" | "categories" | "projects" | "contact" | "publish" | "records";
 type Operation = "idle" | "saving" | "previewing" | "publishing";
@@ -1158,7 +1159,7 @@ function DirectText({ value, label, onCommit, tag = "span" }: { value: string; l
     onDoubleClick: (event: React.MouseEvent<HTMLElement>) => { event.preventDefault(); event.stopPropagation(); setEditing(true); },
     onPointerDown: (event: React.PointerEvent<HTMLElement>) => { if (editing) event.stopPropagation(); },
     onBlur: (event: React.FocusEvent<HTMLElement>) => { setEditing(false); onCommit(event.currentTarget.textContent?.trim() ?? ""); },
-    onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => { if (editing && event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); } if (editing) event.stopPropagation(); },
+    onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => { if (editing && shouldFinishInlineEditing(event.nativeEvent)) { event.preventDefault(); event.currentTarget.blur(); } if (editing) event.stopPropagation(); },
     children: value,
   };
   if (tag === "strong") return <strong {...props} />;
@@ -1496,6 +1497,7 @@ function formatStorage(value: number) { return value >= 1024 * 1024 * 1024 ? `${
 function errorMessage(error: unknown) { return error instanceof Error ? error.message : "操作失败"; }
 function isFailureMessage(message: string) { return /失败|不能|无法|无效|超过|不存在|请先|至少需要|暂时|中断|冲突|权限/u.test(message); }
 function failureGuidance(message: string): OperationError {
+  if (/settings\.contact\.title/u.test(message)) return { title: "联系方式主标题需要修改", reason: "联系方式主标题不能为空，最多输入 100 个字符，支持直接输入中文。", solution: "返回“联系方式”的“主标题”输入框直接填写；在画布中双击编辑时，中文输入法选词不会再被 Enter 提前结束。" };
   if (/超过|过大|50 MB|10 MiB|8 MiB|空间不足/u.test(message)) return { title: "文件没有上传", reason: message, solution: "压缩文件、删除不再使用的媒体，或重新选择更小的文件后再上传。" };
   if (/登录|身份|权限/u.test(message)) return { title: "当前操作没有完成", reason: message, solution: "重新输入管理员密码后再试。" };
   if (/草稿已|冲突|修订/u.test(message)) return { title: "版本已经变化", reason: message, solution: "刷新后台读取最新草稿，再重新应用并保存本次修改。" };
