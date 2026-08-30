@@ -22,6 +22,8 @@ The user flow is GPT-first: verify account context first, then direct the user t
 - Initialize the administrator once with the `INITIAL_ADMIN_CODE` secret, then use a site password.
 - Generate a system recovery code after initialization and after each password recovery. Display each recovery code once and store only its keyed hash.
 - Local-password sessions last 12 hours. Five failed password attempts lock login for 15 minutes. Explicit logout revokes the active session.
+- QR visitor sessions last a fixed, non-sliding 24 hours and are clamped to the pass expiry. Reusing the same pass in the same valid browser session neither increments use count nor extends expiry.
+- Exhausting a QR pass blocks new redemptions without revoking valid sessions; pausing, deleting, or expiring the pass revokes its sessions immediately.
 - Do not expose a public `/guide` route. Pre-deployment guidance is served by GitHub; post-deployment guidance is opened only after an administrator signs in.
 
 ## GPT and account isolation

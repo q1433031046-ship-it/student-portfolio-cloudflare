@@ -33,6 +33,17 @@
     "failureLimit": 5,
     "lockMinutes": 15
   },
+  "access": {
+    "intermediateRoute": "/access",
+    "redeemRoute": "/access/redeem",
+    "redeemMethod": "POST",
+    "visitorSessionHours": 24,
+    "slidingSession": false,
+    "repeatRedemptionInValidSessionIncrementsUseCount": false,
+    "repeatRedemptionInValidSessionExtendsExpiry": false,
+    "exhaustionRevokesExistingSessions": false,
+    "pauseDeleteOrExpiryRevokesExistingSessions": true
+  },
   "media": {
     "videoType": "video/mp4",
     "videoMaxBytes": 52428800,
@@ -82,6 +93,10 @@
     "ten complete video viewers receive the full media stream",
     "the 800 MiB application limit rejects additional uploads",
     "publishing changes the public portfolio",
+    "opening a QR confirmation page does not consume a use",
+    "QR redemption creates one fixed non-sliding 24-hour browser session",
+    "repeating the same QR in a valid browser session neither consumes a use nor extends expiry",
+    "QR exhaustion blocks new redemption while pause, deletion and expiry revoke existing sessions",
     "QR public, unrestricted, restricted, exhausted and expired states work"
   ]
 }

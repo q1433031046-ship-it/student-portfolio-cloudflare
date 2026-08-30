@@ -82,7 +82,7 @@ type StoragePayload = {
 
 const views: Array<{ id: View; label: string; index: string }> = [
   { id: "overview", label: "概览", index: "01" },
-  { id: "contact", label: "联系", index: "02" },
+  { id: "contact", label: "联系方式", index: "02" },
   { id: "identity", label: "首图与文字", index: "03" },
   { id: "categories", label: "作品分类", index: "04" },
   { id: "projects", label: "作品", index: "05" },
@@ -615,7 +615,7 @@ function IdentityEditor({ portfolio, change, setMessage }: { portfolio: Portfoli
       <div className={styles.formSection}>
         <SectionTitle index="02" title="首图文字" />
         <div className={styles.formGrid}>
-          <Field label="姓名"><input value={portfolio.hero.name} onChange={(event) => heroField("name", event.target.value)} /></Field>
+          <Field label="姓名"><input value={portfolio.hero.name} placeholder="请输入你的姓名" onChange={(event) => heroField("name", event.target.value)} /></Field>
           <Field label="职业标题"><input value={portfolio.hero.role} onChange={(event) => heroField("role", event.target.value)} /></Field>
           <Field label="求职方向"><input value={portfolio.hero.targetRole} onChange={(event) => heroField("targetRole", event.target.value)} /></Field>
           <Field label="个人定位" wide><textarea rows={4} value={portfolio.hero.statement} onChange={(event) => heroField("statement", event.target.value)} /></Field>
