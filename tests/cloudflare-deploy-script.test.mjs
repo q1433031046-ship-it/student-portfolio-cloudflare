@@ -743,7 +743,11 @@ if [[ "$1" == "rev-parse" && "$2" == "HEAD" ]]; then
   exit 0
 fi
 if [[ "$1" == "ls-remote" && "$*" == *"refs/heads/main"* ]]; then
-  printf '%s\\trefs/heads/main\\n' "$GITHUB_SHA"
+  printf '%s\\trefs/heads/main\\n' "$INPUT_BASE_MAIN_SHA"
+  exit 0
+fi
+if [[ "$1" == "ls-remote" && "$*" == *"refs/heads/release/"* ]]; then
+  printf '%s\\trefs/heads/release/v%s\\n' "$INPUT_CANDIDATE_SHA" "$INPUT_CONFIRM_VERSION"
   exit 0
 fi
 if [[ "$1" == "ls-remote" && "$*" == *"refs/tags/"* ]]; then
@@ -785,6 +789,9 @@ exit 64
         PATH: `${bin}:${process.env.PATH}`,
         FAKE_GIT_STATE: statePath,
         FAKE_RACE_TARGET: remoteTarget,
+        INPUT_CANDIDATE_SHA: "verified-main-sha",
+        INPUT_BASE_MAIN_SHA: "verified-base-sha",
+        INPUT_CONFIRM_VERSION: "1.2.1",
         GITHUB_SHA: "verified-main-sha",
         RELEASE_TAG: "v1.2.1",
       },
