@@ -108,6 +108,7 @@ export type MediaAsset = {
   kind: "image" | "video" | "font";
   key?: string;
   src?: string;
+  available?: boolean;
   visualKey: VisualKey;
   objectPosition?: MediaPosition;
   sourceAspectRatio?: number;
@@ -158,6 +159,10 @@ export type Project = {
 
 export type PortfolioDocument = {
   schemaVersion: 5;
+  /**
+   * 仅供服务端保留已经退出编辑界面的旧媒体引用。该字段不会进入公开作品集。
+   */
+  archivedMedia?: MediaAsset[];
   settings: {
     siteTitle: string;
     activeTheme: ThemeKey;
@@ -310,28 +315,39 @@ function normalizeAsset(value: unknown): unknown {
 function normalizePortfolioInput(input: Record<string, unknown>): Record<string, unknown> {
   let candidate = input;
   if (candidate.schemaVersion === 1) {
+    const archivedMedia = Array.isArray(candidate.archivedMedia)
+      ? candidate.archivedMedia.filter(isRecord).map(normalizeAsset)
+      : [];
     const hero = isRecord(candidate.hero)
       ? {
           ...candidate.hero,
           animationEnabled: true,
-          media: {
-            id: "hero-media",
-            label: "个人首幅",
-            alt: "个人作品集首幅画面",
-            kind: "image",
-            visualKey: "frame",
-          },
+          media: isRecord(candidate.hero.media)
+            ? normalizeAsset(candidate.hero.media)
+            : {
+                id: "hero-media",
+                label: "个人首幅",
+                alt: "个人作品集首幅画面",
+                kind: "image",
+                visualKey: "frame",
+              },
         }
       : candidate.hero;
     const projects = Array.isArray(candidate.projects)
       ? candidate.projects.map((value) => {
           if (!isRecord(value)) return value;
           const { draftVideo: legacyMedia, ...project } = value;
-          void legacyMedia;
+          if (isRecord(legacyMedia)) archivedMedia.push(normalizeAsset(legacyMedia));
           return project;
         })
       : candidate.projects;
-    candidate = { ...candidate, schemaVersion: 2, hero, projects };
+    candidate = {
+      ...candidate,
+      schemaVersion: 2,
+      hero,
+      projects,
+      ...(archivedMedia.length > 0 ? { archivedMedia } : {}),
+    };
   }
   if (candidate.schemaVersion === 2) {
     const oldHero = isRecord(candidate.hero) ? candidate.hero : null;
@@ -462,6 +478,9 @@ export function validatePortfolioDocument(input: unknown): ValidationResult {
   const themes = expectArray(candidate.themes, "themes", errors, 1, 8);
   const categories = expectArray(candidate.categories, "categories", errors, 1, 30);
   const projects = expectArray(candidate.projects, "projects", errors, 0, 60);
+  const archivedMedia = candidate.archivedMedia === undefined
+    ? undefined
+    : expectArray(candidate.archivedMedia, "archivedMedia", errors, 0, 120);
 
   if (settings) {
     validateText(settings.siteTitle, "settings.siteTitle", 1, 80, errors);
@@ -507,6 +526,8 @@ export function validatePortfolioDocument(input: unknown): ValidationResult {
 
   const projectIds = new Set<string>();
   projects?.forEach((project, index) => validateProject(project, index, categoryIds, projectIds, errors));
+  const archivedMediaIds = new Set<string>();
+  archivedMedia?.forEach((asset, index) => validateArchivedMedia(asset, index, archivedMediaIds, errors));
 
   const serializedLength = safeSerializedLength(candidate);
   if (serializedLength > 1_000_000) errors.push("作品集文档不能超过 1 MB");
@@ -603,6 +624,9 @@ function normalizeSchemaFiveDocument(candidate: Record<string, unknown>): Record
     categories,
     projects,
     endCovers: normalizeEndCoverConfig(candidate.endCovers),
+    ...(Array.isArray(candidate.archivedMedia)
+      ? { archivedMedia: candidate.archivedMedia.filter(isRecord).map(normalizeAsset) }
+      : {}),
   };
 }
 
@@ -646,6 +670,7 @@ function textOrDefault(value: unknown, fallback: string) {
 
 export function mediaAssetsInDocument(document: PortfolioDocument): MediaAsset[] {
   const assets: MediaAsset[] = [
+    ...(document.archivedMedia ?? []),
     document.settings.customFont,
     document.settings.contact.image,
     ...document.hero.slides.map((slide) => slide.media),
@@ -663,8 +688,10 @@ export function mediaAssetsInDocument(document: PortfolioDocument): MediaAsset[]
 }
 
 export function toPublicPortfolioDocument(document: PortfolioDocument): PortfolioDocument {
+  const { archivedMedia, ...publishableDocument } = document;
+  void archivedMedia;
   return {
-    ...document,
+    ...publishableDocument,
     hero: {
       ...document.hero,
       slides: document.hero.slides.map((slide) => ({
@@ -737,15 +764,27 @@ function validateHero(hero: Record<string, unknown>, errors: string[]) {
   validateText(hero.role, "hero.role", 0, 80, errors);
   validateText(hero.targetRole, "hero.targetRole", 0, 120, errors);
   validateText(hero.email, "hero.email", 0, 160, errors);
-  if (typeof hero.email !== "string" || (hero.email.length > 0 && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(hero.email))) errors.push("联系资料 → 邮箱（hero.email）：格式不正确");
+  const email = typeof hero.email === "string" ? hero.email.trim() : null;
+  if (email === null || (email.length > 0 && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(email))) errors.push("联系资料 → 邮箱（hero.email）：格式不正确");
   validateText(hero.phone, "hero.phone", 0, 30, errors);
-  if (typeof hero.phone !== "string" || (hero.phone.length > 0 && !/^[0-9+()\-\s]{5,30}$/u.test(hero.phone))) errors.push("联系资料 → 电话（hero.phone）：格式不正确");
+  const phone = typeof hero.phone === "string" ? hero.phone.trim() : null;
+  if (phone === null || (phone.length > 0 && !/^[0-9+()\-\s]{5,30}$/u.test(phone))) errors.push("联系资料 → 电话（hero.phone）：格式不正确");
   validateText(hero.statement, "hero.statement", 0, 260, errors);
   validateText(hero.availability, "hero.availability", 0, 100, errors);
   const slides = expectArray(hero.slides, "hero.slides", errors, 1, 12);
   const slideIds = new Set<string>();
   const mediaIds = new Set<string>();
   slides?.forEach((slide, index) => validateHeroSlide(slide, index, slideIds, mediaIds, errors));
+}
+
+function validateArchivedMedia(value: unknown, index: number, ids: Set<string>, errors: string[]) {
+  const media = isRecord(value) ? value : null;
+  const path = `archivedMedia[${index}]`;
+  if (!media || (media.kind !== "image" && media.kind !== "video" && media.kind !== "font")) {
+    errors.push(`${path}.kind 无效`);
+    return;
+  }
+  validateMedia(media, path, media.kind, ids, errors);
 }
 
 function validateHeroSlide(value: unknown, index: number, ids: Set<string>, mediaIds: Set<string>, errors: string[]) {
@@ -911,6 +950,7 @@ function validateMedia(value: unknown, path: string, kind: "image" | "video" | "
     errors.push(`${path}.key 无效`);
   }
   if (media.src !== undefined && (typeof media.src !== "string" || media.src.length > 1000)) errors.push(`${path}.src 无效`);
+  if (media.available !== undefined && typeof media.available !== "boolean") errors.push(`${path}.available 必须为布尔值`);
   if (media.objectPosition !== undefined) {
     const position = expectRecord(media.objectPosition, `${path}.objectPosition`, errors);
     if (position) {
@@ -1056,12 +1096,19 @@ function safeSerializedLength(value: unknown) {
 }
 
 function publicAsset(asset: MediaAsset): MediaAsset {
+  const available = Boolean(asset.key);
   if (asset.kind === "video") {
-    const { key: _key, src: _src, ...safe } = asset;
+    const { key: _key, src: _src, available: _available, ...safe } = asset;
     void _key;
     void _src;
-    return safe;
+    void _available;
+    return { ...safe, ...(available ? { available: true } : {}) };
   }
-  const { key, ...safe } = asset;
-  return { ...safe, src: key ? `/api/media/${key}` : asset.src };
+  const { key, available: _available, ...safe } = asset;
+  void _available;
+  return {
+    ...safe,
+    src: key ? `/api/media/${key}` : asset.src,
+    ...(available ? { available: true } : {}),
+  };
 }

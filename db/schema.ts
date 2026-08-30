@@ -73,6 +73,17 @@ export const adminAuthState = sqliteTable("admin_auth_state", {
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 
+export const adminLoginThrottle = sqliteTable(
+  "admin_login_throttle",
+  {
+    bucketKey: text("bucket_key").primaryKey(),
+    failedAttempts: integer("failed_attempts").notNull().default(0),
+    lockedUntil: text("locked_until"),
+    updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [index("admin_login_throttle_locked_until_idx").on(table.lockedUntil)],
+);
+
 export const adminSessions = sqliteTable(
   "admin_sessions",
   {
@@ -99,13 +110,35 @@ export const portfolioMedia = sqliteTable(
     chunkSize: integer("chunk_size"),
     chunkCount: integer("chunk_count").notNull().default(1),
     uploadedBy: text("uploaded_by").notNull(),
-    status: text("status", { enum: ["uploaded", "deleted"] }).notNull().default("uploaded"),
+    status: text("status", { enum: ["uploaded", "deleting", "deleted"] }).notNull().default("uploaded"),
     createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   },
   (table) => [
     uniqueIndex("portfolio_media_object_key_idx").on(table.objectKey),
     index("portfolio_media_project_idx").on(table.projectId, table.createdAt),
   ],
+);
+
+export const legacyMediaMigrations = sqliteTable(
+  "legacy_media_migrations",
+  {
+    mediaId: text("media_id")
+      .primaryKey()
+      .references(() => portfolioMedia.id, { onDelete: "cascade" }),
+    objectKey: text("object_key").notNull(),
+    byteSize: integer("byte_size").notNull(),
+    chunkSize: integer("chunk_size").notNull().default(4 * 1024 * 1024),
+    chunkCount: integer("chunk_count").notNull(),
+    sourceEtag: text("source_etag").notNull(),
+    verifiedChunksJson: text("verified_chunks_json").notNull().default("[]"),
+    finalVerifiedChunksJson: text("final_verified_chunks_json").notNull().default("[]"),
+    status: text("status", { enum: ["copying", "final-verifying", "completed"] }).notNull().default("copying"),
+    lastError: text("last_error"),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+    completedAt: text("completed_at"),
+  },
+  (table) => [index("legacy_media_migrations_status_idx").on(table.status, table.updatedAt)],
 );
 
 export const mediaUploadSessions = sqliteTable(
@@ -124,7 +157,7 @@ export const mediaUploadSessions = sqliteTable(
     chunkCount: integer("chunk_count").notNull(),
     uploadedChunksJson: text("uploaded_chunks_json").notNull().default("[]"),
     uploadedBy: text("uploaded_by").notNull(),
-    status: text("status", { enum: ["uploading", "completed", "expired"] }).notNull().default("uploading"),
+    status: text("status", { enum: ["uploading", "finalizing", "completed", "expiring", "expired"] }).notNull().default("uploading"),
     createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
     expiresAt: text("expires_at").notNull(),
   },
@@ -212,3 +245,11 @@ export const portfolioAccessPasses = sqliteTable(
     index("portfolio_access_passes_created_idx").on(table.createdAt),
   ],
 );
+
+export const portfolioAccessPassState = sqliteTable("portfolio_access_pass_state", {
+  passId: text("pass_id")
+    .primaryKey()
+    .references(() => portfolioAccessPasses.id, { onDelete: "cascade" }),
+  sessionGeneration: integer("session_generation").notNull().default(1),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { createQrMatrix, qrSvg } from "../lib/qr-code";
+import { toUserFacingChineseError, userFacingError, userFacingResponseError } from "../lib/user-facing-error";
 import styles from "./admin.module.css";
 
 export type AdminAccessPass = {
@@ -58,18 +59,28 @@ export function AccessManager({ access, onChange, setMessage }: { access: Access
     if (busy) return;
     setBusy(true);
     try {
-      const response = await fetch(`/api/admin/access${input.id ? `?id=${encodeURIComponent(input.id)}` : ""}`, {
-        method: input.method,
-        credentials: "same-origin",
-        headers: input.body ? { "Content-Type": "application/json" } : undefined,
-        body: input.body ? JSON.stringify(input.body) : undefined,
-      });
-      const body = await response.json() as AccessPayload & { error?: string };
-      if (!response.ok) throw new Error(body.error || "二维码设置更新失败");
+      let response: Response;
+      try {
+        response = await fetch(`/api/admin/access${input.id ? `?id=${encodeURIComponent(input.id)}` : ""}`, {
+          method: input.method,
+          credentials: "same-origin",
+          headers: input.body ? { "Content-Type": "application/json" } : undefined,
+          body: input.body ? JSON.stringify(input.body) : undefined,
+        });
+      } catch {
+        throw userFacingError("二维码设置更新失败，请检查网络后重试");
+      }
+      let body: AccessPayload & { error?: string };
+      try {
+        body = await response.json() as AccessPayload & { error?: string };
+      } catch {
+        throw userFacingError("二维码设置响应暂时无法读取，请稍后重试");
+      }
+      if (!response.ok) throw userFacingResponseError(body, "二维码设置更新失败");
       onChange(body);
       setMessage(success);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "二维码设置更新失败");
+      setMessage(toUserFacingChineseError(error, "二维码设置更新失败，请稍后重试"));
     } finally {
       setBusy(false);
     }
@@ -81,7 +92,7 @@ export function AccessManager({ access, onChange, setMessage }: { access: Access
         <div>
           <span>QR ACCESS</span>
           <h2 id="access-manager-title">二维码访问接口</h2>
-          <p>二维码先进入确认页，打开确认页不扣次数；成功进入后当前浏览器获得固定 24 小时访问。重复打开不会再次扣次数，也不会延长原到期时间。</p>
+          <p>二维码先进入确认页，打开确认页不扣次数；成功进入后当前浏览器获得固定 24 小时访问。重复打开不会再次扣次数，也不会延长原到期时间。公开访问时不会扣除二维码次数，也不会写入访问 Cookie。</p>
         </div>
         <button className={styles.policySwitch} type="button" role="switch" aria-checked={access.restrictionEnabled} data-on={access.restrictionEnabled} disabled={busy} onClick={() => void updatePolicy()}>
           <i aria-hidden="true" />
@@ -94,8 +105,15 @@ export function AccessManager({ access, onChange, setMessage }: { access: Access
         <i aria-hidden="true">＋</i>
         <span><b>成功进入</b>计 1 次，当前浏览器固定 24 小时</span>
         <i aria-hidden="true">＋</i>
-        <span><b>状态变化</b>耗尽不影响已有会话；暂停、删除或到期会立即失效</span>
+        <span><b>状态变化</b>耗尽不影响已有会话；暂停、删除或到期会永久撤销已有会话</span>
       </div>
+
+      {access.restrictionEnabled && usableCount === 0 ? (
+        <aside className={styles.warning} role="alert">
+          <strong>当前所有访客均被阻断</strong>
+          <p>请启用一张当前可用的二维码，或新建二维码后再向访客提供入口。</p>
+        </aside>
+      ) : null}
 
       <div className={styles.accessCreate}>
         <label><span>二维码名称</span><input maxLength={60} value={label} onChange={(event) => setLabel(event.target.value)} placeholder={`访问码 ${String(access.passes.length + 1).padStart(2, "0")}`} /></label>

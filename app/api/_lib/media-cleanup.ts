@@ -2,21 +2,62 @@ import { mediaAssetsInDocument, type PortfolioDocument } from "../../portfolio/m
 import { getPortfolioDb } from "./portfolio-store";
 import { deleteStoredMedia } from "./storage";
 
-export async function cleanupUnreferencedMedia(document: PortfolioDocument) {
-  const referenced = new Set(mediaAssetsInDocument(document).flatMap((asset) => asset.key ? [asset.key] : []));
-  const rows = await getPortfolioDb()
-    .prepare("SELECT object_key, storage_backend, chunk_count FROM portfolio_media WHERE status = 'uploaded' ORDER BY created_at ASC LIMIT 1000")
-    .all<{ object_key: string; storage_backend: "r2" | "kv"; chunk_count: number }>();
+const DOCUMENT_ID = "default";
+
+type CleanupMediaRow = {
+  object_key: string;
+  storage_backend: "kv";
+  chunk_count: number;
+  status: "uploaded" | "deleting";
+};
+
+export async function cleanupUnreferencedMedia(document: PortfolioDocument, expectedRevision: number) {
+  try {
+    return await cleanupUnreferencedKvMedia(document, expectedRevision);
+  } catch {
+    throw new Error("媒体自动清理暂时失败，稍后将重试");
+  }
+}
+
+async function cleanupUnreferencedKvMedia(document: PortfolioDocument, expectedRevision: number) {
+  const referencedKeys = Array.from(new Set(mediaAssetsInDocument(document).flatMap((asset) => asset.key ? [asset.key] : [])));
+  const referenced = new Set(referencedKeys);
+  const database = getPortfolioDb();
+  const rows = await database
+    .prepare(`SELECT media.object_key, media.storage_backend, media.chunk_count, media.status
+      FROM portfolio_media AS media
+      WHERE media.storage_backend = 'kv' AND media.status IN ('uploaded', 'deleting')
+        AND NOT EXISTS (
+          SELECT 1 FROM json_each(?) AS referenced
+          WHERE referenced.value = media.object_key
+        )
+      ORDER BY media.created_at ASC LIMIT 1000`)
+    .bind(JSON.stringify(referencedKeys))
+    .all<CleanupMediaRow>();
   const unused = rows.results.filter((row) => !referenced.has(row.object_key));
-  if (unused.length === 0) return 0;
+  let removed = 0;
 
   for (const row of unused) {
-    await deleteStoredMedia({ objectKey: row.object_key, storageBackend: row.storage_backend, chunkCount: row.chunk_count });
+    if (row.status === "uploaded") {
+      const claim = await database
+        .prepare(`UPDATE portfolio_media SET status = 'deleting'
+          WHERE object_key = ? AND storage_backend = 'kv' AND status = 'uploaded'
+            AND EXISTS (
+              SELECT 1 FROM portfolio_documents
+              WHERE id = ? AND revision = ?
+            )`)
+        .bind(row.object_key, DOCUMENT_ID, expectedRevision)
+        .run();
+      if (Number(claim.meta.changes ?? 0) !== 1) continue;
+    }
+
+    await deleteStoredMedia({ objectKey: row.object_key, chunkCount: row.chunk_count });
+    const retired = await database
+      .prepare("UPDATE portfolio_media SET status = 'deleted' WHERE object_key = ? AND storage_backend = 'kv' AND status = 'deleting'")
+      .bind(row.object_key)
+      .run();
+    if (Number(retired.meta.changes ?? 0) === 1) removed += 1;
   }
-  const placeholders = unused.map(() => "?").join(", ");
-  await getPortfolioDb()
-    .prepare(`UPDATE portfolio_media SET status = 'deleted' WHERE object_key IN (${placeholders})`)
-    .bind(...unused.map((row) => row.object_key))
-    .run();
-  return unused.length;
+
+  return removed;
 }

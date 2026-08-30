@@ -1,7 +1,9 @@
 "use client";
 
-import type { CSSProperties } from "react";
-import type { HeroConfig, HeroLayer, HeroSlide } from "./model";
+import type { HeroConfig, HeroSlide } from "./model";
+import { trimVisibleText } from "../lib/text-visibility";
+import { heroLayerStyle } from "./hero-layer-style";
+import { hasHeroLayerContent } from "./hero-layer-content";
 import { croppedImageStyle, mediaCropAspect } from "./media-crop";
 import styles from "../demo/portfolio-demo.module.css";
 
@@ -11,6 +13,7 @@ export function HeroSequence({
   onEnter,
   onExit,
   onContact,
+  contactAvailable,
   yearRange,
   projectCount,
 }: {
@@ -19,10 +22,14 @@ export function HeroSequence({
   onEnter: () => void;
   onExit: () => void;
   onContact: () => void;
+  contactAvailable: boolean;
   yearRange: string;
   projectCount: number;
 }) {
   const monogram = Array.from(hero.name.trim()).slice(0, 2).join("") || "PF";
+  const email = trimVisibleText(hero.email);
+  const phone = trimVisibleText(hero.phone);
+  const availability = trimVisibleText(hero.availability);
   return (
     <>
       <header className={styles.siteHeader}>
@@ -40,11 +47,11 @@ export function HeroSequence({
         </div>
         <nav aria-label="页面导航">
           <a href="#works" onClick={(event) => { if (!entered) { event.preventDefault(); onEnter(); } }}>作品</a>
-          <button className={styles.contactAction} type="button" onClick={onContact}>
-            <span>联系</span><strong>{hero.email || hero.phone || "查看联系方式"}</strong>
-          </button>
+          {contactAvailable && <button className={styles.contactAction} type="button" onClick={onContact}>
+            <span>联系</span><strong>{email || phone || "查看联系方式"}</strong>
+          </button>}
         </nav>
-        {hero.availability && <span>{hero.availability}</span>}
+        {availability && <span>{availability}</span>}
       </header>
       <div className={styles.heroSequence} data-entered={entered}>
         {hero.slides.map((slide, index) => (
@@ -96,42 +103,34 @@ function HeroArtwork({ slide, projectCount, yearRange }: { slide: HeroSlide; pro
 }
 
 function HeroLayers({ hero, slide, yearRange }: { hero: HeroConfig; slide: HeroSlide; yearRange: string }) {
+  const statement = trimVisibleText(hero.statement);
+  const role = trimVisibleText(hero.role);
+  const targetRole = trimVisibleText(hero.targetRole);
+  const email = trimVisibleText(hero.email);
+  const phone = trimVisibleText(hero.phone);
   return (
     <div className={styles.heroLayers}>
-      {slide.layers.filter((layer) => layer.visible).map((layer) => (
+      {slide.layers.filter((layer) => layer.visible && hasHeroLayerContent(layer.kind, hero)).map((layer) => (
         <section
           key={layer.id}
           className={styles.heroLayer}
           data-kind={layer.kind}
-          style={layerStyle(layer)}
+          style={heroLayerStyle(layer)}
         >
           {layer.kind === "identity" && <><p>PORTFOLIO · {yearRange}</p><h1>{hero.name}</h1></>}
-          {layer.kind === "statement" && hero.statement.trim() && <p>{hero.statement}</p>}
+          {layer.kind === "statement" && statement && <p>{statement}</p>}
           {layer.kind === "facts" && (
             <dl>
-              {hero.role && <div><dt>身份</dt><dd>{hero.role}</dd></div>}
-              {hero.targetRole && <div><dt>方向</dt><dd>{hero.targetRole}</dd></div>}
-              {hero.email && <div><dt>邮箱</dt><dd><a href={`mailto:${hero.email}`}>{hero.email}</a></dd></div>}
-              {hero.phone && <div><dt>电话</dt><dd><a href={`tel:${phoneHref(hero.phone)}`}>{hero.phone}</a></dd></div>}
+              {role && <div><dt>身份</dt><dd>{role}</dd></div>}
+              {targetRole && <div><dt>方向</dt><dd>{targetRole}</dd></div>}
+              {email && <div><dt>邮箱</dt><dd><a href={`mailto:${email}`}>{email}</a></dd></div>}
+              {phone && <div><dt>电话</dt><dd><a href={`tel:${phoneHref(phone)}`}>{phone}</a></dd></div>}
             </dl>
           )}
         </section>
       ))}
     </div>
   );
-}
-
-function layerStyle(layer: HeroLayer): CSSProperties {
-  return {
-    "--layer-x": `${layer.x}%`,
-    "--layer-y": `${layer.y}%`,
-    "--layer-width": `${layer.width}%`,
-    "--layer-scale": layer.scale,
-    "--layer-z": layer.zIndex,
-    "--layer-align": layer.align,
-    color: layer.color === "system" ? undefined : layer.color,
-    fontFamily: layer.fontFamily === "custom" ? "PortfolioCustom, sans-serif" : undefined,
-  } as CSSProperties;
 }
 
 function phoneHref(phone: string) {

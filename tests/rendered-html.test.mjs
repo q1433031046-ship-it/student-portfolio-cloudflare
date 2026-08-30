@@ -38,7 +38,7 @@ test("renders the published single-column portfolio homepage without private med
   assert.match(html, /<title>学生作品展示<\/title>/i);
   assert.match(html, /作品不是结果/);
   assert.match(html, /点击展开作品/);
-  assert.match(html, /播放视频/);
+  assert.doesNotMatch(html, /播放视频/);
   assert.match(html, /mailto:/);
   assert.match(html, /href="\/admin"/);
   assert.doesNotMatch(html, /按模块连续浏览；点击封面展开项目；右下角播放视频。/);
@@ -69,7 +69,7 @@ test("renders the extensible single-column portfolio demo", async () => {
   assert.match(html, /林予安/);
   assert.match(html, /AI 影像创作者/);
   assert.match(html, /点击展开作品/);
-  assert.match(html, /播放视频/);
+  assert.doesNotMatch(html, /播放视频/);
   assert.doesNotMatch(html, /模板预览设置|PREVIEW SETTINGS/);
   assert.match(html, /项目详情/);
   assert.match(html, /AI 剧情短片/);

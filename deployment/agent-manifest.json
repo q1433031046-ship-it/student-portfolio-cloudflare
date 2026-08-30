@@ -1,5 +1,12 @@
 {
   "schemaVersion": 3,
+  "releaseContract": {
+    "version": "1.2.1",
+    "releaseTag": "v1.2.1",
+    "sourceRef": "refs/tags/v1.2.1",
+    "upgradePromptManifest": "deployment/upgrade-prompt.json",
+    "upgradePromptSha256": "8e0a389a1a6c38a833c39ee6ed1b9c18690e067e83d42cc9e8d810d2219ec2dc"
+  },
   "project": {
     "name": "student-portfolio",
     "target": "cloudflare-workers",
@@ -11,7 +18,9 @@
     "publicPreDeploymentGuide": "README.md",
     "postDeploymentGuide": "password-protected administrator interface",
     "publicGuideRoute": null,
-    "studentFacingFiles": ["README.md"],
+    "studentFacingFiles": [
+      "README.md"
+    ],
     "upgradePromptManifest": "deployment/upgrade-prompt.json"
   },
   "runtime": {
@@ -20,9 +29,56 @@
     "entrypoint": "cloudflare/worker-entry.js"
   },
   "resources": [
-    { "binding": "DB", "type": "d1", "purpose": "portfolio, password verifier, recovery verifier, sessions, access passes and events" },
-    { "binding": "MEDIA_KV", "type": "kv_namespace", "purpose": "4 MiB chunks for private images, fonts and MP4 video" }
+    {
+      "binding": "DB",
+      "type": "d1",
+      "purpose": "portfolio, password verifier, recovery verifier, sessions, access passes and events"
+    },
+    {
+      "binding": "MEDIA_KV",
+      "type": "kv_namespace",
+      "purpose": "4 MiB chunks for private images, fonts and MP4 video"
+    }
   ],
+  "existingInstallUpgradeEligibility": {
+    "minimumKnownVersion": "1.1.0",
+    "equivalentOlderInstallAllowed": true,
+    "prerequisites": [
+      "DB.database_id",
+      "MEDIA_KV.id",
+      "matching live DB and MEDIA_KV bindings"
+    ],
+    "r2OnlyV1_0": "unsupported-fail-closed-in-v1.2.1",
+    "provisionMissingResources": false,
+    "remoteMutationBeforeEligibility": false
+  },
+  "newDeploymentProvisioning": {
+    "declaredBindings": [
+      "DB",
+      "MEDIA_KV"
+    ],
+    "templateContainsResourceIds": false,
+    "templateContainsDatabaseName": false,
+    "fixedDatabaseNameReuseAllowed": false,
+    "provisioner": "Deploy to Cloudflare",
+    "resourcesMustBeSiteIndependent": true,
+    "writeExactIdsToClonedConfigWhenSupported": true,
+    "verifyClonedConfigAgainstLiveWorker": true,
+    "missingWriteback": "stop automatic-upgrade preparation and use only this site's exact ids from the official Cloudflare resource UI",
+    "guessOrReuseResourceIds": false
+  },
+  "effectiveWorkerName": {
+    "configuredField": "wrangler.name",
+    "overrideVariable": "WRANGLER_CI_OVERRIDE_NAME",
+    "validation": "1-63 lowercase letters, digits or hyphens; no leading or trailing hyphen",
+    "useForAllRemoteOperations": true,
+    "operations": [
+      "status",
+      "version inspection",
+      "resource fingerprint",
+      "final deploy"
+    ]
+  },
   "authentication": {
     "provider": "local-password",
     "loginMethod": "password",
@@ -30,11 +86,32 @@
     "recoveryMethod": "single-use-rotating-system-code",
     "credentialVersion": 2,
     "programUpgradeConfirmation": "latest-recovery-code-required-once-per-formal-version",
+    "programUpgradeEffects": {
+      "administratorIdentity": "preserve",
+      "passwordVerifier": "replace-from-confirmation-form",
+      "recoveryCode": "rotate",
+      "priorAdministratorSessions": "revoke-all",
+      "currentBrowserSession": "create-new-12-hour-session"
+    },
     "credentialHashesDependOnInitialAdminCode": false,
     "sessionHours": 12,
-    "protectedPaths": ["/admin*", "/api/admin*", "/preview*"],
+    "protectedPaths": [
+      "/admin*",
+      "/api/admin*",
+      "/preview*"
+    ],
     "failureLimit": 5,
-    "lockMinutes": 15
+    "passwordFailureScope": "same-cloudflare-client-network-bucket",
+    "lockMinutes": 15,
+    "passwordNetworkBucket": {
+      "source": "trusted Cloudflare cf-connecting-ip request metadata",
+      "storedRepresentation": "irreversible truncated digest keyed with password_hash",
+      "missingSource": "unknown",
+      "storesRawAddress": false
+    },
+    "passwordLockAffectsOtherNetworkBuckets": false,
+    "passwordLockAffectsRecoveryCodeFlow": false,
+    "recoveryFailureAffectsPasswordLock": false
   },
   "access": {
     "intermediateRoute": "/access",
@@ -50,12 +127,40 @@
   "media": {
     "videoType": "video/mp4",
     "videoMaxBytes": 52428800,
+    "finalVideoRequired": false,
+    "noVideoDuration": "00:00",
+    "noVideoPublicPlayControl": false,
     "chunkBytes": 4194304,
     "rangePlayback": true,
     "storageLimitBytes": 838860800,
-    "storageWarningBytes": 734003200
+    "storageWarningBytes": 734003200,
+    "legacyR2": {
+      "binding": "BUCKET",
+      "newDeployments": "absent",
+      "condition": "retain the same existing binding while uploaded rows use storage_backend=r2",
+      "migrationStatusRoute": "GET /api/admin/storage",
+      "migrationResumeRoute": "POST /api/admin/storage/migrate",
+      "copyUnitBytes": 4194304,
+      "sourceObjectVersion": "pin the original R2 httpEtag and fail closed if it changes",
+      "copyVerification": [
+        "R2/KV byte-count",
+        "R2/KV sha256"
+      ],
+      "finalVerification": "resumable final-verifying phase rereads every current KV chunk and matches byte-count plus sha256 against the copy ledger",
+      "backendSwitch": "compare-and-swap only after the complete final-verification ledger matches",
+      "sourceDeletion": "never-automatic",
+      "preserveExistingVideoMaxBytes": 94371840
+    },
+    "schema1": {
+      "heroMedia": "preserve original key in current hero media",
+      "draftVideo": "retain underlying media through an administrator-readable private document archive reference",
+      "draftVideoPublicSanitization": "strip the archive reference before returning public documents",
+      "draftVideoPublicExposure": false
+    }
   },
-  "requiredSecrets": ["INITIAL_ADMIN_CODE"],
+  "requiredSecrets": [
+    "INITIAL_ADMIN_CODE"
+  ],
   "authorizationFlow": {
     "preflight": "harmless-read-only-check",
     "reuseValidConnections": true,
@@ -67,10 +172,60 @@
     "inspectExistingResourcesBeforeRetry": true
   },
   "commands": {
-    "verify": ["npm ci", "npm test", "npm run lint", "./node_modules/.bin/tsc --noEmit"],
-    "cloudBuildDeploy": "npm run deploy",
-    "firstDirectDeploy": "npm run cloudflare:setup",
-    "update": "npm run cloudflare:deploy"
+    "verify": [
+      "npm ci",
+      "npm audit --omit=dev --audit-level=high",
+      "bash -n scripts/*.sh",
+      "node --check scripts/*.mjs",
+      "npm run db:generate",
+      "git status --porcelain --untracked-files=all -- drizzle must be empty",
+      "npm test",
+      "npx --no-install wrangler deploy --dry-run --keep-vars --config wrangler.jsonc",
+      "npm run lint",
+      "./node_modules/.bin/tsc --noEmit"
+    ],
+    "cloudBuildFirstDeployment": "npm run deploy",
+    "cloudBuildExistingWorker": "fail-closed; never an upgrade entry",
+    "legacyBaselineTool": "invoke the verified refs/tags/v1.2.1 worktree's absolute scripts/cloudflare-deploy.mjs path; the script pins Wrangler cwd and dependencies to that tag root while reading the original site's absolute wrangler.jsonc and writing its .wrangler/upgrade-before-fingerprint.json",
+    "captureUpgradeFingerprint": "npm run cloudflare:fingerprint",
+    "upgradeFingerprintPath": ".wrangler/upgrade-before-fingerprint.json",
+    "capturePreDeployFingerprint": "npm run cloudflare:fingerprint -- --output .wrangler/upgrade-predeploy-fingerprint.json",
+    "preDeployFingerprintPath": ".wrangler/upgrade-predeploy-fingerprint.json",
+    "preDeployRequirement": "strictly match upgrade-before-fingerprint without overwriting it after restoring the original wrangler.jsonc into current v1.2.1 source",
+    "update": "npm run cloudflare:deploy",
+    "capturePostUpgradeFingerprint": "npm run cloudflare:fingerprint -- --output .wrangler/upgrade-after-fingerprint.json"
+  },
+  "resourceFingerprint": {
+    "automaticFields": [
+      "effective Worker name after validated WRANGLER_CI_OVERRIDE_NAME override",
+      "local Wrangler configuredWorkersDevEnabled value",
+      "DB binding and resource id",
+      "MEDIA_KV binding and resource id",
+      "optional R2 binding and bucket name",
+      "all live secret binding names",
+      "runtime variable binding, type and value SHA-256"
+    ],
+    "remoteWorkersDevState": "record-and-verify-manually",
+    "fullWorkersDevHostname": "record-and-verify-separately",
+    "containsSecretValues": false,
+    "pathsAreGitIgnored": true,
+    "baselineWritePolicy": "create once with mode 0600 and fail closed if the path exists; preserve across retries and never overwrite silently",
+    "newUpgradeRound": "owner confirms the old baseline is obsolete and moves it to an archive location before a new capture"
+  },
+  "sourceUpgradePolicy": {
+    "tagAudit": "temporary detached worktree outside the original site repository directory; no deploy",
+    "targetWorktree": "the original site repository after converging verified v1.2.1 tracked source",
+    "preserveOriginalConfig": [
+      "Worker name",
+      "DB binding and id",
+      "MEDIA_KV binding and id",
+      "optional BUCKET binding and name",
+      "workers_dev local setting",
+      "runtime vars"
+    ],
+    "strictDeployCwd": "original site worktree with current v1.2.1 source and restored original wrangler.jsonc",
+    "dirtyWorktree": "fail-closed-until-owner-confirmed-recoverable-save",
+    "destructiveGitCommandsAllowed": false
   },
   "databaseMigrations": [
     "0000_bumpy_ultimo.sql",
@@ -79,8 +234,23 @@
     "0003_careful_justice.sql",
     "0004_owner_email_onboarding.sql",
     "0005_password_auth_kv_media.sql",
-    "0006_auth_v2.sql"
+    "0006_auth_v2.sql",
+    "0007_legacy_media_and_access_state.sql"
   ],
+  "databaseMigrationPolicy": {
+    "strategy": "forward-only",
+    "runtimeSafeBootstrapMigrations": [
+      "0006_auth_v2.sql",
+      "0007_legacy_media_and_access_state.sql"
+    ],
+    "migrationSha256": {
+      "0007_legacy_media_and_access_state.sql": "c29e080e93d8fa71378c43d7afdbcef97a591e434dca092af84741428acd9a1e"
+    },
+    "runtimeBootstrapRoute": "/admin",
+    "permissionFallback": "only after migrations list succeeds and reliably enumerates all pending files, apply then clearly fails for D1 permission, the exact target fingerprint matches, and every pending migration is allowlisted and verified as idempotent DDL",
+    "migrationListFailure": "fail-closed because the complete pending set is unproven",
+    "allOtherMigrationErrors": "fail-closed"
+  },
   "authStateBootstrap": {
     "table": "admin_auth_state",
     "migration": "0006_auth_v2.sql",
@@ -88,40 +258,90 @@
     "migrationIsIdempotent": true,
     "replacementDatabaseRequired": false
   },
+  "passwordThrottleBootstrap": {
+    "table": "admin_login_throttle",
+    "migration": "0007_legacy_media_and_access_state.sql",
+    "runtimeCreateIfMissing": true,
+    "migrationIsIdempotent": true
+  },
+  "legacyMediaMigration": {
+    "ledgerTable": "legacy_media_migrations",
+    "summaryField": "legacyMigration",
+    "sourceBinding": "BUCKET",
+    "destinationBinding": "MEDIA_KV",
+    "missingSourceBinding": "block-with-Chinese-error",
+    "resumable": true,
+    "sourceObjectVersion": "pin and recheck the original R2 httpEtag on resume, every source range response, final-verification transition and CAS",
+    "copyVerification": "verify each R2 source chunk against immediate KV readback by byte-count and SHA-256",
+    "finalVerification": "in resumable final-verifying state, reread one current KV chunk per request and compare the complete final ledger with the copy ledger",
+    "backendSwitch": "CAS to kv only after every final-verification entry matches; otherwise retain r2",
+    "deleteSourceAutomatically": false,
+    "completionChecks": [
+      "no uploaded media rows remain with storage_backend=r2",
+      "legacyMigration summary is complete",
+      "preserved media keys and sampled first/last chunks are readable",
+      "the legacy R2 bucket and source objects still exist"
+    ]
+  },
   "humanActions": [
     "approve official Cloudflare authorization",
     "enter the one-time deployment code on a secret input surface",
     "choose the administrator password inside the website",
     "download and store the generated system recovery code",
-    "after a formal upgrade, enter the latest recovery code only on the official /admin page and store the newly rotated code"
+    "after a formal upgrade, enter the latest recovery code and password twice only on the official /admin page, download and open the new site-specific recovery file, then store it offline"
   ],
   "liveTests": [
     "first admin visit requires the configured one-time deployment code",
     "successful initialization creates a password session and displays one recovery code",
     "the deployment code cannot be used as a normal login after initialization",
-    "five failed password attempts activate a fifteen-minute lock",
+    "five consecutive wrong passwords from the same Cloudflare client-network bucket lock only that password bucket for fifteen minutes; other network buckets and the recovery-code flow remain independent, and a wrong recovery code does not trigger the password lock",
     "password recovery revokes prior sessions and rotates the recovery code",
-    "a formal program upgrade requires the latest recovery code once, rotates it, and preserves all site data",
+    "a formal program upgrade requires the latest recovery code once, rotates it, revokes prior administrator sessions and preserves all site data",
     "after credential migration, password login, recovery and sessions do not depend on INITIAL_ADMIN_CODE",
     "draft save and preview do not change the public portfolio",
     "the overview footer reports used and remaining website space",
     "the administrator header exposes the password-protected guide entry after login",
     "the public /guide route is absent",
     "image upload renders successfully",
-    "project cover typography matches the administrator desktop and mobile previews",
+    "project cover typography matches the administrator desktop 16:9 preview",
     "an uploaded image remains visible to the administrator before draft save while public access stays denied",
     "optional Chinese text fields accept direct input or blank values and blank values auto-hide",
     "validation identifies the exact project, content block, field and character count and can locate the editor",
     "multiple independent end covers upload, crop, copy, reorder and render after every project and before the footer",
+    "a project without a final video publishes with duration 00:00 and no public play control",
     "a 50 MB MP4 uploads in 4 MiB chunks",
     "video range requests support playback and seeking",
-    "ten complete video viewers receive the full media stream",
+    "ten isolated cookie sessions receive the full media stream when the production site has a video",
     "the 800 MiB application limit rejects additional uploads",
     "publishing changes the public portfolio",
     "opening a QR confirmation page does not consume a use",
     "QR redemption creates one fixed non-sliding 24-hour browser session",
     "repeating the same QR in a valid browser session neither consumes a use nor extends expiry",
     "QR exhaustion blocks new redemption while pause, deletion and expiry revoke existing sessions",
-    "QR public, unrestricted, restricted, exhausted and expired states work"
-  ]
+    "QR public, unrestricted, restricted, exhausted and expired states work",
+    "legacy R2 media pins its source ETag, verifies each copied chunk, rereads every KV chunk in a resumable final-verifying phase, and switches with CAS only after both ledgers match",
+    "legacy schema 1 hero media remains public while the retired draft video is an administrator-readable private document archive reference stripped from public documents"
+  ],
+  "verificationBoundaries": {
+    "automated": [
+      "production dependency audit",
+      "shell and Node deployment-script syntax",
+      "Drizzle generation with a clean migration diff",
+      "unit and integration tests with one production build",
+      "Wrangler deployment dry run",
+      "lint",
+      "TypeScript"
+    ],
+    "productionEvidenceRequired": [
+      "live resource fingerprint",
+      "production data preservation",
+      "legacy R2 inventory and migration",
+      "ten isolated cookie sessions"
+    ],
+    "ownerManualOnly": [
+      "mainland-China mobile-data access",
+      "mainland-China broadband access"
+    ],
+    "unknownResult": "report as unverified"
+  }
 }

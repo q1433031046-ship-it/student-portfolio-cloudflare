@@ -13,7 +13,6 @@ export type AdminIdentity = {
 };
 
 export async function authorizeAdmin(request: Request): Promise<AdminIdentity | null> {
-  const bindings = env as unknown as AuthBindings;
   const sitesEmail = request.headers.get("oai-authenticated-user-email")?.trim().toLowerCase();
   if (isSitesAuthPlatform() && sitesEmail) {
     if (!sameOriginForBrowserWrite(request)) return null;
@@ -25,6 +24,14 @@ export async function authorizeAdmin(request: Request): Promise<AdminIdentity | 
     if (local) return local;
   }
 
+  return null;
+}
+
+export async function authorizeUpload(request: Request): Promise<AdminIdentity | null> {
+  const administrator = await authorizeAdmin(request);
+  if (administrator) return administrator;
+
+  const bindings = env as unknown as AuthBindings;
   const authorization = request.headers.get("authorization");
   const supplied = authorization?.startsWith("Bearer ") ? authorization.slice(7) : "";
   if (bindings.UPLOAD_API_TOKEN && supplied && await constantTimeEqual(bindings.UPLOAD_API_TOKEN, supplied)) {
@@ -33,12 +40,8 @@ export async function authorizeAdmin(request: Request): Promise<AdminIdentity | 
   return null;
 }
 
-export async function authorizeUpload(request: Request): Promise<AdminIdentity | null> {
-  return authorizeAdmin(request);
-}
-
 export function canManagePortfolio(identity: AdminIdentity, ownerEmail: string) {
-  return identity.kind === "token" || identity.user === ownerEmail.toLowerCase();
+  return identity.kind !== "token" && identity.user === ownerEmail.toLowerCase();
 }
 
 function sameOriginForBrowserWrite(request: Request) {

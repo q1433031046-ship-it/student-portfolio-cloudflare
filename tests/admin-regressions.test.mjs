@@ -5,6 +5,7 @@ import test from "node:test";
 const adminClient = await readFile(new URL("../app/admin/admin-client.tsx", import.meta.url), "utf8");
 const cropEditor = await readFile(new URL("../app/admin/media-crop-editor.tsx", import.meta.url), "utf8");
 const adminEnhancements = await readFile(new URL("../app/admin/admin-interaction-enhancements.tsx", import.meta.url), "utf8");
+const validationLocation = await readFile(new URL("../app/admin/validation-location.ts", import.meta.url), "utf8");
 const portfolioCss = await readFile(new URL("../app/demo/portfolio-demo.module.css", import.meta.url), "utf8");
 const coverTextComponent = await readFile(new URL("../app/portfolio/project-cover-text.tsx", import.meta.url), "utf8");
 const coverTextCss = await readFile(new URL("../app/portfolio/project-cover-text.module.css", import.meta.url), "utf8");
@@ -32,10 +33,14 @@ test("mobile gallery keeps portrait and landscape output ratios distinct", () =>
 });
 
 test("admin errors can navigate to and highlight their source field", () => {
-  assert.match(adminEnhancements, /validationView\(reason\)/u);
-  assert.match(adminEnhancements, /projects\\\[\(\\d\+\)\\\]/u);
+  assert.match(adminEnhancements, /validationViewForReason\(reason\)/u);
+  assert.match(validationLocation, /projects\\\[\(\\d\+\)\\\]/u);
   assert.match(adminEnhancements, /data-admin-problem/u);
   assert.match(adminEnhancements, /scrollIntoView/u);
+  assert.match(adminEnhancements, /projects\\\[\\d\+\\\]\\\.title/u);
+  assert.match(adminEnhancements, /categories\\\[\\d\+\\\]\\\.label/u);
+  assert.match(adminClient, /data-category-card=\{index\}/u);
+  assert.match(validationLocation, /categories\\\[\(\\d\+\)\\\]/u);
 });
 
 test("non-image-only hero modes collapse media controls and surface layout editing", () => {
@@ -77,7 +82,7 @@ test("multiple independent end covers can be edited and render before the footer
   assert.match(adminClient, /copySlide/u);
   assert.match(adminClient, /moveSlide/u);
   assert.match(adminClient, /slot="end-cover"/u);
-  assert.match(endCoverEditor, /shouldFinishInlineEditing/u);
+  assert.match(endCoverEditor, /shouldFinishMultilineInlineEditing/u);
   assert.match(endCoverEditor, /Enter 换行/u);
   assert.match(endCoverSequence, /config\.slides\.map/u);
   assert.match(endCoverSequence, /if \(!entered \|\| !config\.enabled/u);
@@ -89,6 +94,8 @@ test("multiple independent end covers can be edited and render before the footer
 test("validation dialog offers direct location down to the selected content block", () => {
   assert.match(adminClient, /定位并修改/u);
   assert.match(adminClient, /data-block-index/u);
-  assert.match(adminEnhancements, /detailBlocks\\\[\(\\d\+\)\\\]/u);
+  assert.match(validationLocation, /detailBlocks\\\[\(\\d\+\)\\\]/u);
   assert.match(adminEnhancements, /data-block-index/u);
+  assert.match(adminClient, /data-operation-locatable/u);
+  assert.match(adminClient, /error\.locatable \? "定位并修改" : "知道了"/u);
 });

@@ -1,11 +1,13 @@
 import { writeAuditLog } from "../../_lib/audit";
 import {
+  AccessPassConflictError,
   createAccessPass,
   deleteAccessPass,
   getAccessConfiguration,
   setAccessRestriction,
   updateAccessPass,
   validateAccessPassInput,
+  validateAccessPassPatch,
 } from "../../_lib/portfolio-access";
 import { isRequestBodyError, readJsonBody } from "../../_lib/request-body";
 import { requirePortfolioManager } from "../../_lib/site-ownership";
@@ -59,17 +61,7 @@ export async function PATCH(request: Request) {
     } else {
       const id = typeof body.id === "string" ? body.id : "";
       if (!/^qr_[a-f0-9]{32}$/u.test(id)) return Response.json({ error: "二维码编号无效" }, { status: 400, headers: noCacheHeaders });
-      const patch: { label?: string; enabled?: boolean; maxUses?: number | null; expiresAt?: string | null } = {};
-      if ("label" in body || "maxUses" in body || "expiresAt" in body) {
-        const validated = validateAccessPassInput({
-          label: body.label,
-          maxUses: body.maxUses,
-          expiresAt: body.expiresAt,
-        }, true);
-        patch.label = validated.label;
-        patch.maxUses = validated.maxUses;
-        patch.expiresAt = validated.expiresAt;
-      }
+      const patch: { label?: string; enabled?: boolean; maxUses?: number | null; expiresAt?: string | null } = validateAccessPassPatch(body);
       if (typeof body.enabled === "boolean") patch.enabled = body.enabled;
       if (Object.keys(patch).length === 0) return Response.json({ error: "没有可更新的二维码设置" }, { status: 400, headers: noCacheHeaders });
       await updateAccessPass(id, patch);
@@ -107,6 +99,9 @@ async function requireManager(request: Request) {
 
 function failure(error: unknown, fallback: string) {
   if (isRequestBodyError(error)) {
+    return Response.json({ error: error.message }, { status: error.status, headers: noCacheHeaders });
+  }
+  if (error instanceof AccessPassConflictError) {
     return Response.json({ error: error.message }, { status: error.status, headers: noCacheHeaders });
   }
   const message = error instanceof Error ? error.message : fallback;

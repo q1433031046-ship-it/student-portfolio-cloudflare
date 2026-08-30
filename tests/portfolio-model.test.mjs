@@ -63,7 +63,15 @@ function documentFixture() {
 function legacyDocumentFixture() {
   const value = schemaTwoDocumentFixture();
   value.schemaVersion = 1;
-  value.projects[0].draftVideo = { id: "legacy-media", label: "过程版本", alt: "", kind: "video", visualKey: "storyboard" };
+  value.hero.media.key = "portfolio/site/legacy-hero.jpg";
+  value.projects[0].draftVideo = {
+    id: "legacy-media",
+    label: "过程版本",
+    alt: "",
+    kind: "video",
+    key: "portfolio/project-one/legacy-draft.mp4",
+    visualKey: "storyboard",
+  };
   return value;
 }
 
@@ -161,6 +169,18 @@ test("accepts Chinese and blank contact titles without a false length error", ()
   assert.equal(blank.value.settings.contact.title, "　");
 });
 
+test("treats ASCII and full-width whitespace-only contact values as blank", () => {
+  const normalized = validatePortfolioDocument(documentFixture());
+  assert.equal(normalized.ok, true);
+  const value = structuredClone(normalized.value);
+  value.hero.email = " \t　";
+  value.hero.phone = "　  ";
+  const result = validatePortfolioDocument(value);
+  assert.equal(result.ok, true);
+  assert.equal(result.value.hero.email, " \t　");
+  assert.equal(result.value.hero.phone, "　  ");
+});
+
 test("carries the published cover overlay setting into each existing project", () => {
   const value = documentFixture();
   value.settings.coverOverlayMode = "fixed";
@@ -184,7 +204,14 @@ test("normalizes an existing document into the current schema", () => {
   assert.deepEqual(result.value.endCovers, { enabled: false, slides: [] });
   assert.equal(result.value.hero.slides[0].animationEnabled, true);
   assert.equal(result.value.hero.slides[0].media.kind, "image");
+  assert.equal(result.value.hero.slides[0].media.key, "portfolio/site/legacy-hero.jpg");
   assert.equal("draftVideo" in result.value.projects[0], false);
+  assert.equal(result.value.archivedMedia?.[0]?.key, "portfolio/project-one/legacy-draft.mp4");
+  assert.equal(mediaAssetsInDocument(result.value).some((asset) => asset.key === "portfolio/project-one/legacy-draft.mp4"), true);
+
+  const publicDocument = toPublicPortfolioDocument(result.value);
+  assert.equal("archivedMedia" in publicDocument, false);
+  assert.equal(findPublishedMedia(result.value, "portfolio/project-one/legacy-draft.mp4"), null);
 });
 
 test("normalizes a schema two document into the current schema", () => {
@@ -367,6 +394,7 @@ test("public documents expose image routes but not private video keys", () => {
   const publicDocument = toPublicPortfolioDocument(value);
   assert.equal(publicDocument.hero.slides[0].media.key, undefined);
   assert.equal(publicDocument.hero.slides[0].media.src, "/api/media/portfolio/site/hero-file.jpg");
+  assert.equal(publicDocument.hero.slides[0].media.available, true);
   assert.equal(publicDocument.categories[0].transition.media.key, undefined);
   assert.equal(publicDocument.categories[0].transition.media.src, "/api/media/portfolio/categories/narrative/transition-file.jpg");
   assert.equal(publicDocument.settings.customFont.key, undefined);
@@ -377,4 +405,10 @@ test("public documents expose image routes but not private video keys", () => {
   assert.equal(publicDocument.projects[0].cover.src, "/api/media/portfolio/project-one/cover-file.jpg");
   assert.equal(publicDocument.projects[0].finalVideo.key, undefined);
   assert.equal(publicDocument.projects[0].finalVideo.src, undefined);
+  assert.equal(publicDocument.projects[0].finalVideo.available, true);
+
+  value.projects[0].finalVideo.key = undefined;
+  value.projects[0].finalVideo.available = true;
+  const forgedAvailability = toPublicPortfolioDocument(value);
+  assert.equal(forgedAvailability.projects[0].finalVideo.available, undefined);
 });

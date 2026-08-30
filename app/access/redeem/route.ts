@@ -31,14 +31,14 @@ export async function POST(request: Request) {
     if (token.length < 20 || token.length > 300) return accessRedirect(requestUrl, "", "二维码无效");
     const result = await redeemAccessPass(request, token);
     return result.ok
-      ? homeRedirect(requestUrl, result.cookie)
+      ? homeRedirect(requestUrl, result.cookie ?? undefined)
       : accessRedirect(requestUrl, token, result.reason);
   } catch {
     return accessRedirect(requestUrl, "", "二维码暂时不可用");
   }
 }
 
-function homeRedirect(requestUrl: URL, cookie: string) {
+function homeRedirect(requestUrl: URL, cookie?: string) {
   return new Response(null, {
     status: 303,
     headers: responseHeaders(new URL("/", requestUrl.origin).toString(), cookie),

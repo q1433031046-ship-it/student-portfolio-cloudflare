@@ -30,7 +30,7 @@ async function serveMedia(
 ) {
   const { path } = await context.params;
   const key = path.join("/");
-  if (!validObjectKey(key)) return new Response("Not found", { status: 404 });
+  if (!validObjectKey(key)) return new Response("媒体不存在", { status: 404 });
 
   try {
     const adminDocument = await getAdminDraftDocument(request);
@@ -39,22 +39,22 @@ async function serveMedia(
 
     if (!document) {
       const access = await checkPortfolioAccess(request);
-      if (!access.allowed) return new Response("Access pass required", { status: 403, headers: { "Cache-Control": "no-store" } });
+      if (!access.allowed) return new Response("需要有效的访问凭证", { status: 403, headers: { "Cache-Control": "no-store" } });
       const published = await getPublishedPortfolio();
       document = published.document;
       restricted = access.restricted;
     }
 
-    if (!document) return new Response("Not found", { status: 404 });
+    if (!document) return new Response("媒体不存在", { status: 404 });
     const media = await findPortfolioMedia(key, document, Boolean(adminDocument));
-    if (!media) return new Response("Not found", { status: 404 });
+    if (!media) return new Response("媒体不存在", { status: 404 });
 
     if (media.kind === "video" && !adminDocument) {
       const url = new URL(request.url);
       const expiresAt = Number(url.searchParams.get("exp"));
       const signature = url.searchParams.get("sig") ?? "";
       if (!await verifyPlaybackGrant(key, expiresAt, signature, getMediaSigningKey())) {
-        return new Response("Playback grant required", { status: 403, headers: { "Cache-Control": "no-store" } });
+        return new Response("需要有效的视频播放凭证", { status: 403, headers: { "Cache-Control": "no-store" } });
       }
     }
 
@@ -64,7 +64,7 @@ async function serveMedia(
     return serveR2Media(request, media.record, media.kind, restricted, headOnly);
   } catch (error) {
     console.error(JSON.stringify({ message: "media read failed", error: errorMessage(error), key }));
-    return new Response("Media unavailable", { status: 503 });
+    return new Response("媒体暂时无法读取", { status: 503 });
   }
 }
 
@@ -99,7 +99,7 @@ async function serveKvMedia(
     headers.set("Content-Range", `bytes ${range.start}-${responseEnd}/${record.byte_size}`);
     if (headOnly) return new Response(null, { status: 206, headers });
     const value = await getMediaKv().get(kvChunkKey(record.object_key, chunkIndex), { type: "arrayBuffer", cacheTtl: 60 });
-    if (!value) return new Response("Not found", { status: 404 });
+    if (!value) return new Response("媒体不存在", { status: 404 });
     const offset = range.start - chunkStart;
     return new Response(value.slice(offset, offset + responseLength), { status: 206, headers });
   }
@@ -134,7 +134,7 @@ async function serveR2Media(
 ) {
   const rangeRequested = request.headers.has("range");
   const object = await getBucket().get(record.object_key, rangeRequested ? { range: request.headers } : undefined);
-  if (!object) return new Response("Not found", { status: 404 });
+  if (!object) return new Response("媒体不存在", { status: 404 });
   const headers = mediaHeaders(record, kind, restricted);
   headers.set("ETag", object.httpEtag);
   if (object.range) {

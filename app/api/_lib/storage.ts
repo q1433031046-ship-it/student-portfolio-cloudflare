@@ -30,15 +30,16 @@ export const VIDEO_UPLOAD_LIMIT = 50 * 1024 * 1024;
 
 export function getBucket(): UploadBucket {
   const bucket = (env as unknown as StorageBindings).BUCKET;
-  if (!bucket) throw new Error("Object storage is unavailable");
+  if (!bucket) throw new Error("旧版 R2 存储绑定 BUCKET 不可用");
   return bucket;
 }
 
-export function mediaStorageBackend(): "kv" | "r2" {
-  const bindings = env as unknown as StorageBindings;
-  if (bindings.MEDIA_KV) return "kv";
-  if (bindings.BUCKET) return "r2";
-  throw new Error("媒体存储不可用");
+export function hasLegacyBucket() {
+  return Boolean((env as unknown as StorageBindings).BUCKET);
+}
+
+export function hasMediaKv() {
+  return Boolean((env as unknown as StorageBindings).MEDIA_KV);
 }
 
 export function getMediaKv(): KVNamespace {
@@ -51,15 +52,20 @@ export function kvChunkKey(objectKey: string, index: number) {
   return `${objectKey}::chunk:${String(index).padStart(4, "0")}`;
 }
 
+export function kvUploadChunkKey(uploadId: string, index: number, attemptId: string) {
+  return `portfolio-upload/${uploadId}/chunk-${String(index).padStart(4, "0")}-${attemptId}`;
+}
+
+export function isKvUploadChunkKey(value: string, uploadId: string, index: number) {
+  const prefix = `portfolio-upload/${uploadId}/chunk-${String(index).padStart(4, "0")}-`;
+  return value.startsWith(prefix)
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(value.slice(prefix.length));
+}
+
 export async function deleteStoredMedia(input: {
   objectKey: string;
-  storageBackend: "r2" | "kv";
   chunkCount: number;
 }) {
-  if (input.storageBackend === "r2") {
-    await getBucket().delete(input.objectKey);
-    return;
-  }
   const namespace = getMediaKv();
   for (let index = 0; index < input.chunkCount; index += 1) {
     await namespace.delete(kvChunkKey(input.objectKey, index));

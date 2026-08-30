@@ -1,7 +1,8 @@
 "use client";
 
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 import type { EndCoverConfig, EndCoverSlide, HeroLayer } from "./model";
+import { heroLayerStyle } from "./hero-layer-style";
 import { croppedImageStyle, mediaCropAspect } from "./media-crop";
 import styles from "../demo/portfolio-demo.module.css";
 
@@ -33,7 +34,7 @@ export function EndCoverSequence({ config, entered }: { config: EndCoverConfig; 
             {slide.layers.filter((layer) => layer.visible).map((layer) => {
               const content = layerContent(slide, layer);
               if (!content) return null;
-              return <section key={layer.id} className={styles.heroLayer} data-kind={layer.kind} style={layerStyle(layer)}>{content}</section>;
+              return <section key={layer.id} className={styles.heroLayer} data-kind={layer.kind} style={heroLayerStyle(layer)}>{content}</section>;
             })}
           </div>}
           <span className={styles.endCoverIndex}>{String(index + 1).padStart(2, "0")} / END</span>
@@ -47,17 +48,4 @@ function layerContent(slide: EndCoverSlide, layer: HeroLayer): ReactNode {
   if (layer.kind === "identity") return slide.title.trim() ? <h2>{slide.title}</h2> : null;
   if (layer.kind === "statement") return slide.statement.trim() ? <p>{slide.statement}</p> : null;
   return slide.details.trim() ? <p>{slide.details}</p> : null;
-}
-
-function layerStyle(layer: HeroLayer): CSSProperties {
-  return {
-    "--layer-x": `${layer.x}%`,
-    "--layer-y": `${layer.y}%`,
-    "--layer-width": `${layer.width}%`,
-    "--layer-scale": layer.scale,
-    "--layer-z": layer.zIndex,
-    "--layer-align": layer.align,
-    color: layer.color === "system" ? undefined : layer.color,
-    fontFamily: layer.fontFamily === "custom" ? "PortfolioCustom, sans-serif" : undefined,
-  } as CSSProperties;
 }

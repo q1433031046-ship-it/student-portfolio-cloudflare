@@ -35,6 +35,7 @@ export default async function AccessPage({ searchParams }: { searchParams?: Prom
   let inspection: AccessPassInspection = { validToken: false, reason: "二维码无效" };
   let currentPassId: string | null = null;
   let administratorAccess = false;
+  let unrestrictedAccess = false;
   let siteTitle = "学生作品展示";
   let systemError: string | null = null;
 
@@ -49,6 +50,7 @@ export default async function AccessPage({ searchParams }: { searchParams?: Prom
     const decision = await checkPortfolioAccess(new Request("https://portfolio.local/access", { headers: requestHeaders }));
     currentPassId = decision.allowed && decision.reason === "session" ? decision.passId ?? null : null;
     administratorAccess = decision.allowed && decision.reason === "admin";
+    unrestrictedAccess = decision.allowed && decision.reason === "open";
   } catch {
     systemError = "二维码暂时不可用";
   }
@@ -60,7 +62,7 @@ export default async function AccessPage({ searchParams }: { searchParams?: Prom
     // The access decision above remains authoritative if the display title cannot be read.
   }
 
-  const canOpenDirectly = administratorAccess || currentPassId !== null;
+  const canOpenDirectly = unrestrictedAccess || administratorAccess || currentPassId !== null;
   const canRedeem = inspection.validToken && inspection.redeemable;
   const accessError = canOpenDirectly
     ? null
@@ -71,10 +73,16 @@ export default async function AccessPage({ searchParams }: { searchParams?: Prom
       <section className={styles.panel} aria-labelledby="access-page-title">
         <header className={styles.brand}><i>PF</i><span>{siteTitle}</span></header>
         <div className={styles.kicker}>PRIVATE PORTFOLIO / ACCESS</div>
-        <h1 id="access-page-title">{canOpenDirectly ? "当前浏览器已获得访问权限" : "确认后打开作品集"}</h1>
+        <h1 id="access-page-title">{unrestrictedAccess ? "当前作品集为公开访问" : canOpenDirectly ? "当前浏览器已获得访问权限" : "确认后打开作品集"}</h1>
         {inspection.validToken ? <p className={styles.passName}>访问链接：<strong>{inspection.pass.label}</strong></p> : null}
 
-        {accessError ? (
+        {unrestrictedAccess ? (
+          <div className={styles.rules} aria-label="公开访问规则">
+            <article><b>01</b><strong>无需兑换二维码</strong><span>当前作品集已公开，可以直接打开。</span></article>
+            <article><b>02</b><strong>不会扣除次数</strong><span>公开访问时不会扣除这张二维码的使用次数。</span></article>
+            <article><b>03</b><strong>不会写入 Cookie</strong><span>系统不会创建二维码访问会话。</span></article>
+          </div>
+        ) : accessError ? (
           <div className={styles.error} role="alert"><strong>{accessError}</strong><span>请联系管理员获取新的二维码或访问链接。</span></div>
         ) : (
           <div className={styles.rules} aria-label="二维码使用规则">
@@ -98,7 +106,7 @@ export default async function AccessPage({ searchParams }: { searchParams?: Prom
           {inspection.validToken ? <AccessPageActions /> : null}
         </div>
 
-        <p className={styles.browserNote}>请在实际观看作品的浏览器中点击打开。更换浏览器、使用无痕窗口或清除 Cookie，会被视为新的访问。</p>
+        <p className={styles.browserNote}>{unrestrictedAccess ? "网站恢复限制访问后，再使用管理员提供的二维码或访问链接。" : "请在实际观看作品的浏览器中点击打开。更换浏览器、使用无痕窗口或清除 Cookie，会被视为新的访问。"}</p>
       </section>
     </main>
   );

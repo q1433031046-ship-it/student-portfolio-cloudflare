@@ -16,7 +16,7 @@ export function LivePortfolio({ fallback }: { fallback: PortfolioDocument }) {
     try {
       const response = await fetch("/api/portfolio", { signal: controller.signal, cache: "no-store", headers: { "Cache-Control": "no-cache" } });
       if (response.status === 403) {
-        window.location.assign("/");
+        window.location.replace("/");
         return;
       }
       if (!response.ok) throw new Error("portfolio unavailable");

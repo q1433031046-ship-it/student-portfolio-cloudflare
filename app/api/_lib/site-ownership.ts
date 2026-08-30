@@ -1,6 +1,6 @@
 import { createDefaultPortfolioDocument } from "../../portfolio/default-document";
 import type { AdminIdentity } from "./auth";
-import { authorizeAdmin, canManagePortfolio } from "./auth";
+import { authorizeAdmin, authorizeUpload, canManagePortfolio } from "./auth";
 import { getPortfolioDb, getPortfolioRecord, type PortfolioRecord } from "./portfolio-store";
 
 const OWNER_ID = "default";
@@ -86,6 +86,24 @@ export async function requirePortfolioManager(request: Request): Promise<Portfol
   if (!ownership) return setupError("请先初始化管理员", 428);
   if (!canManagePortfolio(identity, ownership.ownerEmail)) {
     return setupError("当前账号没有这个网站的管理权限", 403);
+  }
+  if (!ownership.ready) return setupError("请先完成管理员初始化", 428);
+
+  const record = await getPortfolioRecord();
+  if (!record || record.ownerEmail.toLowerCase() !== ownership.ownerEmail) {
+    return setupError("网站管理数据尚未完成初始化", 503);
+  }
+  return { identity, ownership, record };
+}
+
+export async function requirePortfolioUploader(request: Request): Promise<PortfolioManager | Response> {
+  const identity = await authorizeUpload(request);
+  if (!identity) return setupError("请先完成管理员登录", 401);
+
+  const ownership = await getSiteOwnership();
+  if (!ownership) return setupError("请先初始化管理员", 428);
+  if (identity.kind !== "token" && !canManagePortfolio(identity, ownership.ownerEmail)) {
+    return setupError("当前账号没有这个网站的媒体上传权限", 403);
   }
   if (!ownership.ready) return setupError("请先完成管理员初始化", 428);
 

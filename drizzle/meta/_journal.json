@@ -50,6 +50,13 @@
       "when": 1788062400000,
       "tag": "0006_auth_v2",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1788077802779,
+      "tag": "0007_legacy_media_and_access_state",
+      "breakpoints": true
     }
   ]
 }

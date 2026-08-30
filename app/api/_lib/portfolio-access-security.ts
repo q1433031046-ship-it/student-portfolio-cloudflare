@@ -1,5 +1,6 @@
 const TOKEN_VERSION = "v1";
-const SESSION_VERSION = "s1";
+const LEGACY_SESSION_VERSION = "s1";
+const SESSION_VERSION = "s2";
 
 export const PORTFOLIO_ACCESS_COOKIE = "portfolio-access";
 
@@ -15,17 +16,46 @@ export async function verifyAccessToken(token: string, secret: string) {
   return await constantTimeEqual(expected, supplied) ? passId : null;
 }
 
-export async function createAccessSession(passId: string, expiresAtSeconds: number, secret: string) {
-  const signature = await sign(`portfolio-access-session\n${SESSION_VERSION}\n${passId}\n${expiresAtSeconds}`, secret);
-  return `${SESSION_VERSION}.${passId}.${expiresAtSeconds}.${signature}`;
+export async function createAccessSession(passId: string, sessionGeneration: number, expiresAtSeconds: number, secret: string) {
+  if (!Number.isSafeInteger(sessionGeneration) || sessionGeneration < 1) throw new Error("二维码访问会话版本无效");
+  const signature = await sign(`portfolio-access-session\n${SESSION_VERSION}\n${passId}\n${sessionGeneration}\n${expiresAtSeconds}`, secret);
+  return `${SESSION_VERSION}.${passId}.${sessionGeneration}.${expiresAtSeconds}.${signature}`;
 }
 
 export async function verifyAccessSession(value: string, secret: string, nowSeconds = Math.floor(Date.now() / 1000)) {
+  if (value.startsWith(`${LEGACY_SESSION_VERSION}.`)) {
+    return verifyLegacyAccessSession(value, secret, nowSeconds);
+  }
+  const [version, passId, rawGeneration, rawExpiresAt, supplied, ...rest] = value.split(".");
+  const sessionGeneration = Number(rawGeneration);
+  const expiresAt = Number(rawExpiresAt);
+  if (
+    rest.length > 0
+    || version !== SESSION_VERSION
+    || !isPassId(passId)
+    || !Number.isSafeInteger(sessionGeneration)
+    || sessionGeneration < 1
+    || !Number.isSafeInteger(expiresAt)
+    || expiresAt <= nowSeconds
+    || !isSignature(supplied)
+  ) return null;
+  const expected = await sign(`portfolio-access-session\n${SESSION_VERSION}\n${passId}\n${sessionGeneration}\n${expiresAt}`, secret);
+  return await constantTimeEqual(expected, supplied) ? { passId, sessionGeneration, expiresAt } : null;
+}
+
+async function verifyLegacyAccessSession(value: string, secret: string, nowSeconds: number) {
   const [version, passId, rawExpiresAt, supplied, ...rest] = value.split(".");
   const expiresAt = Number(rawExpiresAt);
-  if (rest.length > 0 || version !== SESSION_VERSION || !isPassId(passId) || !Number.isSafeInteger(expiresAt) || expiresAt <= nowSeconds || !isSignature(supplied)) return null;
-  const expected = await sign(`portfolio-access-session\n${SESSION_VERSION}\n${passId}\n${expiresAt}`, secret);
-  return await constantTimeEqual(expected, supplied) ? { passId, expiresAt } : null;
+  if (
+    rest.length > 0
+    || version !== LEGACY_SESSION_VERSION
+    || !isPassId(passId)
+    || !Number.isSafeInteger(expiresAt)
+    || expiresAt <= nowSeconds
+    || !isSignature(supplied)
+  ) return null;
+  const expected = await sign(`portfolio-access-session\n${LEGACY_SESSION_VERSION}\n${passId}\n${expiresAt}`, secret);
+  return await constantTimeEqual(expected, supplied) ? { passId, sessionGeneration: 1, expiresAt } : null;
 }
 
 export function readCookie(header: string | null, name: string) {

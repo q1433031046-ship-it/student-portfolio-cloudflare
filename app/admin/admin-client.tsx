@@ -13,22 +13,27 @@ import type {
   Project,
   ProjectBlock,
 } from "../portfolio/model";
-import { createDefaultCoverPresentation, createDefaultEndCoverSlide, createDefaultHeroLayers } from "../portfolio/model";
+import { createDefaultCoverPresentation, createDefaultEndCoverSlide, createDefaultHeroLayers, mediaAssetsInDocument } from "../portfolio/model";
 import { HeroLayoutEditor } from "./hero-layout-editor";
 import { EndCoverLayoutEditor } from "./end-cover-layout-editor";
 import { MediaCropEditor } from "./media-crop-editor";
 import styles from "./admin.module.css";
 import { createClientId } from "../lib/client-id";
+import { toUserFacingChineseError, userFacingError, userFacingResponseError } from "../lib/user-facing-error";
 import { formatVideoDuration } from "../lib/video-duration";
 import { resolveWatermarkText } from "../portfolio/watermark";
 import { croppedImageStyle, croppedImageStyleForAspect, fitCropToAspect, fullMediaCrop, validAspect } from "../portfolio/media-crop";
 import { ProjectCoverText, type CoverLayerKey, type CoverTextKey, type CoverViewport } from "../portfolio/project-cover-text";
 import { AccessManager, type AccessPayload } from "./access-manager";
 import { shouldFinishInlineEditing } from "./inline-editing";
+import { buildRecoveryCodeDownload } from "./recovery-download";
+import { migrateLegacyMediaUntilComplete, type LegacyMediaMigrationSummary } from "./legacy-media-migration";
+import { replacementKeyForUpload } from "./media-upload-policy";
+import { hasPlayableVideo, optionalVideoReset } from "../portfolio/video-availability";
 
 type View = "overview" | "identity" | "categories" | "projects" | "end-covers" | "contact" | "publish" | "records";
 type Operation = "idle" | "saving" | "previewing" | "publishing";
-type OperationError = { title: string; reason: string; solution: string };
+type OperationError = { title: string; reason: string; solution: string; locatable: boolean };
 type SetupPayload = {
   state: "initial_setup" | "upgrade_required" | "ready";
   identity: string | null;
@@ -82,6 +87,7 @@ type StoragePayload = {
   videoCount: number;
   otherCount: number;
   fullSizeVideosRemaining: number;
+  legacyMigration: LegacyMediaMigrationSummary;
 };
 
 const views: Array<{ id: View; label: string; index: string }> = [
@@ -133,7 +139,7 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
         return;
       }
       const setupBody = await setupResponse.json() as SetupPayload & { error?: string };
-      if (!setupResponse.ok) throw new Error(setupBody.error || "管理员绑定状态读取失败");
+      if (!setupResponse.ok) throw userFacingResponseError(setupBody, "管理员绑定状态读取失败");
       if (setupBody.state === "initial_setup") {
         setState("initial_setup");
         setMessage("使用部署时填写的一次性口令初始化管理员");
@@ -158,9 +164,9 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
       const body = await response.json() as AdminPayload & { error?: string };
       const accessBody = await accessResponse.json() as AccessPayload & { error?: string };
       const storageBody = await storageResponse.json() as StoragePayload & { error?: string };
-      if (!response.ok) throw new Error(body.error || "管理数据读取失败");
-      if (!accessResponse.ok) throw new Error(accessBody.error || "二维码访问设置读取失败");
-      if (!storageResponse.ok) throw new Error(storageBody.error || "网站空间读取失败");
+      if (!response.ok) throw userFacingResponseError(body, "管理数据读取失败");
+      if (!accessResponse.ok) throw userFacingResponseError(accessBody, "二维码访问设置读取失败");
+      if (!storageResponse.ok) throw userFacingResponseError(storageBody, "网站空间读取失败");
       setData(body);
       setPortfolio(body.portfolio);
       setAccess(accessBody);
@@ -192,7 +198,7 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
         body: JSON.stringify({ initialCode, password }),
       });
       const body = await response.json() as { state?: string; recoveryCode?: string; error?: string };
-      if (!response.ok || !body.recoveryCode) throw new Error(body.error || "管理员初始化暂时无法完成");
+      if (!response.ok || !body.recoveryCode) throw userFacingResponseError(body, "管理员初始化暂时无法完成");
       setIssuedRecoveryCode(body.recoveryCode);
       setInitialCode("");
       setPassword("");
@@ -271,15 +277,16 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
 
   function saveRecoveryCode() {
     if (!issuedRecoveryCode) return;
-    const blob = new Blob([
-      `网站管理员系统恢复码\n\n${issuedRecoveryCode}\n\n此恢复码只能使用一次。使用后系统会生成新恢复码。\n`,
-    ], { type: "text/plain;charset=utf-8" });
+    const download = buildRecoveryCodeDownload(issuedRecoveryCode, window.location.hostname);
+    const blob = new Blob([download.content], { type: "text/plain;charset=utf-8" });
     const href = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = href;
-    link.download = "网站管理员恢复码.txt";
+    link.download = download.filename;
+    document.body.appendChild(link);
     link.click();
-    URL.revokeObjectURL(href);
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(href), 0);
   }
 
   useEffect(() => {
@@ -319,7 +326,7 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
   }
 
   async function persistDraft() {
-    if (!portfolio || !data) throw new Error("管理数据尚未就绪");
+    if (!portfolio || !data) throw userFacingError("管理数据尚未就绪");
     const snapshot = portfolio;
     const startVersion = changeVersionRef.current;
     const result = await api<{ revision: number; updatedAt: string }>("/api/admin/portfolio", {
@@ -342,7 +349,6 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
       return await persistDraft();
     } catch (error) {
       notify(errorMessage(error));
-      throw error;
     } finally {
       setOperation("idle");
     }
@@ -456,7 +462,7 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
     </StatePanel>
   );
   if (state === "error" || !portfolio || !data || !access || !storage) {
-    return <StatePanel label="SERVICE STATUS" title="管理台暂时没有连上" detail={message}><button className={styles.primaryAction} onClick={() => void load()}>重新连接</button></StatePanel>;
+    return <StatePanel label="服务状态" title="管理台暂时没有连上" detail={message}><button className={styles.primaryAction} onClick={() => void load()}>重新连接</button></StatePanel>;
   }
 
   return (
@@ -492,21 +498,22 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
       </aside>
 
       <section className={styles.content}>
-        {view === "overview" && <Overview data={data} portfolio={portfolio} access={access} storage={storage} setAccess={setAccess} change={change} onNavigate={setView} setMessage={notify} />}
+        {view === "overview" && <Overview data={data} portfolio={portfolio} access={access} storage={storage} setAccess={setAccess} onLegacyMigrationChange={(legacyMigration) => setStorage((current) => current ? { ...current, legacyMigration } : current)} change={change} onNavigate={setView} setMessage={notify} />}
         {view === "identity" && <IdentityEditor portfolio={portfolio} change={change} setMessage={notify} />}
-        {view === "categories" && <CategoryEditor portfolio={portfolio} change={change} setMessage={notify} />}
+        {view === "categories" && <CategoryEditor portfolio={portfolio} savedCategoryIds={new Set(data.portfolio.categories.map((category) => category.id))} change={change} setMessage={notify} />}
         {view === "projects" && (
           <ProjectEditor
             portfolio={portfolio}
             selectedProject={selectedProject}
             selectedProjectId={selectedProjectId}
             setSelectedProjectId={setSelectedProjectId}
+            savedProjectIds={new Set(data.portfolio.projects.map((project) => project.id))}
             change={change}
             setMessage={notify}
           />
         )}
         {view === "contact" && <ContactEditor portfolio={portfolio} change={change} setMessage={notify} />}
-        {view === "end-covers" && <EndCoverEditor portfolio={portfolio} change={change} setMessage={notify} />}
+        {view === "end-covers" && <EndCoverEditor portfolio={portfolio} savedEndCoverSlideIds={new Set(data.portfolio.endCovers.slides.map((slide) => slide.id))} change={change} setMessage={notify} />}
         {view === "publish" && <PublishPanel portfolio={portfolio} data={data} dirty={dirty} busy={busy} publish={publish} />}
         {view === "records" && <RecordsPanel events={events} audits={audits} />}
       </section>
@@ -516,12 +523,40 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
   );
 }
 
-function Overview({ data, portfolio, access, storage, setAccess, change, onNavigate, setMessage }: { data: AdminPayload; portfolio: PortfolioDocument; access: AccessPayload; storage: StoragePayload; setAccess: (next: AccessPayload) => void; change: (mutator: (document: PortfolioDocument) => PortfolioDocument) => void; onNavigate: (view: View) => void; setMessage: (message: string) => void }) {
-  const mediaCount = portfolio.hero.slides.length
-    + (portfolio.settings.customFont.key ? 1 : 0)
-    + (portfolio.settings.contact.image.key ? 1 : 0)
-    + portfolio.categories.filter((category) => category.transition.mode === "image").length
-    + portfolio.projects.reduce((total, project) => total + 2 + project.detailBlocks.reduce((count, block) => count + (block.type === "gallery" ? block.items.length : block.type === "text" ? 0 : 1), 0), 0);
+function Overview({ data, portfolio, access, storage, setAccess, onLegacyMigrationChange, change, onNavigate, setMessage }: { data: AdminPayload; portfolio: PortfolioDocument; access: AccessPayload; storage: StoragePayload; setAccess: (next: AccessPayload) => void; onLegacyMigrationChange: (summary: LegacyMediaMigrationSummary) => void; change: (mutator: (document: PortfolioDocument) => PortfolioDocument) => void; onNavigate: (view: View) => void; setMessage: (message: string) => void }) {
+  const [migrationBusy, setMigrationBusy] = useState(false);
+  const [migrationError, setMigrationError] = useState("");
+  const [migrationCompleted, setMigrationCompleted] = useState(false);
+  const migrationRunningRef = useRef(false);
+  const mediaCount = mediaAssetsInDocument({ ...portfolio, archivedMedia: undefined }).filter((asset) => asset.key).length;
+
+  async function migrateLegacyMedia() {
+    if (migrationRunningRef.current || storage.legacyMigration.status !== "ready") return;
+    migrationRunningRef.current = true;
+    setMigrationBusy(true);
+    setMigrationError("");
+    setMessage("正在逐块迁移并校验旧媒体…");
+    try {
+      const completed = await migrateLegacyMediaUntilComplete(
+        storage.legacyMigration,
+        async () => {
+          const response = await api<{ legacyMigration: LegacyMediaMigrationSummary }>("/api/admin/storage/migrate", { method: "POST" });
+          return response.legacyMigration;
+        },
+        onLegacyMigrationChange,
+      );
+      onLegacyMigrationChange(completed);
+      if (completed.status === "complete") setMigrationCompleted(true);
+      setMessage(completed.status === "complete" ? "旧媒体迁移与逐块校验已完成" : completed.message);
+    } catch (error) {
+      const message = toUserFacingChineseError(error, "旧媒体迁移暂时失败，请稍后重试");
+      setMigrationError(message);
+      setMessage(message);
+    } finally {
+      migrationRunningRef.current = false;
+      setMigrationBusy(false);
+    }
+  }
   return (
     <>
       <ViewHeader eyebrow="01 / OVERVIEW" title={`你好，${portfolio.hero.name}`} detail="从网页名称开始，按前台顺序管理首图、作品和联系信息。" />
@@ -564,7 +599,45 @@ function Overview({ data, portfolio, access, storage, setAccess, change, onNavig
         </div>
         <p>{storage.status === "full" ? "网站空间已经用满，请删除或替换不再使用的媒体。" : storage.status === "warning" ? "网站空间即将用满，建议优先压缩视频和清理旧媒体。" : "图片和视频统一计算空间；视频最大50 MB，达到800 MB后停止继续上传。"}</p>
       </section>
+      <LegacyMediaMigrationCard summary={storage.legacyMigration} busy={migrationBusy} error={migrationError} showCompleted={migrationCompleted} onStart={() => void migrateLegacyMedia()} />
     </>
+  );
+}
+
+function LegacyMediaMigrationCard({ summary, busy, error, showCompleted, onStart }: { summary: LegacyMediaMigrationSummary; busy: boolean; error: string; showCompleted: boolean; onStart: () => void }) {
+  if (!summary.required && summary.r2FileCount === 0 && !showCompleted) return null;
+  const progress = summary.totalChunks > 0 ? Math.min(100, Math.round((summary.verifiedChunks / summary.totalChunks) * 100)) : summary.status === "complete" ? 100 : 0;
+  const progressText = summary.status === "complete"
+    ? "当前没有待处理的旧媒体"
+    : `当前媒体已完成 ${summary.verifiedChunks} / ${summary.totalChunks} 个处理步骤；完成后会切换到下一文件并重新计数`;
+  return (
+    <section className={styles.legacyMigrationCard} data-status={summary.status} aria-labelledby="legacy-migration-title">
+      <header>
+        <div><p className={styles.sectionLabel}>旧媒体迁移</p><h2 id="legacy-migration-title">R2 → MEDIA_KV</h2></div>
+        <strong>{summary.status === "complete" ? "已完成" : summary.status === "blocked" ? "需要处理绑定" : busy ? "迁移中" : "可以迁移"}</strong>
+      </header>
+      {summary.status === "blocked" ? (
+        <div className={styles.migrationNotice} data-kind="blocked">
+          <h3>旧媒体迁移被阻断</h3>
+          <p>{summary.message}</p>
+          <small>旧 R2：{summary.sourceBindingAvailable ? "已连接" : "未连接"} · MEDIA_KV：{summary.targetBindingAvailable ? "已连接" : "未连接"}</small>
+        </div>
+      ) : (
+        <>
+          <div className={styles.migrationStats}>
+            <span><b>{summary.r2FileCount}</b><small>当前剩余旧媒体</small></span>
+            <span><b>{formatStorage(summary.r2Bytes)}</b><small>当前剩余媒体大小</small></span>
+            <span><b>{summary.verifiedChunks} / {summary.totalChunks}</b><small>当前媒体已完成处理步骤</small></span>
+          </div>
+          <div className={styles.migrationTrack} role="progressbar" aria-label="当前剩余媒体处理进度" aria-valuetext={progressText} aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}><i style={{ width: `${progress}%` }} /></div>
+          {summary.status === "ready" && <div className={styles.migrationActions}>
+            <div><h3>迁移时保留旧 R2 源文件</h3><p>{summary.message}<br />这里显示当前剩余媒体的处理进度；完成一个文件后会切换到下一文件，处理步骤会按新文件重新计数。</p>{error && <p className={styles.migrationError}>{error}</p>}</div>
+            <button type="button" disabled={busy} onClick={onStart}>{busy ? `正在处理当前媒体 ${summary.verifiedChunks} / ${summary.totalChunks}` : "开始逐块迁移并校验"}</button>
+          </div>}
+          {summary.status === "complete" && <div className={styles.migrationNotice} data-kind="complete"><h3>迁移与逐块校验已完成</h3><p>请先在快速预览和已发布前台抽查图片、视频与拖动播放，确认正常后进入观察期。未获得站点所有者对精确绑定的另行批准前，请继续保留旧 BUCKET 绑定；系统不会删除 R2 中的源文件。</p></div>}
+        </>
+      )}
+    </section>
   );
 }
 
@@ -766,7 +839,7 @@ function ContactLayoutPreview({ portfolio, updateContact, updateHero, updateStyl
   );
 }
 
-function CategoryEditor({ portfolio, change, setMessage }: { portfolio: PortfolioDocument; change: (mutator: (document: PortfolioDocument) => PortfolioDocument) => void; setMessage: (message: string) => void }) {
+function CategoryEditor({ portfolio, savedCategoryIds, change, setMessage }: { portfolio: PortfolioDocument; savedCategoryIds: ReadonlySet<string>; change: (mutator: (document: PortfolioDocument) => PortfolioDocument) => void; setMessage: (message: string) => void }) {
   function updateCategory(id: string, patch: Partial<CategoryConfig>) {
     change((document) => ({ ...document, categories: document.categories.map((category) => category.id === id ? { ...category, ...patch } : category) }));
   }
@@ -800,7 +873,7 @@ function CategoryEditor({ portfolio, change, setMessage }: { portfolio: Portfoli
       <ViewHeader eyebrow="04 / CATEGORIES" title="自定义作品分类" detail="名称、颜色和顺序都可以调整；前台会自动计算每类数量。" action={<button onClick={add}>＋ 新建分类</button>} />
       <div className={styles.listEditor}>
         {portfolio.categories.map((category, index) => (
-          <article className={styles.categoryCard} key={category.id}>
+          <article className={styles.categoryCard} data-category-card={index} key={category.id}>
             <div className={styles.categoryRow}>
               <span className={styles.dragIndex}>{String(index + 1).padStart(2, "0")}</span>
               <input className={styles.colorInput} type="color" value={category.accent} aria-label={`${category.label}颜色`} onChange={(event) => updateCategory(category.id, { accent: event.target.value })} />
@@ -814,7 +887,7 @@ function CategoryEditor({ portfolio, change, setMessage }: { portfolio: Portfoli
                 <label className={styles.checkControl}><input type="checkbox" checked={category.transition.visible} onChange={(event) => updateCategory(category.id, { transition: { ...category.transition, visible: event.target.checked } })} /><span>前台显示这条过渡条</span></label>
               </div>
               {category.transition.mode === "image" && (
-                <MediaUpload projectId={category.id} slot="transition" title="过渡条图片" asset={category.transition.media} cropAspect={8} setMessage={setMessage} onUploaded={(asset) => updateCategory(category.id, { transition: { ...category.transition, media: asset } })} onCropChange={(crop, sourceAspectRatio) => updateCategory(category.id, { transition: { ...category.transition, media: { ...category.transition.media, crop, sourceAspectRatio } } })} />
+                <MediaUpload projectId={category.id} slot="transition" title="过渡条图片" asset={category.transition.media} cropAspect={8} disabledReason={savedCategoryIds.has(category.id) ? undefined : "请先保存新分类再上传过渡图"} setMessage={setMessage} onUploaded={(asset) => updateCategory(category.id, { transition: { ...category.transition, media: asset } })} onCropChange={(crop, sourceAspectRatio) => updateCategory(category.id, { transition: { ...category.transition, media: { ...category.transition.media, crop, sourceAspectRatio } } })} />
               )}
             </div>
           </article>
@@ -824,7 +897,7 @@ function CategoryEditor({ portfolio, change, setMessage }: { portfolio: Portfoli
   );
 }
 
-function EndCoverEditor({ portfolio, change, setMessage }: { portfolio: PortfolioDocument; change: (mutator: (document: PortfolioDocument) => PortfolioDocument) => void; setMessage: (message: string) => void }) {
+function EndCoverEditor({ portfolio, savedEndCoverSlideIds, change, setMessage }: { portfolio: PortfolioDocument; savedEndCoverSlideIds: ReadonlySet<string>; change: (mutator: (document: PortfolioDocument) => PortfolioDocument) => void; setMessage: (message: string) => void }) {
   function updateConfig(updater: (current: PortfolioDocument["endCovers"]) => PortfolioDocument["endCovers"]) {
     change((document) => ({ ...document, endCovers: updater(document.endCovers) }));
   }
@@ -890,7 +963,7 @@ function EndCoverEditor({ portfolio, change, setMessage }: { portfolio: Portfoli
                   </div>
                   <label className={styles.checkControl}><input type="checkbox" checked={slide.animationEnabled} onChange={(event) => updateSlide(slide.id, (current) => ({ ...current, animationEnabled: event.target.checked }))} /><span>启用轻微背景动画</span></label>
                 </div>
-                <MediaUpload projectId={slide.id} slot="end-cover" title={`封底图片 ${index + 1}`} asset={slide.media} cropAspect={16 / 9} setMessage={setMessage} onUploaded={(media) => updateSlide(slide.id, (current) => ({ ...current, media }))} onCropChange={(crop, sourceAspectRatio) => updateSlide(slide.id, (current) => ({ ...current, media: { ...current.media, crop, sourceAspectRatio } }))} />
+                <MediaUpload projectId={slide.id} slot="end-cover" title={`封底图片 ${index + 1}`} asset={slide.media} cropAspect={16 / 9} replacementEligible={savedEndCoverSlideIds.has(slide.id)} setMessage={setMessage} onUploaded={(media) => updateSlide(slide.id, (current) => ({ ...current, media }))} onCropChange={(crop, sourceAspectRatio) => updateSlide(slide.id, (current) => ({ ...current, media: { ...current.media, crop, sourceAspectRatio } }))} />
               </div>
               {slide.contentMode !== "image-only" && <EndCoverLayoutEditor slide={slide} customFontReady={Boolean(portfolio.settings.customFont.key)} onChange={(next) => updateSlide(slide.id, () => next)} />}
             </article>
@@ -902,12 +975,13 @@ function EndCoverEditor({ portfolio, change, setMessage }: { portfolio: Portfoli
 }
 
 function ProjectEditor({
-  portfolio, selectedProject, selectedProjectId, setSelectedProjectId, change, setMessage,
+  portfolio, selectedProject, selectedProjectId, setSelectedProjectId, savedProjectIds, change, setMessage,
 }: {
   portfolio: PortfolioDocument;
   selectedProject: Project | null;
   selectedProjectId: string | null;
   setSelectedProjectId: (id: string | null) => void;
+  savedProjectIds: ReadonlySet<string>;
   change: (mutator: (document: PortfolioDocument) => PortfolioDocument) => void;
   setMessage: (message: string) => void;
 }) {
@@ -955,7 +1029,7 @@ function ProjectEditor({
             </button>
           ))}
         </aside>
-        <div className={styles.projectForm}>
+        <div className={styles.projectForm} data-project-form-index={selectedProject ? portfolio.projects.findIndex((project) => project.id === selectedProject.id) : undefined}>
           {!selectedProject ? <p className={styles.emptyState}>新建一个作品后开始编辑。</p> : (
             <ProjectForm
               key={selectedProject.id}
@@ -966,6 +1040,7 @@ function ProjectEditor({
               move={(direction) => moveProject(selectedProject.id, direction)}
               setMessage={setMessage}
               customFontReady={Boolean(portfolio.settings.customFont.key)}
+              uploadDisabledReason={savedProjectIds.has(selectedProject.id) ? undefined : "请先保存新作品再上传媒体"}
             />
           )}
         </div>
@@ -974,7 +1049,7 @@ function ProjectEditor({
   );
 }
 
-function ProjectForm({ project, categories, update, remove, move, setMessage, customFontReady }: { project: Project; categories: CategoryConfig[]; update: (updater: (project: Project) => Project) => void; remove: () => void; move: (direction: -1 | 1) => void; setMessage: (message: string) => void; customFontReady: boolean }) {
+function ProjectForm({ project, categories, update, remove, move, setMessage, customFontReady, uploadDisabledReason }: { project: Project; categories: CategoryConfig[]; update: (updater: (project: Project) => Project) => void; remove: () => void; move: (direction: -1 | 1) => void; setMessage: (message: string) => void; customFontReady: boolean; uploadDisabledReason?: string }) {
   const [coverPreviewSrc, setCoverPreviewSrc] = useState<string | undefined>(project.cover.src);
   function field(name: keyof Project, value: string) { update((current) => ({ ...current, [name]: value })); }
   function setAsset(slot: "cover" | "finalVideo", asset: MediaAsset) { update((current) => ({ ...current, [slot]: asset })); }
@@ -992,6 +1067,11 @@ function ProjectForm({ project, categories, update, remove, move, setMessage, cu
       coverPresentation: { ...current.coverPresentation, [key]: { ...(current.coverPresentation[key] ?? defaults[key]), ...patch } },
     }));
   }
+  function removeFinalVideo() {
+    if (!window.confirm("确认移除这段成稿视频？保存草稿后，作品会按无视频状态发布，时长显示 00:00。")) return;
+    update((current) => ({ ...current, ...optionalVideoReset(emptyMedia("video")) }));
+    setMessage("成稿视频已移除，请保存草稿");
+  }
   return (
     <>
       <div className={styles.projectTools}><button type="button" onClick={() => move(-1)}>↑ 前移</button><button type="button" onClick={() => move(1)}>↓ 后移</button><button type="button" className={styles.danger} onClick={remove}>删除作品</button></div>
@@ -1005,10 +1085,11 @@ function ProjectForm({ project, categories, update, remove, move, setMessage, cu
       </div>
       <SectionTitle index="MEDIA" title="封面与成稿视频" />
       <div className={styles.mediaGrid}>
-        <MediaUpload projectId={project.id} slot="cover" title="项目封面" asset={project.cover} cropAspect={16 / 9} setMessage={setMessage} onUploaded={(asset) => setAsset("cover", asset)} onCropChange={(crop, sourceAspectRatio) => setAssetCrop("cover", crop, sourceAspectRatio)} onPreviewChange={setCoverPreviewSrc} />
+        <MediaUpload projectId={project.id} slot="cover" title="项目封面" asset={project.cover} cropAspect={16 / 9} disabledReason={uploadDisabledReason} setMessage={setMessage} onUploaded={(asset) => setAsset("cover", asset)} onCropChange={(crop, sourceAspectRatio) => setAssetCrop("cover", crop, sourceAspectRatio)} onPreviewChange={setCoverPreviewSrc} />
         <div className={styles.videoUploadColumn}>
-          <MediaUpload projectId={project.id} slot="final" title="成稿视频" asset={project.finalVideo} setMessage={setMessage} onUploaded={(asset, metadata) => { setAsset("finalVideo", asset); if (metadata?.durationSeconds) update((current) => ({ ...current, duration: formatVideoDuration(metadata.durationSeconds as number) })); }} />
+          <MediaUpload projectId={project.id} slot="final" title="成稿视频（可选）" asset={project.finalVideo} disabledReason={uploadDisabledReason} setMessage={setMessage} onUploaded={(asset, metadata) => { setAsset("finalVideo", asset); if (metadata?.durationSeconds) update((current) => ({ ...current, duration: formatVideoDuration(metadata.durationSeconds as number) })); }} />
           <p className={styles.durationReadout}><span>视频时长</span><strong>{project.duration}</strong></p>
+          {hasPlayableVideo(project.finalVideo) && <button className={styles.removeVideoButton} type="button" onClick={removeFinalVideo}>移除成稿视频</button>}
         </div>
       </div>
       <div className={styles.presentationToggles}>
@@ -1075,6 +1156,7 @@ function ProjectForm({ project, categories, update, remove, move, setMessage, cu
             block={block}
             index={index}
             projectId={project.id}
+            uploadDisabledReason={uploadDisabledReason}
             setMessage={setMessage}
             update={(updater) => updateBlock(block.id, updater)}
             move={(direction) => update((current) => ({ ...current, detailBlocks: moveItem(current.detailBlocks, block.id, direction) }))}
@@ -1090,7 +1172,7 @@ function ProjectForm({ project, categories, update, remove, move, setMessage, cu
   );
 }
 
-function BlockEditor({ block, index, projectId, setMessage, update, move, remove }: { block: ProjectBlock; index: number; projectId: string; setMessage: (value: string) => void; update: (updater: (block: ProjectBlock) => ProjectBlock) => void; move: (direction: -1 | 1) => void; remove: () => void }) {
+function BlockEditor({ block, index, projectId, uploadDisabledReason, setMessage, update, move, remove }: { block: ProjectBlock; index: number; projectId: string; uploadDisabledReason?: string; setMessage: (value: string) => void; update: (updater: (block: ProjectBlock) => ProjectBlock) => void; move: (direction: -1 | 1) => void; remove: () => void }) {
   return (
     <article className={styles.blockCard} data-block-index={index}>
       <header><span>{String(index + 1).padStart(2, "0")} · {blockLabel(block.type)}</span><div><button onClick={() => move(-1)}>↑</button><button onClick={() => move(1)}>↓</button><button onClick={remove}>删除</button></div></header>
@@ -1098,10 +1180,10 @@ function BlockEditor({ block, index, projectId, setMessage, update, move, remove
       {block.type !== "full-media" && <Field label="标题"><input value={block.title} onChange={(event) => update((current) => ({ ...current, title: event.target.value }))} /></Field>}
       {(block.type === "text" || block.type === "media-text") && <Field label="正文"><textarea rows={4} value={block.body} onChange={(event) => update((current) => ({ ...current, body: event.target.value }))} /></Field>}
       {block.type === "media-text" && (
-        <><Field label="图片位置"><select value={block.side} onChange={(event) => update((current) => current.type === "media-text" ? { ...current, side: event.target.value as "left" | "right" } : current)}><option value="left">左侧</option><option value="right">右侧</option></select></Field><MediaUpload projectId={projectId} slot="detail" title="混排图片" asset={block.media} cropAspect={4 / 3} setMessage={setMessage} onUploaded={(asset) => update((current) => current.type === "media-text" ? { ...current, media: asset } : current)} onCropChange={(crop, sourceAspectRatio) => update((current) => current.type === "media-text" ? { ...current, media: { ...current.media, crop, sourceAspectRatio } } : current)} /></>
+        <><Field label="图片位置"><select value={block.side} onChange={(event) => update((current) => current.type === "media-text" ? { ...current, side: event.target.value as "left" | "right" } : current)}><option value="left">左侧</option><option value="right">右侧</option></select></Field><MediaUpload projectId={projectId} slot="detail" title="混排图片" asset={block.media} cropAspect={4 / 3} disabledReason={uploadDisabledReason} setMessage={setMessage} onUploaded={(asset) => update((current) => current.type === "media-text" ? { ...current, media: asset } : current)} onCropChange={(crop, sourceAspectRatio) => update((current) => current.type === "media-text" ? { ...current, media: { ...current.media, crop, sourceAspectRatio } } : current)} /></>
       )}
       {block.type === "full-media" && (
-        <><Field label="图注"><input value={block.caption} onChange={(event) => update((current) => current.type === "full-media" ? { ...current, caption: event.target.value } : current)} /></Field><MediaUpload projectId={projectId} slot="detail" title="通栏图片" asset={block.media} cropAspect={16 / 9} setMessage={setMessage} onUploaded={(asset) => update((current) => current.type === "full-media" ? { ...current, media: asset } : current)} onCropChange={(crop, sourceAspectRatio) => update((current) => current.type === "full-media" ? { ...current, media: { ...current.media, crop, sourceAspectRatio } } : current)} /></>
+        <><Field label="图注"><input value={block.caption} onChange={(event) => update((current) => current.type === "full-media" ? { ...current, caption: event.target.value } : current)} /></Field><MediaUpload projectId={projectId} slot="detail" title="通栏图片" asset={block.media} cropAspect={16 / 9} disabledReason={uploadDisabledReason} setMessage={setMessage} onUploaded={(asset) => update((current) => current.type === "full-media" ? { ...current, media: asset } : current)} onCropChange={(crop, sourceAspectRatio) => update((current) => current.type === "full-media" ? { ...current, media: { ...current.media, crop, sourceAspectRatio } } : current)} /></>
       )}
       {block.type === "gallery" && (
         <>
@@ -1126,7 +1208,7 @@ function BlockEditor({ block, index, projectId, setMessage, update, move, remove
           <div className={styles.galleryEditor}>
             {block.items.map((asset, assetIndex) => (
               <div className={styles.galleryItem} key={asset.id}>
-                <MediaUpload projectId={projectId} slot="detail" title={`图片 ${assetIndex + 1}`} asset={asset} cropAspect={block.orientation === "landscape" ? 4 / 3 : 3 / 4} setMessage={setMessage} onUploaded={(next) => update((current) => current.type === "gallery" ? { ...current, items: current.items.map((item) => item.id === asset.id ? next : item) } : current)} onCropChange={(crop, sourceAspectRatio) => update((current) => current.type === "gallery" ? { ...current, items: current.items.map((item) => item.id === asset.id ? { ...item, crop, sourceAspectRatio } : item) } : current)} />
+                <MediaUpload projectId={projectId} slot="detail" title={`图片 ${assetIndex + 1}`} asset={asset} cropAspect={block.orientation === "landscape" ? 4 / 3 : 3 / 4} disabledReason={uploadDisabledReason} setMessage={setMessage} onUploaded={(next) => update((current) => current.type === "gallery" ? { ...current, items: current.items.map((item) => item.id === asset.id ? next : item) } : current)} onCropChange={(crop, sourceAspectRatio) => update((current) => current.type === "gallery" ? { ...current, items: current.items.map((item) => item.id === asset.id ? { ...item, crop, sourceAspectRatio } : item) } : current)} />
                 <div>
                   <button type="button" disabled={assetIndex === 0} onClick={() => update((current) => current.type === "gallery" ? { ...current, items: moveItem(current.items, asset.id, -1) } : current)}>↑</button>
                   <button type="button" disabled={assetIndex === block.items.length - 1} onClick={() => update((current) => current.type === "gallery" ? { ...current, items: moveItem(current.items, asset.id, 1) } : current)}>↓</button>
@@ -1280,7 +1362,7 @@ function CoverStyleControls({ label, style, customFontReady, onChange }: { label
   );
 }
 
-function MediaUpload({ projectId, slot, title, asset, cropAspect = 16 / 9, freeCrop = false, setMessage, onUploaded, onCropChange, onPreviewChange }: { projectId: string; slot: "hero" | "transition" | "cover" | "final" | "detail" | "font" | "contact" | "end-cover"; title: string; asset: MediaAsset; cropAspect?: number; freeCrop?: boolean; setMessage: (message: string) => void; onUploaded: (asset: MediaAsset, metadata?: { durationSeconds?: number }) => void; onCropChange?: (crop: MediaCrop, sourceAspectRatio: number) => void; onPreviewChange?: (source?: string) => void }) {
+function MediaUpload({ projectId, slot, title, asset, cropAspect = 16 / 9, freeCrop = false, replacementEligible = true, disabledReason, setMessage, onUploaded, onCropChange, onPreviewChange }: { projectId: string; slot: "hero" | "transition" | "cover" | "final" | "detail" | "font" | "contact" | "end-cover"; title: string; asset: MediaAsset; cropAspect?: number; freeCrop?: boolean; replacementEligible?: boolean; disabledReason?: string; setMessage: (message: string) => void; onUploaded: (asset: MediaAsset, metadata?: { durationSeconds?: number }) => void; onCropChange?: (crop: MediaCrop, sourceAspectRatio: number) => void; onPreviewChange?: (source?: string) => void }) {
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [previewSrc, setPreviewSrc] = useState<string | undefined>(asset.src);
@@ -1363,6 +1445,10 @@ function MediaUpload({ projectId, slot, title, asset, cropAspect = 16 / 9, freeC
   }
 
   async function upload(file: File) {
+    if (disabledReason) {
+      setMessage(disabledReason);
+      return;
+    }
     setUploading(true);
     setMessage(`正在上传 ${file.name}…`);
     try {
@@ -1370,15 +1456,15 @@ function MediaUpload({ projectId, slot, title, asset, cropAspect = 16 / 9, freeC
       const durationSeconds = asset.kind === "video" ? await readVideoDuration(uploadFile) : undefined;
       const sourceAspectRatio = asset.kind === "image" ? await readImageAspectRatio(uploadFile) : undefined;
       if (asset.kind === "video" && durationSeconds === undefined) {
-        throw new Error("无法读取视频时长，请改用 H.264 / AAC 编码的 MP4 文件");
+        throw userFacingError("无法读取视频时长，请改用 H.264 / AAC 编码的 MP4 文件");
       }
       const limit = asset.kind === "video" ? 50 * 1024 * 1024 : asset.kind === "font" ? 10 * 1024 * 1024 : 8 * 1024 * 1024;
       if (uploadFile.size > limit) {
-        throw new Error(asset.kind === "video" ? "视频不能超过 50 MB" : asset.kind === "font" ? "字体不能超过 10 MiB" : "优化后的图片不能超过 8 MiB");
+        throw userFacingError(asset.kind === "video" ? "视频不能超过 50 MB" : asset.kind === "font" ? "字体不能超过 10 MiB" : "优化后的图片不能超过 8 MiB");
       }
       const uploadPath = `/api/admin/media/${projectId}/${slot}`;
       const initialized = await api<{
-        mode: "single" | "chunked";
+        mode: "chunked";
         assetId: string;
         uploadId?: string;
         chunkSize?: number;
@@ -1391,39 +1477,28 @@ function MediaUpload({ projectId, slot, title, asset, cropAspect = 16 / 9, freeC
           filename: uploadFile.name,
           contentType: uploadFile.type,
           byteSize: uploadFile.size,
-          replacingKey: asset.key ?? null,
+          replacingKey: replacementKeyForUpload(asset.key, replacementEligible),
         }),
       });
-      let result: { asset: MediaAsset };
-      if (initialized.mode === "single") {
-        const query = new URLSearchParams({ assetId: initialized.assetId });
-        if (asset.key) query.set("replacingKey", asset.key);
-        result = await api<{ asset: MediaAsset }>(`${uploadPath}?${query.toString()}`, {
-          method: "PUT",
-          headers: { "Content-Type": uploadFile.type, "X-File-Name": encodeURIComponent(uploadFile.name) },
-          body: uploadFile,
-        });
-      } else {
-        if (!initialized.uploadId || !initialized.chunkSize || !initialized.chunkCount) {
-          throw new Error("服务器没有返回完整的分片上传信息");
-        }
-        for (let index = 0; index < initialized.chunkCount; index += 1) {
-          const start = index * initialized.chunkSize;
-          const chunk = uploadFile.slice(start, Math.min(uploadFile.size, start + initialized.chunkSize));
-          await uploadChunkWithRetry(`${uploadPath}?uploadId=${encodeURIComponent(initialized.uploadId)}&chunk=${index}`, chunk);
-          setMessage(`正在上传 ${file.name} · ${Math.round(((index + 1) / initialized.chunkCount) * 100)}%`);
-        }
-        result = await api<{ asset: MediaAsset }>(`${uploadPath}?uploadId=${encodeURIComponent(initialized.uploadId)}&complete=1`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: "{}",
-        });
+      if (!initialized.uploadId || !initialized.chunkSize || !initialized.chunkCount) {
+        throw userFacingError("服务器没有返回完整的分片上传信息");
       }
+      for (let index = 0; index < initialized.chunkCount; index += 1) {
+        const start = index * initialized.chunkSize;
+        const chunk = uploadFile.slice(start, Math.min(uploadFile.size, start + initialized.chunkSize));
+        await uploadChunkWithRetry(`${uploadPath}?uploadId=${encodeURIComponent(initialized.uploadId)}&chunk=${index}`, chunk);
+        setMessage(`正在上传 ${file.name} · ${Math.round(((index + 1) / initialized.chunkCount) * 100)}%`);
+      }
+      const result = await api<{ asset: MediaAsset }>(`${uploadPath}?uploadId=${encodeURIComponent(initialized.uploadId)}&complete=1`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
       if (asset.kind === "image") setLocalPreview(uploadFile);
       const nextCrop = sourceAspectRatio
         ? freeCrop ? fullMediaCrop() : fitCropToAspect(sourceAspectRatio, cropAspect)
         : asset.crop;
-      onUploaded({ ...result.asset, label: file.name, alt: asset.alt, objectPosition: asset.objectPosition, sourceAspectRatio, crop: nextCrop }, { durationSeconds });
+      onUploaded({ ...result.asset, alt: asset.alt, objectPosition: asset.objectPosition, sourceAspectRatio, crop: nextCrop }, { durationSeconds });
       setMessage(`${file.name} 已上传，请保存草稿`);
     } catch (error) {
       setMessage(errorMessage(error));
@@ -1439,6 +1514,10 @@ function MediaUpload({ projectId, slot, title, asset, cropAspect = 16 / 9, freeC
   function onDrop(event: DragEvent<HTMLLabelElement>) {
     event.preventDefault();
     setDragActive(false);
+    if (disabledReason) {
+      setMessage(disabledReason);
+      return;
+    }
     if (uploading) return;
     const file = event.dataTransfer.files?.[0];
     if (file) void upload(file);
@@ -1459,14 +1538,16 @@ function MediaUpload({ projectId, slot, title, asset, cropAspect = 16 / 9, freeC
         className={styles.mediaUpload}
         data-ready={Boolean(asset.key)}
         data-drag={dragActive}
-        onDragEnter={(event) => { event.preventDefault(); if (!uploading) setDragActive(true); }}
-        onDragOver={(event) => { event.preventDefault(); if (!uploading) setDragActive(true); }}
+        data-disabled={Boolean(disabledReason)}
+        onClick={() => { if (disabledReason) setMessage(disabledReason); }}
+        onDragEnter={(event) => { event.preventDefault(); if (!uploading && !disabledReason) setDragActive(true); }}
+        onDragOver={(event) => { event.preventDefault(); if (!uploading && !disabledReason) setDragActive(true); }}
         onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragActive(false); }}
         onDrop={onDrop}
       >
-        <span>{title}</span><strong>{asset.key ? asset.label || "已上传" : "拖动文件到这里"}</strong><small>{uploading ? "正在优化并上传…" : formatHint}</small>
-        <input type="file" disabled={uploading} accept={accept} onChange={onInput} />
-        <i>{asset.key ? "拖入替换或点击选择" : "拖入上传或点击选择"}</i>
+        <span>{title}</span><strong>{disabledReason ? "先保存草稿" : asset.key ? asset.label || "已上传" : "拖动文件到这里"}</strong><small>{disabledReason || (uploading ? "正在优化并上传…" : formatHint)}</small>
+        <input type="file" disabled={uploading || Boolean(disabledReason)} accept={accept} onChange={onInput} />
+        <i>{disabledReason ? "保存后即可上传" : asset.key ? "拖入替换或点击选择" : "拖入上传或点击选择"}</i>
       </label>
       {asset.kind === "image" && onCropChange && <MediaCropEditor key={[
         asset.key ?? asset.id,
@@ -1490,7 +1571,7 @@ function PublishPanel({ portfolio, data, dirty, busy, publish }: { portfolio: Po
   const missing = [
     ...portfolio.hero.slides.flatMap((slide, index) => !slide.media.key ? [`首图 ${index + 1}：图片`] : []),
     ...portfolio.categories.flatMap((category) => category.transition.mode === "image" && !category.transition.media.key ? [`${category.label}：过渡条图片`] : []),
-    ...portfolio.projects.flatMap((project) => [!project.cover.key ? `${project.title}：封面` : null, !project.finalVideo.key ? `${project.title}：成稿` : null].filter(Boolean)),
+    ...portfolio.projects.flatMap((project) => !project.cover.key ? [`${project.title}：封面`] : []),
     ...(portfolio.endCovers.enabled ? portfolio.endCovers.slides.flatMap((slide, index) => !slide.media.key ? [`封底 ${index + 1}：图片`] : []) : []),
   ];
   return (
@@ -1527,15 +1608,15 @@ function StatePanel({ label, title, detail, children }: { label: string; title: 
 
 function OperationErrorDialog({ error, onClose }: { error: OperationError; onClose: () => void }) {
   return (
-    <div className={styles.operationDialog} role="dialog" aria-modal="true" aria-labelledby="operation-error-title" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}>
+    <div className={styles.operationDialog} data-operation-error data-operation-locatable={error.locatable} role="dialog" aria-modal="true" aria-labelledby="operation-error-title" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}>
       <section>
-        <span>OPERATION FAILED</span>
+        <span>操作未完成</span>
         <h2 id="operation-error-title">{error.title}</h2>
         <dl>
           <div><dt>失败原因</dt><dd>{error.reason}</dd></div>
           <div><dt>解决方法</dt><dd>{error.solution}</dd></div>
         </dl>
-        <button type="button" autoFocus onClick={onClose}>定位并修改</button>
+        <button type="button" autoFocus onClick={onClose}>{error.locatable ? "定位并修改" : "知道了"}</button>
       </section>
     </div>
   );
@@ -1592,15 +1673,15 @@ function eventLabel(type: string) { return ({ page_view: "访问页面", project
 function auditLabel(action: string) { return ({ "portfolio.draft.saved": "保存草稿", "portfolio.published": "发布作品集", "media.uploaded": "上传媒体" } as Record<string, string>)[action] ?? action; }
 function formatDate(value: string) { return new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(value)); }
 function formatStorage(value: number) { return value >= 1024 * 1024 * 1024 ? `${(value / (1024 * 1024 * 1024)).toFixed(1)} GB` : `${Math.max(0, value / (1024 * 1024)).toFixed(value < 10 * 1024 * 1024 ? 1 : 0)} MB`; }
-function errorMessage(error: unknown) { return error instanceof Error ? error.message : "操作失败"; }
+function errorMessage(error: unknown) { return toUserFacingChineseError(error, "操作失败，请稍后重试"); }
 function isFailureMessage(message: string) { return /失败|不能|无法|无效|超过|不存在|请先|需要|格式不正确|暂时|中断|冲突|权限/u.test(message); }
 function failureGuidance(message: string): OperationError {
-  if (/（(?:settings|hero|projects|categories|endCovers)[^)]+）：/u.test(message)) return { title: "已找到需要修改的位置", reason: message, solution: "点击“定位并修改”，系统会打开对应作品或封底、滚动到具体字段并高亮输入框。中文可直接输入，允许留空的字段不会再报长度错误。" };
-  if (/超过|过大|50 MB|10 MiB|8 MiB|空间不足/u.test(message)) return { title: "文件没有上传", reason: message, solution: "压缩文件、删除不再使用的媒体，或重新选择更小的文件后再上传。" };
-  if (/登录|身份|权限/u.test(message)) return { title: "当前操作没有完成", reason: message, solution: "重新输入管理员密码后再试。" };
-  if (/草稿已|冲突|修订/u.test(message)) return { title: "版本已经变化", reason: message, solution: "刷新后台读取最新草稿，再重新应用并保存本次修改。" };
-  if (/格式|JPG|MP4|WOFF|字体|视频|图片/u.test(message)) return { title: "文件格式不符合要求", reason: message, solution: "按上传框标注的格式重新导出文件，然后再次拖入。" };
-  return { title: "操作没有完成", reason: message, solution: "检查网络后重试；如果仍失败，返回对应编辑项并重新提交。" };
+  if (/(?:settings|hero)\.[A-Za-z]+|projects\[\d+\]\.|categories\[\d+\]\.label|endCovers\.slides\[\d+\]\.|联系方式主标题/u.test(message)) return { title: "已找到需要修改的位置", reason: message, solution: "点击“定位并修改”，系统会打开对应作品、分类或封底，滚动到具体字段并高亮输入框。中文可直接输入，允许留空的字段不会再报长度错误。", locatable: true };
+  if (/超过|过大|50 MB|10 MiB|8 MiB|空间不足/u.test(message)) return { title: "文件没有上传", reason: message, solution: "压缩文件、删除不再使用的媒体，或重新选择更小的文件后再上传。", locatable: true };
+  if (/登录|身份|权限/u.test(message)) return { title: "当前操作没有完成", reason: message, solution: "重新输入管理员密码后再试。", locatable: false };
+  if (/草稿已|冲突|修订/u.test(message)) return { title: "版本已经变化", reason: message, solution: "刷新后台读取最新草稿，再重新应用并保存本次修改。", locatable: false };
+  if (/格式|JPG|MP4|WOFF|字体|视频|图片/u.test(message)) return { title: "文件格式不符合要求", reason: message, solution: "按上传框标注的格式重新导出文件，然后再次拖入。", locatable: true };
+  return { title: "操作没有完成", reason: message, solution: "检查网络后重试；如果仍失败，返回对应编辑项并重新提交。", locatable: false };
 }
 async function prepareUploadFile(file: File, kind: MediaAsset["kind"]) {
   if (kind !== "image" || file.type === "image/avif") return file;
@@ -1644,6 +1725,21 @@ async function uploadChunkWithRetry(path: string, chunk: Blob) {
       if (attempt < 2) await new Promise((resolve) => window.setTimeout(resolve, 1200 * (attempt + 1)));
     }
   }
-  throw lastError instanceof Error ? lastError : new Error("上传分片失败");
+  throw lastError instanceof Error ? lastError : userFacingError("上传分片失败，请稍后重试");
 }
-async function api<T>(input: string, init?: RequestInit): Promise<T> { const response = await fetch(input, { ...init, credentials: "same-origin", cache: "no-store" }); const body = await response.json().catch(() => ({})) as T & { error?: string; details?: string[] }; if (!response.ok) throw new Error(body.details?.[0] || body.error || `请求失败（${response.status}）`); return body; }
+async function api<T>(input: string, init?: RequestInit): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(input, { ...init, credentials: "same-origin", cache: "no-store" });
+  } catch {
+    throw userFacingError("网络连接失败，请检查网络后重试");
+  }
+  let body: T & { error?: string; details?: string[] };
+  try {
+    body = await response.json() as T & { error?: string; details?: string[] };
+  } catch {
+    throw userFacingError("服务器响应暂时无法读取，请稍后重试");
+  }
+  if (!response.ok) throw userFacingResponseError(body, `请求失败（状态码 ${response.status}）`);
+  return body;
+}
