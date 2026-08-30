@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { toPublicPortfolioDocument, validatePortfolioDocument } from "../app/portfolio/model.ts";
+import { findPublishedMedia, mediaAssetsInDocument, toPublicPortfolioDocument, validatePortfolioDocument } from "../app/portfolio/model.ts";
 import { formatVideoDuration } from "../app/lib/video-duration.ts";
 
 function documentFixture() {
@@ -148,7 +148,7 @@ test("accepts an extensible portfolio document", () => {
   assert.equal(result.value.themes.some((theme) => theme.id === "white"), true);
 });
 
-test("accepts a Chinese contact title and explains an empty title in plain language", () => {
+test("accepts Chinese and blank contact titles without a false length error", () => {
   const normalized = validatePortfolioDocument(documentFixture());
   assert.equal(normalized.ok, true);
   const value = structuredClone(normalized.value);
@@ -156,9 +156,9 @@ test("accepts a Chinese contact title and explains an empty title in plain langu
   assert.equal(validatePortfolioDocument(value).ok, true);
 
   value.settings.contact.title = "　";
-  const invalid = validatePortfolioDocument(value);
-  assert.equal(invalid.ok, false);
-  assert.match(invalid.errors.join("\n"), /联系方式主标题不能为空，最多输入 100 个字符，支持直接输入中文/u);
+  const blank = validatePortfolioDocument(value);
+  assert.equal(blank.ok, true);
+  assert.equal(blank.value.settings.contact.title, "　");
 });
 
 test("carries the published cover overlay setting into each existing project", () => {
@@ -180,7 +180,8 @@ test("preserves the project title visibility setting", () => {
 test("normalizes an existing document into the current schema", () => {
   const result = validatePortfolioDocument(legacyDocumentFixture());
   assert.equal(result.ok, true);
-  assert.equal(result.value.schemaVersion, 4);
+  assert.equal(result.value.schemaVersion, 5);
+  assert.deepEqual(result.value.endCovers, { enabled: false, slides: [] });
   assert.equal(result.value.hero.slides[0].animationEnabled, true);
   assert.equal(result.value.hero.slides[0].media.kind, "image");
   assert.equal("draftVideo" in result.value.projects[0], false);
@@ -189,7 +190,7 @@ test("normalizes an existing document into the current schema", () => {
 test("normalizes a schema two document into the current schema", () => {
   const result = validatePortfolioDocument(schemaTwoDocumentFixture());
   assert.equal(result.ok, true);
-  assert.equal(result.value.schemaVersion, 4);
+  assert.equal(result.value.schemaVersion, 5);
   assert.equal(result.value.hero.phone, "");
   assert.equal(result.value.settings.videoWatermarkText, "");
   assert.equal(result.value.categories[0].transition.mode, "default");
@@ -198,7 +199,7 @@ test("normalizes a schema two document into the current schema", () => {
 test("normalizes a schema three document with presentation defaults", () => {
   const result = validatePortfolioDocument(schemaThreeDocumentFixture());
   assert.equal(result.ok, true);
-  assert.equal(result.value.schemaVersion, 4);
+  assert.equal(result.value.schemaVersion, 5);
   assert.equal(result.value.categories[0].transition.visible, true);
   assert.equal(result.value.hero.slides[0].layers[0].color, "system");
   assert.equal(result.value.hero.slides[0].layers[0].fontFamily, "system");
@@ -207,6 +208,72 @@ test("normalizes a schema three document with presentation defaults", () => {
   assert.equal(result.value.projects[0].coverPresentation.titleStyle?.x, 3);
   assert.equal(result.value.projects[0].coverPresentation.factsStyle?.width, 72);
   assert.equal(result.value.settings.customFont.kind, "font");
+});
+
+test("accepts optional blank copy and applies beginner-safe defaults", () => {
+  const normalized = validatePortfolioDocument(documentFixture());
+  assert.equal(normalized.ok, true);
+  const value = structuredClone(normalized.value);
+  value.settings.siteTitle = "";
+  value.settings.workHeading = { lead: "", accent: "" };
+  value.settings.contact = { ...value.settings.contact, eyebrow: "", title: "", note: "" };
+  value.hero = { ...value.hero, role: "", targetRole: "", email: "", phone: "", statement: "", availability: "" };
+  value.categories[0].label = "";
+  value.projects[0] = {
+    ...value.projects[0],
+    title: "",
+    year: "",
+    duration: "",
+    synopsis: "",
+    challenge: "",
+    solution: "",
+    detailBlocks: [{ ...value.projects[0].detailBlocks[0], eyebrow: "", title: "", body: "" }],
+  };
+  const result = validatePortfolioDocument(value);
+  assert.equal(result.ok, true);
+  assert.equal(result.value.settings.siteTitle, "学生作品展示");
+  assert.equal(result.value.categories[0].label, "未命名分类");
+  assert.equal(result.value.projects[0].title, "未命名作品");
+  assert.equal(result.value.projects[0].duration, "00:00");
+});
+
+test("validates multiple independent end covers and exposes their published media", () => {
+  const normalized = validatePortfolioDocument(documentFixture());
+  assert.equal(normalized.ok, true);
+  const value = structuredClone(normalized.value);
+  value.endCovers = {
+    enabled: true,
+    slides: [1, 2].map((number) => ({
+      id: `end-cover-${number}`,
+      media: { id: `end-cover-${number}-media`, label: "", alt: `封底 ${number}`, kind: "image", visualKey: "frame", key: `portfolio/end-covers/end-cover-${number}/image.webp` },
+      contentMode: number === 1 ? "image-only" : "system",
+      effect: "halo",
+      animationEnabled: false,
+      title: number === 2 ? "谢谢观看" : "",
+      statement: "",
+      details: "",
+      layers: value.hero.slides[0].layers.map((layer) => ({ ...layer })),
+    })),
+  };
+  const result = validatePortfolioDocument(value);
+  assert.equal(result.ok, true);
+  assert.equal(result.value.endCovers.slides.length, 2);
+  assert.equal(mediaAssetsInDocument(result.value).some((asset) => asset.id === "end-cover-2-media"), true);
+  const published = toPublicPortfolioDocument(result.value);
+  assert.equal(published.endCovers.slides[1].media.src, "/api/media/portfolio/end-covers/end-cover-2/image.webp");
+  assert.equal(findPublishedMedia(result.value, "portfolio/end-covers/end-cover-2/image.webp")?.role, "end-cover");
+});
+
+test("validation errors name the exact work, block, field and character count", () => {
+  const normalized = validatePortfolioDocument(documentFixture());
+  assert.equal(normalized.ok, true);
+  const value = structuredClone(normalized.value);
+  value.projects[0].detailBlocks[0].body = "字".repeat(4001);
+  const result = validatePortfolioDocument(value);
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /第 1 个作品 → 第 1 个内容块 → 正文/u);
+  assert.match(result.errors.join("\n"), /projects\[0\]\.detailBlocks\[0\]\.body/u);
+  assert.match(result.errors.join("\n"), /当前 4001 个/u);
 });
 
 test("normalizes and validates bounded media focus positions", () => {
@@ -280,7 +347,7 @@ test("rejects an invalid media kind in a cover slot", () => {
 test("rejects malformed contact emails and impossible duration seconds", () => {
   const invalidEmail = documentFixture();
   invalidEmail.hero.email = "not-an-email";
-  assert.match(validatePortfolioDocument(invalidEmail).errors.join("\n"), /email 格式无效/);
+  assert.match(validatePortfolioDocument(invalidEmail).errors.join("\n"), /hero\.email.*格式不正确/u);
 
   const invalidDuration = documentFixture();
   invalidDuration.projects[0].duration = "02:99";
@@ -288,18 +355,14 @@ test("rejects malformed contact emails and impossible duration seconds", () => {
 });
 
 test("public documents expose image routes but not private video keys", () => {
-  const value = documentFixture();
+  const normalized = validatePortfolioDocument(documentFixture());
+  assert.equal(normalized.ok, true);
+  const value = structuredClone(normalized.value);
   value.projects[0].cover.key = "portfolio/project-one/cover-file.jpg";
   value.hero.slides[0].media.key = "portfolio/site/hero-file.jpg";
   value.categories[0].transition.media.key = "portfolio/categories/narrative/transition-file.jpg";
   value.settings.customFont.key = "portfolio/site/font-site-font.woff2";
-  value.settings.contact = {
-    eyebrow: "CONTACT / 01",
-    title: "联系我",
-    note: "欢迎联系。",
-    layout: "details-left",
-    image: { id: "site-contact-image", label: "联系图", alt: "联系图", kind: "image", visualKey: "frame", key: "portfolio/site/contact-image.jpg" },
-  };
+  value.settings.contact.image = { id: "site-contact-image", label: "联系图", alt: "联系图", kind: "image", visualKey: "frame", key: "portfolio/site/contact-image.jpg" };
   value.projects[0].finalVideo.key = "portfolio/project-one/final-file.mp4";
   const publicDocument = toPublicPortfolioDocument(value);
   assert.equal(publicDocument.hero.slides[0].media.key, undefined);

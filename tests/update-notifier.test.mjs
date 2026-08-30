@@ -2,17 +2,20 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-test("version metadata advertises the v1.1.6 Chinese input fix", async () => {
+test("version metadata advertises the v1.2.0 stability and end-cover upgrade", async () => {
   const [manifest, promptManifest] = await Promise.all([
     readFile("deployment/template-version.json", "utf8").then(JSON.parse),
     readFile("deployment/upgrade-prompt.json", "utf8").then(JSON.parse),
   ]);
 
-  assert.equal(manifest.version, "1.1.6");
+  assert.equal(manifest.version, "1.2.0");
   assert.equal(manifest.importance, "recommended");
   assert.equal(manifest.upgradePromptManifest, "deployment/upgrade-prompt.json");
-  assert.match(manifest.releaseNotes.join("\n"), /中文输入法/u);
+  assert.match(manifest.releaseNotes.join("\n"), /可选文案/u);
   assert.match(manifest.releaseNotes.join("\n"), /联系方式主标题/u);
+  assert.match(manifest.releaseNotes.join("\n"), /封底/u);
+  assert.match(manifest.releaseNotes.join("\n"), /恢复码/u);
+  assert.equal(manifest.portfolioDocumentSchemaVersion, 5);
   assert.equal(promptManifest.schemaVersion, 1);
   assert.equal(promptManifest.program, manifest.program);
   assert.equal(promptManifest.promptVersion, manifest.version);
@@ -67,6 +70,8 @@ test("all admin upgrade entry points copy the synchronized prompt", async () => 
     "无害的只读检查",
     "从中断步骤继续",
     "中文输入法选词不会被 Enter 提前结束",
+    "当前最新系统恢复码",
+    "多张独立封底",
   ]) {
     assert.match(promptManifest.prompt, new RegExp(phrase));
     assert.match(readme, new RegExp(phrase));

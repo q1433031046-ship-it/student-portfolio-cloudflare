@@ -64,6 +64,15 @@ export const adminCredentials = sqliteTable("admin_credentials", {
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 
+export const adminAuthState = sqliteTable("admin_auth_state", {
+  id: text("id")
+    .primaryKey()
+    .references(() => adminCredentials.id, { onDelete: "cascade" }),
+  authVersion: integer("auth_version").notNull().default(1),
+  confirmedProgramVersion: text("confirmed_program_version"),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
 export const adminSessions = sqliteTable(
   "admin_sessions",
   {
@@ -82,7 +91,7 @@ export const portfolioMedia = sqliteTable(
     objectKey: text("object_key").notNull(),
     replacedObjectKey: text("replaced_object_key"),
     projectId: text("project_id").notNull(),
-    slot: text("slot", { enum: ["cover", "final", "draft", "detail"] }).notNull(),
+    slot: text("slot", { enum: ["hero", "transition", "cover", "final", "detail", "font", "contact", "end-cover"] }).notNull(),
     filename: text("filename").notNull(),
     contentType: text("content_type").notNull(),
     byteSize: integer("byte_size").notNull(),

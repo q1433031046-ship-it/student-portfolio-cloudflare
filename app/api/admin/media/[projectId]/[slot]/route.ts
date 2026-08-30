@@ -14,7 +14,7 @@ import {
 
 const IMAGE_MAX = 8 * 1024 * 1024;
 const FONT_MAX = 10 * 1024 * 1024;
-const SLOTS = new Set(["hero", "transition", "cover", "final", "detail", "font", "contact"]);
+const SLOTS = new Set(["hero", "transition", "cover", "final", "detail", "font", "contact", "end-cover"]);
 
 type UploadSessionRow = {
   id: string;
@@ -70,7 +70,7 @@ export async function POST(
     if (backend === "r2") return Response.json({ mode: "single", assetId });
 
     const filename = cleanFilename(body.filename, slot === "final" ? "video" : slot === "font" ? "font" : "image");
-    const objectScope = slot === "transition" ? `categories/${projectId}` : projectId;
+    const objectScope = slot === "transition" ? `categories/${projectId}` : slot === "end-cover" ? `end-covers/${projectId}` : projectId;
     const objectKey = `portfolio/${objectScope}/${slot}-${assetId}-${crypto.randomUUID()}.${extensionFor(contentType)}`;
     const chunkCount = Math.ceil(byteSize / KV_UPLOAD_CHUNK_SIZE);
     const now = Date.now();
@@ -226,7 +226,7 @@ async function uploadSingleObject(request: Request, access: PortfolioManager, pr
   const replacingKey = validObjectKey(url.searchParams.get("replacingKey") ?? "") ? String(url.searchParams.get("replacingKey")) : null;
   await assertStorageCapacity(byteSize, replacingKey);
   const filename = cleanFilename(request.headers.get("x-file-name"), slot === "final" ? "video" : slot === "font" ? "font" : "image");
-  const objectScope = slot === "transition" ? `categories/${projectId}` : projectId;
+  const objectScope = slot === "transition" ? `categories/${projectId}` : slot === "end-cover" ? `end-covers/${projectId}` : projectId;
   const objectKey = `portfolio/${objectScope}/${slot}-${assetId}-${crypto.randomUUID()}.${extensionFor(contentType)}`;
   const bucket = getBucket();
   await bucket.put(objectKey, request.body, {
@@ -258,7 +258,7 @@ async function loadUploadAccess(request: Request, projectId: string, slot: strin
   if (slot === "transition" && !access.record.draft.categories.some((category) => category.id === projectId)) {
     return Response.json({ error: "分类不存在，请先保存分类资料" }, { status: 404 });
   }
-  if (!["hero", "font", "contact", "transition"].includes(slot)
+  if (!["hero", "font", "contact", "transition", "end-cover"].includes(slot)
     && !access.record.draft.projects.some((project) => project.id === projectId)) {
     return Response.json({ error: "作品不存在，请先保存作品资料" }, { status: 404 });
   }

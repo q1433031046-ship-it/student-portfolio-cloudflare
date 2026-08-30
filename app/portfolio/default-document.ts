@@ -1,5 +1,5 @@
 import { portfolioDemo } from "../demo/portfolio-data";
-import { createDefaultContactConfig, createDefaultCoverPresentation, type MediaAsset, type PortfolioDocument, type ProjectBlock } from "./model";
+import { createDefaultContactConfig, createDefaultCoverPresentation, createDefaultEndCoverConfig, type MediaAsset, type PortfolioDocument, type ProjectBlock } from "./model";
 
 function media(asset: (typeof portfolioDemo.projects)[number]["cover"], kind: "image" | "video"): MediaAsset {
   return { ...asset, kind };
@@ -14,7 +14,7 @@ function block(value: (typeof portfolioDemo.projects)[number]["detailBlocks"][nu
 
 export function createDefaultPortfolioDocument(): PortfolioDocument {
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     settings: {
       siteTitle: "学生作品展示",
       activeTheme: "graphite",
@@ -34,6 +34,7 @@ export function createDefaultPortfolioDocument(): PortfolioDocument {
         layers: slide.layers.map((layer) => ({ ...layer, color: "system", fontFamily: "system" })),
       })),
     },
+    endCovers: createDefaultEndCoverConfig(),
     themes: portfolioDemo.themes.map((theme) => ({ ...theme })),
     categories: portfolioDemo.categories.map((category) => ({
       ...category,

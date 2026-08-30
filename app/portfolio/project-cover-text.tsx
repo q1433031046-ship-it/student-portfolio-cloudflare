@@ -51,7 +51,7 @@ export function ProjectCoverText({
           {renderResizeHandle?.("titleStyle")}
         </section>
       )}
-      {presentation.showSynopsis && (
+      {presentation.showSynopsis && project.synopsis.trim() && (
         <section
           {...layerProps?.("synopsisStyle")}
           className={`${styles.layer} ${styles.synopsis}`}
@@ -70,9 +70,9 @@ export function ProjectCoverText({
           data-cover-layer="factsStyle"
           style={coverTextStyle(presentation.factsStyle ?? defaults.factsStyle)}
         >
-          <div><dt>年份 / 时长</dt><dd>{text("year", project.year)} · {project.duration}</dd></div>
-          <div><dt>项目难点</dt><dd>{text("challenge", project.challenge || "—")}</dd></div>
-          <div><dt>解决思路</dt><dd>{text("solution", project.solution || "—")}</dd></div>
+          {(project.year || project.duration) && <div><dt>年份 / 时长</dt><dd>{project.year && text("year", project.year)}{project.year && project.duration && " · "}{project.duration}</dd></div>}
+          {project.challenge.trim() && <div><dt>项目难点</dt><dd>{text("challenge", project.challenge)}</dd></div>}
+          {project.solution.trim() && <div><dt>解决思路</dt><dd>{text("solution", project.solution)}</dd></div>}
           {renderResizeHandle?.("factsStyle")}
         </dl>
       )}

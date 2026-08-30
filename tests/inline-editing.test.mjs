@@ -22,13 +22,14 @@ test("uses the composition-aware Enter rule in both canvas text editors", async 
   }
 });
 
-test("turns contact-title validation into a readable, auto-located admin error", async () => {
+test("accepts blank Chinese contact titles and still locates over-limit errors", async () => {
   const [adminClient, enhancements] = await Promise.all([
     readFile("app/admin/admin-client.tsx", "utf8"),
     readFile("app/admin/admin-interaction-enhancements.tsx", "utf8"),
   ]);
 
-  assert.match(adminClient, /联系方式主标题不能为空，最多输入 100 个字符，支持直接输入中文/u);
+  assert.match(adminClient, /<Field label="主标题"><input maxLength=\{100\} value=\{contact\.title\}/u);
+  assert.doesNotMatch(adminClient, /联系方式主标题不能为空/u);
   assert.match(enhancements, /settings\\\.contact\\\.title\|联系方式主标题/u);
   assert.match(enhancements, /settings\\\.contact\|联系方式主标题/u);
 });

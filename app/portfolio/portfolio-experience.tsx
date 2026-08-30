@@ -12,6 +12,7 @@ import {
 import styles from "../demo/portfolio-demo.module.css";
 import { createClientId } from "../lib/client-id";
 import { HeroSequence } from "./hero-sequence";
+import { EndCoverSequence } from "./end-cover-sequence";
 import { CategoryTransition } from "./category-transition";
 import { ProjectCover } from "./project-cover";
 import { VideoWatermark } from "./video-watermark";
@@ -46,19 +47,19 @@ function ContactQr({ value }: { value: string }) {
 }
 
 function ContactDialog({ hero, contact, onClose }: { hero: PortfolioDocument["hero"]; contact: PortfolioDocument["settings"]["contact"]; onClose: () => void }) {
-  const qrValue = `mailto:${hero.email}`;
+  const qrValue = hero.email ? `mailto:${hero.email}` : hero.phone ? `tel:${hero.phone.replace(/[^\d+]/gu, "")}` : "";
   return (
-    <div className={styles.contactDialog} role="dialog" aria-modal="true" aria-labelledby="contact-title" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <div className={styles.contactDialog} role="dialog" aria-modal="true" aria-labelledby={contact.title.trim() ? "contact-title" : undefined} aria-label={contact.title.trim() ? undefined : "联系方式"} onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <section className={styles.contactPanel} data-layout={contact.layout}>
         <div className={styles.contactVisual}>
           {contact.image.src
             // eslint-disable-next-line @next/next/no-img-element
             ? <img src={contact.image.src} alt={contact.image.alt} style={croppedImageStyle(contact.image)} />
-            : <ContactQr value={qrValue} />}
+            : qrValue ? <ContactQr value={qrValue} /> : <span>CONTACT</span>}
         </div>
-        <div className={styles.contactTextLayer} style={contactTextStyle(contact.eyebrowStyle, "var(--accent)")}><p>{contact.eyebrow}</p></div>
-        <div className={styles.contactTextLayer} data-kind="title" style={contactTextStyle(contact.titleStyle, "var(--ink)")}><h2 id="contact-title">{contact.title}</h2></div>
-        <div className={styles.contactTextLayer} data-kind="details" style={contactTextStyle(contact.detailsStyle, "var(--ink)")}><a href={`mailto:${hero.email}`}>{hero.email}</a>{hero.phone && <a href={`tel:${hero.phone.replace(/[^\d+]/gu, "")}`}>{hero.phone}</a>}</div>
+        {contact.eyebrow.trim() && <div className={styles.contactTextLayer} style={contactTextStyle(contact.eyebrowStyle, "var(--accent)")}><p>{contact.eyebrow}</p></div>}
+        {contact.title.trim() && <div className={styles.contactTextLayer} data-kind="title" style={contactTextStyle(contact.titleStyle, "var(--ink)")}><h2 id="contact-title">{contact.title}</h2></div>}
+        {(hero.email || hero.phone) && <div className={styles.contactTextLayer} data-kind="details" style={contactTextStyle(contact.detailsStyle, "var(--ink)")}>{hero.email && <a href={`mailto:${hero.email}`}>{hero.email}</a>}{hero.phone && <a href={`tel:${hero.phone.replace(/[^\d+]/gu, "")}`}>{hero.phone}</a>}</div>}
         {contact.note && <div className={styles.contactTextLayer} data-kind="note" style={contactTextStyle(contact.noteStyle, "var(--muted)")}><small>{contact.note}</small></div>}
         <button type="button" className={styles.contactClose} onClick={onClose} aria-label="关闭联系方式">×</button>
       </section>
@@ -140,34 +141,35 @@ function MediaFrame({
 function ProjectContentBlock({ block }: { block: ProjectBlock }) {
   switch (block.type) {
     case "text":
+      if (!block.eyebrow.trim() && !block.title.trim() && !block.body.trim()) return null;
       return (
-        <section className={styles.textBlock} aria-labelledby={`${block.id}-title`}>
-          <p>{block.eyebrow}</p>
-          <h4 id={`${block.id}-title`}>{block.title}</h4>
-          <div><p>{block.body}</p></div>
+        <section className={styles.textBlock} aria-labelledby={block.title.trim() ? `${block.id}-title` : undefined}>
+          {block.eyebrow.trim() && <p>{block.eyebrow}</p>}
+          {block.title.trim() && <h4 id={`${block.id}-title`}>{block.title}</h4>}
+          {block.body.trim() && <div><p>{block.body}</p></div>}
         </section>
       );
     case "media-text":
       return (
         <section
           className={`${styles.mediaTextBlock} ${block.side === "right" ? styles.mediaRight : ""}`}
-          aria-labelledby={`${block.id}-title`}
+          aria-labelledby={block.title.trim() ? `${block.id}-title` : undefined}
         >
           <MediaFrame media={block.media} className={styles.detailMedia} aspectRatio={4 / 3} />
-          <div className={styles.blockCopy}>
-            <p>{block.eyebrow}</p>
-            <h4 id={`${block.id}-title`}>{block.title}</h4>
-            <p>{block.body}</p>
-          </div>
+          {(block.eyebrow.trim() || block.title.trim() || block.body.trim()) && <div className={styles.blockCopy}>
+            {block.eyebrow.trim() && <p>{block.eyebrow}</p>}
+            {block.title.trim() && <h4 id={`${block.id}-title`}>{block.title}</h4>}
+            {block.body.trim() && <p>{block.body}</p>}
+          </div>}
         </section>
       );
     case "gallery":
       return (
-        <section className={styles.galleryBlock} aria-labelledby={`${block.id}-title`}>
-          <header>
-            <p>{block.eyebrow}</p>
-            <h4 id={`${block.id}-title`}>{block.title}</h4>
-          </header>
+        <section className={styles.galleryBlock} aria-labelledby={block.title.trim() ? `${block.id}-title` : undefined}>
+          {(block.eyebrow.trim() || block.title.trim()) && <header>
+            {block.eyebrow.trim() && <p>{block.eyebrow}</p>}
+            {block.title.trim() && <h4 id={`${block.id}-title`}>{block.title}</h4>}
+          </header>}
           <div className={styles.galleryGrid} data-count={block.items.length} data-orientation={block.orientation}>
             {block.items.map((item) => <MediaFrame key={item.id} media={item} aspectRatio={block.orientation === "landscape" ? 4 / 3 : 3 / 4} />)}
           </div>
@@ -177,7 +179,7 @@ function ProjectContentBlock({ block }: { block: ProjectBlock }) {
       return (
         <section className={styles.fullMediaBlock}>
           <MediaFrame media={block.media} aspectRatio={16 / 9} />
-          <p>{block.caption}</p>
+          {block.caption.trim() && <p>{block.caption}</p>}
         </section>
       );
   }
@@ -217,7 +219,7 @@ function ProjectCard({
       <div className={styles.projectRail}>
         <span>{String(project.order).padStart(2, "0")}</span>
         <span>{category.label}</span>
-        <span>{project.year} · {project.duration}</span>
+        <span>{project.year}{project.year && project.duration && " · "}{project.duration}</span>
       </div>
 
       <ProjectCover project={project} category={category} isOpen={isOpen} onToggle={onToggle} onPlay={onPlay} />
@@ -497,10 +499,10 @@ export function PortfolioExperience({ initialPortfolio: portfolio, mode }: Portf
       />
 
       <section className={styles.workSection} id="works" aria-labelledby="work-heading" hidden={!entered}>
-        <header className={styles.workHeading}>
+        {(portfolio.settings.workHeading.lead.trim() || portfolio.settings.workHeading.accent.trim()) && <header className={styles.workHeading}>
           <p>SELECTED WORK · {yearRange}</p>
-          <h2 id="work-heading">{portfolio.settings.workHeading.lead}<br /><span>{portfolio.settings.workHeading.accent}</span></h2>
-        </header>
+          <h2 id="work-heading">{portfolio.settings.workHeading.lead}{portfolio.settings.workHeading.lead.trim() && portfolio.settings.workHeading.accent.trim() && <br />}{portfolio.settings.workHeading.accent.trim() && <span>{portfolio.settings.workHeading.accent}</span>}</h2>
+        </header>}
 
         <div className={styles.categoryModules}>
           {portfolio.categories.map((category) => {
@@ -532,13 +534,15 @@ export function PortfolioExperience({ initialPortfolio: portfolio, mode }: Portf
         </div>
       </section>
 
+      <EndCoverSequence config={portfolio.endCovers} entered={entered} />
+
       <footer className={styles.footer} hidden={!entered}>
         <div>
           <span>PORTFOLIO / {yearRange}</span>
           <strong>{portfolio.hero.name}</strong>
         </div>
-        <p>{portfolio.hero.role}<br />{portfolio.hero.targetRole}</p>
-        <a href={`mailto:${portfolio.hero.email}`}>{portfolio.hero.email}</a>
+        {(portfolio.hero.role || portfolio.hero.targetRole) && <p>{portfolio.hero.role}{portfolio.hero.role && portfolio.hero.targetRole && <br />}{portfolio.hero.targetRole}</p>}
+        {portfolio.hero.email && <a href={`mailto:${portfolio.hero.email}`}>{portfolio.hero.email}</a>}
       </footer>
 
       {playback && (

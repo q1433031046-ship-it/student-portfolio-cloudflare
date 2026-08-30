@@ -28,6 +28,9 @@
     "loginMethod": "password",
     "initializationMethod": "one-time-deployment-code",
     "recoveryMethod": "single-use-rotating-system-code",
+    "credentialVersion": 2,
+    "programUpgradeConfirmation": "latest-recovery-code-required-once-per-formal-version",
+    "credentialHashesDependOnInitialAdminCode": false,
     "sessionHours": 12,
     "protectedPaths": ["/admin*", "/api/admin*", "/preview*"],
     "failureLimit": 5,
@@ -69,11 +72,28 @@
     "firstDirectDeploy": "npm run cloudflare:setup",
     "update": "npm run cloudflare:deploy"
   },
+  "databaseMigrations": [
+    "0000_bumpy_ultimo.sql",
+    "0001_perpetual_firestar.sql",
+    "0002_nosy_silhouette.sql",
+    "0003_careful_justice.sql",
+    "0004_owner_email_onboarding.sql",
+    "0005_password_auth_kv_media.sql",
+    "0006_auth_v2.sql"
+  ],
+  "authStateBootstrap": {
+    "table": "admin_auth_state",
+    "migration": "0006_auth_v2.sql",
+    "runtimeCreateIfMissing": true,
+    "migrationIsIdempotent": true,
+    "replacementDatabaseRequired": false
+  },
   "humanActions": [
     "approve official Cloudflare authorization",
     "enter the one-time deployment code on a secret input surface",
     "choose the administrator password inside the website",
-    "download and store the generated system recovery code"
+    "download and store the generated system recovery code",
+    "after a formal upgrade, enter the latest recovery code only on the official /admin page and store the newly rotated code"
   ],
   "liveTests": [
     "first admin visit requires the configured one-time deployment code",
@@ -81,6 +101,8 @@
     "the deployment code cannot be used as a normal login after initialization",
     "five failed password attempts activate a fifteen-minute lock",
     "password recovery revokes prior sessions and rotates the recovery code",
+    "a formal program upgrade requires the latest recovery code once, rotates it, and preserves all site data",
+    "after credential migration, password login, recovery and sessions do not depend on INITIAL_ADMIN_CODE",
     "draft save and preview do not change the public portfolio",
     "the overview footer reports used and remaining website space",
     "the administrator header exposes the password-protected guide entry after login",
@@ -88,6 +110,9 @@
     "image upload renders successfully",
     "project cover typography matches the administrator desktop and mobile previews",
     "an uploaded image remains visible to the administrator before draft save while public access stays denied",
+    "optional Chinese text fields accept direct input or blank values and blank values auto-hide",
+    "validation identifies the exact project, content block, field and character count and can locate the editor",
+    "multiple independent end covers upload, crop, copy, reorder and render after every project and before the footer",
     "a 50 MB MP4 uploads in 4 MiB chunks",
     "video range requests support playback and seeking",
     "ten complete video viewers receive the full media stream",

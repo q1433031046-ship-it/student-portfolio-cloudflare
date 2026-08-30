@@ -332,6 +332,7 @@ export function AdminGuideCenter() {
               <article className="card"><h3>首图与文字</h3><p>多张首图、纯图片 / 系统排版 / 自由排版、主题、字体和个人定位。</p></article>
               <article className="card"><h3>作品分类</h3><p>分类名称、颜色、顺序和 8:1 过渡条。</p></article>
               <article className="card"><h3>作品</h3><p>项目资料、16:9 封面、MP4、封面文字、桌面 / 手机双预览和四类内容块。</p></article>
+              <article className="card"><h3>封底（尾图）</h3><p>多张封底分别上传、裁切、复制、排序、删除和排版，显示在全部作品之后、页脚之前。</p></article>
               <article className="card"><h3>发布</h3><p>检查必要媒体并生成公开快照。</p></article>
               <article className="card"><h3>记录</h3><p>访问、播放请求、播放错误和管理操作。</p></article>
               <article className="card"><h3>帮助工具</h3><p>右上角“使用教程”和“程序升级”用于查阅说明与定位升级中心。</p></article>
@@ -346,6 +347,7 @@ export function AdminGuideCenter() {
               <tr><td>联系图片</td><td>1:1</td><td>1600 × 1600</td><td>主体居中并留边。</td></tr>
               <tr><td>分类过渡图</td><td>8:1</td><td>2560 × 320</td><td>横向纹理、环境或大留白。</td></tr>
               <tr><td>项目封面</td><td>16:9</td><td>1920 × 1080 / 2560 × 1440</td><td>重要内容放安全区。</td></tr>
+              <tr><td>封底（尾图）</td><td>16:9</td><td>1920 × 1080 / 2560 × 1440</td><td>每张独立构图，主体放中央安全区。</td></tr>
               <tr><td>图文混排</td><td>4:3</td><td>2000 × 1500</td><td>左右保留空间。</td></tr>
               <tr><td>图片组竖图</td><td>3:4</td><td>1500 × 2000</td><td>同组统一色调和主体比例。</td></tr>
               <tr><td>图片组横图</td><td>4:3</td><td>2000 × 1500</td><td>同组统一视觉风格。</td></tr>
@@ -369,6 +371,8 @@ export function AdminGuideCenter() {
               <li>项目封面依次检查“桌面 16:9”和“手机 4:5”，确认字号、位置与换行。</li>
               <li>封面与联系模块会即时显示排版结果。</li>
               <li>出现“媒体已上传，等待草稿保存”时，本地预览会保留；先保存草稿，再点“重新检查”。</li>
+              <li>联系标题、作品区标题、项目说明和内容块文字等可选字段允许留空，前台会自动隐藏。</li>
+              <li>报错会写明第几个作品、第几个内容块、具体字段和字符数；点击“定位并修改”可打开并高亮输入框。</li>
             </ul>
           </section>
 
@@ -405,6 +409,8 @@ export function AdminGuideCenter() {
               <li>点击“安全退出”后当前会话立即结束。</li>
               <li>连续输错 5 次，系统锁定 15 分钟。</li>
               <li>恢复码使用后自动轮换，新码需要重新保存。</li>
+              <li>每次正式升级后，使用升级前保存的当前最新恢复码确认一次；确认后下载并保存新码。</li>
+              <li>v1.2.0 确认完成后，管理员密码、恢复码和会话不再依赖一次性部署口令。</li>
               <li>管理员密码和最新恢复码分开离线保存。</li>
             </ul>
           </section>
@@ -420,6 +426,8 @@ export function AdminGuideCenter() {
           <section className="guide" id="admin-guide-upgrade">
             <GuideHeader eyebrow="12 / UPGRADE" title="程序升级" />
             <p>升级沿用当前 Worker、地址、D1、MEDIA_KV、Secrets、管理员和全部内容，只更新程序代码与增量数据库迁移。</p>
+            <div className="callout safe"><strong>升级前先保存恢复码</strong><p>只向 GPT 确认“当前最新系统恢复码已经保存”，不要发送恢复码内容。部署后在正式 /admin 页面完成一次升级确认，旧码会失效，必须下载新码。</p></div>
+            <div className="callout"><strong>不反复授权</strong><p>若现有 Git 构建令牌不能直接执行 D1 迁移，v1.2.0 会在原 D1 内安全创建同一张认证状态表；不需要重连账号，也不需要新建数据库。</p></div>
             <div className="callout"><strong>新版本提醒与指令同步</strong><p>登录后台时自动检查主模板版本并同步升级指令；发现新版本后，右上角“程序升级”显示小红点，升级中心显示版本差异和更新内容。远程指令校验失败时会继续使用当前版本内置的安全指令。该提醒只在后台内显示，不是短信或邮件推送。</p></div>
             <div className="prompt"><pre>{upgradePrompt}</pre><button type="button" onClick={() => void copy(getUpgradePrompt(), "upgrade")}>{upgradeCopy}</button></div>
             <div className="inlineActions"><button className="primary" type="button" onClick={openUpgradeCenter}>定位后台升级中心</button></div>
@@ -444,7 +452,7 @@ export function AdminGuideCenter() {
           <section className="guide" id="admin-guide-checks">
             <GuideHeader eyebrow="14 / CHECK" title="最终验收清单" />
             <ul className="checks">
-              <li>仓库、Worker 属于当前学生。</li><li>D1 / KV 为本网站独立资源。</li><li>前台和后台可打开。</li><li>恢复码已离线保存。</li><li>安全退出后重新进入要密码。</li><li>首图、联系图、封面裁切正常。</li><li>封面桌面 16:9 / 手机 4:5 排版一致。</li><li>上传后未保存并切换栏目仍能预览。</li><li>图片组与通栏图正常。</li><li>MP4 可播放和拖动。</li><li>10 个独立访问会话同时播放正常。</li><li>保存草稿不改变前台。</li><li>快速预览可打开。</li><li>发布后前台更新。</li><li>二维码规则正常。</li><li>网站空间统计正常。</li><li>使用教程可打开。</li><li>程序升级可定位并复制指令。</li><li>大陆手机流量和常用宽带访问正常。</li>
+              <li>仓库、Worker 属于当前学生。</li><li>D1 / KV 为本网站独立资源。</li><li>前台和后台可打开。</li><li>恢复码已离线保存。</li><li>正式升级后已用最新恢复码完成一次确认并保存新码。</li><li>安全退出后重新进入要密码。</li><li>首图、联系图、封面裁切正常。</li><li>封面桌面 16:9 / 手机 4:5 排版一致。</li><li>多张封底独立编辑并位于作品之后、页脚之前。</li><li>中文和空白可选字段保存正常，错误可精确定位。</li><li>上传后未保存并切换栏目仍能预览。</li><li>图片组与通栏图正常。</li><li>MP4 可播放和拖动。</li><li>10 个独立访问会话同时播放正常。</li><li>保存草稿不改变前台。</li><li>快速预览可打开。</li><li>发布后前台更新。</li><li>二维码规则正常。</li><li>网站空间统计正常。</li><li>使用教程可打开。</li><li>程序升级可定位并复制指令。</li><li>大陆手机流量和常用宽带访问正常。</li>
             </ul>
           </section>
         </div>

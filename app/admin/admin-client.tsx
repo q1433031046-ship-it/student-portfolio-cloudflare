@@ -5,6 +5,7 @@ import type { ChangeEvent, DragEvent, ReactNode } from "react";
 import type {
   CategoryConfig,
   CoverTextStyle,
+  EndCoverSlide,
   HeroSlide,
   MediaAsset,
   MediaCrop,
@@ -12,8 +13,9 @@ import type {
   Project,
   ProjectBlock,
 } from "../portfolio/model";
-import { createDefaultCoverPresentation, createDefaultHeroLayers } from "../portfolio/model";
+import { createDefaultCoverPresentation, createDefaultEndCoverSlide, createDefaultHeroLayers } from "../portfolio/model";
 import { HeroLayoutEditor } from "./hero-layout-editor";
+import { EndCoverLayoutEditor } from "./end-cover-layout-editor";
 import { MediaCropEditor } from "./media-crop-editor";
 import styles from "./admin.module.css";
 import { createClientId } from "../lib/client-id";
@@ -24,12 +26,13 @@ import { ProjectCoverText, type CoverLayerKey, type CoverTextKey, type CoverView
 import { AccessManager, type AccessPayload } from "./access-manager";
 import { shouldFinishInlineEditing } from "./inline-editing";
 
-type View = "overview" | "identity" | "categories" | "projects" | "contact" | "publish" | "records";
+type View = "overview" | "identity" | "categories" | "projects" | "end-covers" | "contact" | "publish" | "records";
 type Operation = "idle" | "saving" | "previewing" | "publishing";
 type OperationError = { title: string; reason: string; solution: string };
 type SetupPayload = {
-  state: "initial_setup" | "ready";
+  state: "initial_setup" | "upgrade_required" | "ready";
   identity: string | null;
+  currentProgramVersion?: string;
 };
 type AdminPayload = {
   identity: { email: string; provider: string };
@@ -87,8 +90,9 @@ const views: Array<{ id: View; label: string; index: string }> = [
   { id: "identity", label: "首图与文字", index: "03" },
   { id: "categories", label: "作品分类", index: "04" },
   { id: "projects", label: "作品", index: "05" },
-  { id: "publish", label: "发布", index: "06" },
-  { id: "records", label: "记录", index: "07" },
+  { id: "end-covers", label: "封底（尾图）", index: "06" },
+  { id: "publish", label: "发布", index: "07" },
+  { id: "records", label: "记录", index: "08" },
 ];
 
 export function AdminClient({ initialEmail, signInHref, signOutHref }: { initialEmail: string | null; signInHref: string | null; signOutHref: string | null }) {
@@ -99,7 +103,7 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
   const [access, setAccess] = useState<AccessPayload | null>(null);
   const [storage, setStorage] = useState<StoragePayload | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
-  const [state, setState] = useState<"loading" | "initial_setup" | "recovery_code" | "ready" | "unauthenticated" | "recover" | "error">("loading");
+  const [state, setState] = useState<"loading" | "initial_setup" | "upgrade_required" | "recovery_code" | "ready" | "unauthenticated" | "recover" | "error">("loading");
   const [initialCode, setInitialCode] = useState("");
   const [password, setPassword] = useState("");
   const [passwordAgain, setPasswordAgain] = useState("");
@@ -133,6 +137,11 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
       if (setupBody.state === "initial_setup") {
         setState("initial_setup");
         setMessage("使用部署时填写的一次性口令初始化管理员");
+        return;
+      }
+      if (setupBody.state === "upgrade_required") {
+        setState("upgrade_required");
+        setMessage(`v${setupBody.currentProgramVersion ?? "新版本"} 已部署，请用当前最新恢复码完成一次升级确认`);
         return;
       }
 
@@ -239,7 +248,7 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
       setState("recovery_code");
       setMessage("旧恢复码已作废，请保存新的系统恢复码");
     } catch (error) {
-      setState("recover");
+      setState((current) => current === "upgrade_required" ? "upgrade_required" : "recover");
       notify(errorMessage(error));
     } finally {
       setSetupBusy(false);
@@ -427,6 +436,16 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
       </form>
     </StatePanel>
   );
+  if (state === "upgrade_required") return (
+    <StatePanel label="VERSION UPGRADE" title="完成一次升级确认" detail="网站内容和已上传文件都已保留。请使用升级前保存的当前最新系统恢复码，设置管理员密码；完成后系统会生成一份新的恢复码。">
+      <form className={styles.authForm} onSubmit={(event) => { event.preventDefault(); void recoverPassword(); }}>
+        <label><span>当前最新系统恢复码</span><input type="text" autoCapitalize="characters" autoComplete="off" value={recoveryInput} onChange={(event) => setRecoveryInput(event.target.value)} /><small>请使用上一次生成并保存的恢复码；更早的恢复码已经失效</small></label>
+        <label><span>管理员密码</span><input type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+        <label><span>再次输入密码</span><input type="password" autoComplete="new-password" value={passwordAgain} onChange={(event) => setPasswordAgain(event.target.value)} /></label>
+        <button className={styles.primaryAction} type="submit" disabled={setupBusy}>{setupBusy ? "正在确认升级…" : "确认升级并进入后台 →"}</button>
+      </form>
+    </StatePanel>
+  );
   if (state === "recovery_code" && issuedRecoveryCode) return (
     <StatePanel label="RECOVERY CODE" title="立即保存恢复码" detail="系统以后不会再次显示这份恢复码。密码和恢复码同时丢失时，网站无法自行找回。">
       <div className={styles.recoveryCard}><span>系统恢复码</span><strong>{issuedRecoveryCode}</strong><small>一次性使用 · 请离线保存</small></div>
@@ -487,6 +506,7 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
           />
         )}
         {view === "contact" && <ContactEditor portfolio={portfolio} change={change} setMessage={notify} />}
+        {view === "end-covers" && <EndCoverEditor portfolio={portfolio} change={change} setMessage={notify} />}
         {view === "publish" && <PublishPanel portfolio={portfolio} data={data} dirty={dirty} busy={busy} publish={publish} />}
         {view === "records" && <RecordsPanel events={events} audits={audits} />}
       </section>
@@ -804,6 +824,83 @@ function CategoryEditor({ portfolio, change, setMessage }: { portfolio: Portfoli
   );
 }
 
+function EndCoverEditor({ portfolio, change, setMessage }: { portfolio: PortfolioDocument; change: (mutator: (document: PortfolioDocument) => PortfolioDocument) => void; setMessage: (message: string) => void }) {
+  function updateConfig(updater: (current: PortfolioDocument["endCovers"]) => PortfolioDocument["endCovers"]) {
+    change((document) => ({ ...document, endCovers: updater(document.endCovers) }));
+  }
+  function updateSlide(id: string, updater: (slide: EndCoverSlide) => EndCoverSlide) {
+    updateConfig((current) => ({ ...current, slides: current.slides.map((slide) => slide.id === id ? updater(slide) : slide) }));
+  }
+  function addSlide() {
+    const slide = createDefaultEndCoverSlide(`end-cover-${createClientId()}`);
+    updateConfig((current) => ({ enabled: true, slides: [...current.slides, slide] }));
+  }
+  function copySlide(source: EndCoverSlide) {
+    const id = `end-cover-${createClientId()}`;
+    const copy: EndCoverSlide = {
+      ...source,
+      id,
+      media: { ...source.media, id: `media-${createClientId()}` },
+      layers: source.layers.map((layer) => ({ ...layer })),
+    };
+    updateConfig((current) => ({ enabled: true, slides: [...current.slides, copy] }));
+  }
+  function removeSlide(id: string) {
+    if (!window.confirm("确认删除这张封底？其他封底和作品不会受影响。")) return;
+    updateConfig((current) => {
+      const slides = current.slides.filter((slide) => slide.id !== id);
+      return { enabled: slides.length > 0 && current.enabled, slides };
+    });
+  }
+  function moveSlide(id: string, direction: -1 | 1) {
+    updateConfig((current) => ({ ...current, slides: moveItem(current.slides, id, direction) }));
+  }
+
+  return (
+    <>
+      <ViewHeader eyebrow="06 / END COVERS" title="封底（尾图）" detail="作品全部展示完后，封底会按这里的顺序逐张连续出现；每张图片、文字、裁切和排版互不影响。" action={<button type="button" onClick={addSlide}>＋ 新建封底</button>} />
+      <div className={styles.formSection}>
+        <label className={styles.checkControl}>
+          <input type="checkbox" checked={portfolio.endCovers.enabled} disabled={portfolio.endCovers.slides.length === 0} onChange={(event) => updateConfig((current) => ({ ...current, enabled: event.target.checked }))} />
+          <span>在已发布前台显示封底</span>
+        </label>
+        <p className={styles.sectionHint}>封底位于所有作品之后、页脚之前。没有封底时前台保持原样；文字均可留空，留空后自动隐藏。</p>
+      </div>
+      {portfolio.endCovers.slides.length === 0 ? <p className={styles.emptyState}>还没有封底。点击“新建封底”，上传你的尾图。</p> : (
+        <div className={styles.endCoverList}>
+          {portfolio.endCovers.slides.map((slide, index) => (
+            <article className={styles.endCoverCard} key={slide.id} data-end-cover-card={index}>
+              <header>
+                <div><span>{String(index + 1).padStart(2, "0")}</span><strong>封底 {index + 1}</strong></div>
+                <div>
+                  <button type="button" disabled={index === 0} onClick={() => moveSlide(slide.id, -1)}>↑ 前移</button>
+                  <button type="button" disabled={index === portfolio.endCovers.slides.length - 1} onClick={() => moveSlide(slide.id, 1)}>↓ 后移</button>
+                  <button type="button" onClick={() => copySlide(slide)}>复制</button>
+                  <button type="button" className={styles.danger} onClick={() => removeSlide(slide.id)}>删除</button>
+                </div>
+              </header>
+              <div className={styles.endCoverGrid}>
+                <div>
+                  <div className={styles.formGrid}>
+                    <Field label="显示模式"><select value={slide.contentMode} onChange={(event) => updateSlide(slide.id, (current) => ({ ...current, contentMode: event.target.value as EndCoverSlide["contentMode"] }))}><option value="image-only">纯图片</option><option value="system">系统排版</option><option value="free">自由排版</option></select></Field>
+                    <Field label="视觉效果"><select value={slide.effect} onChange={(event) => updateSlide(slide.id, (current) => ({ ...current, effect: event.target.value as EndCoverSlide["effect"] }))}><option value="halo">光晕</option><option value="signal">信号</option></select></Field>
+                    <Field label="封底标题" wide><textarea rows={2} maxLength={160} value={slide.title} onChange={(event) => updateSlide(slide.id, (current) => ({ ...current, title: event.target.value }))} placeholder="可留空" /></Field>
+                    <Field label="封底说明" wide><textarea rows={4} maxLength={1000} value={slide.statement} onChange={(event) => updateSlide(slide.id, (current) => ({ ...current, statement: event.target.value }))} placeholder="可留空；Enter 可换行" /></Field>
+                    <Field label="补充信息" wide><textarea rows={4} maxLength={1600} value={slide.details} onChange={(event) => updateSlide(slide.id, (current) => ({ ...current, details: event.target.value }))} placeholder="可留空；Enter 可换行" /></Field>
+                  </div>
+                  <label className={styles.checkControl}><input type="checkbox" checked={slide.animationEnabled} onChange={(event) => updateSlide(slide.id, (current) => ({ ...current, animationEnabled: event.target.checked }))} /><span>启用轻微背景动画</span></label>
+                </div>
+                <MediaUpload projectId={slide.id} slot="end-cover" title={`封底图片 ${index + 1}`} asset={slide.media} cropAspect={16 / 9} setMessage={setMessage} onUploaded={(media) => updateSlide(slide.id, (current) => ({ ...current, media }))} onCropChange={(crop, sourceAspectRatio) => updateSlide(slide.id, (current) => ({ ...current, media: { ...current.media, crop, sourceAspectRatio } }))} />
+              </div>
+              {slide.contentMode !== "image-only" && <EndCoverLayoutEditor slide={slide} customFontReady={Boolean(portfolio.settings.customFont.key)} onChange={(next) => updateSlide(slide.id, () => next)} />}
+            </article>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
 function ProjectEditor({
   portfolio, selectedProject, selectedProjectId, setSelectedProjectId, change, setMessage,
 }: {
@@ -995,7 +1092,7 @@ function ProjectForm({ project, categories, update, remove, move, setMessage, cu
 
 function BlockEditor({ block, index, projectId, setMessage, update, move, remove }: { block: ProjectBlock; index: number; projectId: string; setMessage: (value: string) => void; update: (updater: (block: ProjectBlock) => ProjectBlock) => void; move: (direction: -1 | 1) => void; remove: () => void }) {
   return (
-    <article className={styles.blockCard}>
+    <article className={styles.blockCard} data-block-index={index}>
       <header><span>{String(index + 1).padStart(2, "0")} · {blockLabel(block.type)}</span><div><button onClick={() => move(-1)}>↑</button><button onClick={() => move(1)}>↓</button><button onClick={remove}>删除</button></div></header>
       {block.type !== "full-media" && <Field label="眉题"><input value={block.eyebrow} onChange={(event) => update((current) => ({ ...current, eyebrow: event.target.value }))} /></Field>}
       {block.type !== "full-media" && <Field label="标题"><input value={block.title} onChange={(event) => update((current) => ({ ...current, title: event.target.value }))} /></Field>}
@@ -1183,7 +1280,7 @@ function CoverStyleControls({ label, style, customFontReady, onChange }: { label
   );
 }
 
-function MediaUpload({ projectId, slot, title, asset, cropAspect = 16 / 9, freeCrop = false, setMessage, onUploaded, onCropChange, onPreviewChange }: { projectId: string; slot: "hero" | "transition" | "cover" | "final" | "detail" | "font" | "contact"; title: string; asset: MediaAsset; cropAspect?: number; freeCrop?: boolean; setMessage: (message: string) => void; onUploaded: (asset: MediaAsset, metadata?: { durationSeconds?: number }) => void; onCropChange?: (crop: MediaCrop, sourceAspectRatio: number) => void; onPreviewChange?: (source?: string) => void }) {
+function MediaUpload({ projectId, slot, title, asset, cropAspect = 16 / 9, freeCrop = false, setMessage, onUploaded, onCropChange, onPreviewChange }: { projectId: string; slot: "hero" | "transition" | "cover" | "final" | "detail" | "font" | "contact" | "end-cover"; title: string; asset: MediaAsset; cropAspect?: number; freeCrop?: boolean; setMessage: (message: string) => void; onUploaded: (asset: MediaAsset, metadata?: { durationSeconds?: number }) => void; onCropChange?: (crop: MediaCrop, sourceAspectRatio: number) => void; onPreviewChange?: (source?: string) => void }) {
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [previewSrc, setPreviewSrc] = useState<string | undefined>(asset.src);
@@ -1394,10 +1491,11 @@ function PublishPanel({ portfolio, data, dirty, busy, publish }: { portfolio: Po
     ...portfolio.hero.slides.flatMap((slide, index) => !slide.media.key ? [`首图 ${index + 1}：图片`] : []),
     ...portfolio.categories.flatMap((category) => category.transition.mode === "image" && !category.transition.media.key ? [`${category.label}：过渡条图片`] : []),
     ...portfolio.projects.flatMap((project) => [!project.cover.key ? `${project.title}：封面` : null, !project.finalVideo.key ? `${project.title}：成稿` : null].filter(Boolean)),
+    ...(portfolio.endCovers.enabled ? portfolio.endCovers.slides.flatMap((slide, index) => !slide.media.key ? [`封底 ${index + 1}：图片`] : []) : []),
   ];
   return (
     <>
-      <ViewHeader eyebrow="06 / PUBLISH" title="检查并发布作品集" detail="发布会生成独立快照；之后继续编辑草稿，不会改变访客正在看的版本。" />
+      <ViewHeader eyebrow="07 / PUBLISH" title="检查并发布作品集" detail="发布会生成独立快照；之后继续编辑草稿，不会改变访客正在看的版本。" />
       <section className={styles.publishCard}>
         <div><span>REVISION</span><strong>r{data.revision}</strong><small>{dirty ? "包含未保存修改" : "草稿已保存"}</small></div>
         <div><span>PROJECTS</span><strong>{portfolio.projects.length}</strong><small>{missing.length ? `${missing.length} 个必要媒体待补充` : "必要媒体完整"}</small></div>
@@ -1412,7 +1510,7 @@ function PublishPanel({ portfolio, data, dirty, busy, publish }: { portfolio: Po
 function RecordsPanel({ events, audits }: { events: EventItem[]; audits: AuditItem[] }) {
   return (
     <>
-      <ViewHeader eyebrow="07 / RECORDS" title="访问与安全记录" detail="定位异常来源与播放请求；网络标识已做不可逆散列。" />
+      <ViewHeader eyebrow="08 / RECORDS" title="访问与安全记录" detail="定位异常来源与播放请求；网络标识已做不可逆散列。" />
       <SectionTitle index="VISITS" title="最近访问" />
       <div className={styles.tableWrap}><table><thead><tr><th>时间</th><th>事件</th><th>作品</th><th>地区</th><th>设备</th><th>来源 / 网络</th><th>风险</th></tr></thead><tbody>{events.length ? events.map((event) => <tr key={event.id}><td>{formatDate(event.lastSeenAt ?? event.occurredAt)}</td><td>{eventLabel(event.eventType)}{event.mediaVersion ? ` · ${event.mediaVersion}` : ""}{event.eventCount > 1 ? ` ×${event.eventCount}` : ""}</td><td>{event.projectId ?? "—"}</td><td>{[event.country, event.region, event.city].filter(Boolean).join(" · ") || "未知"}</td><td>{[event.deviceType, event.browser, event.operatingSystem].filter(Boolean).join(" · ")}</td><td>{event.referrer ?? event.asOrganization ?? (event.networkHash ? `网络 ${event.networkHash.slice(0, 8)}` : "未知")}</td><td><span className={styles.risk} data-risk={event.riskLevel}>{event.action === "block" ? "已拦截" : event.riskLevel}</span>{event.riskReason && <small>{event.riskReason}</small>}</td></tr>) : <tr><td colSpan={7}>暂无访问记录。前台接入事件接口后会显示在这里。</td></tr>}</tbody></table></div>
       <SectionTitle index="AUDIT" title="管理操作" />
@@ -1437,7 +1535,7 @@ function OperationErrorDialog({ error, onClose }: { error: OperationError; onClo
           <div><dt>失败原因</dt><dd>{error.reason}</dd></div>
           <div><dt>解决方法</dt><dd>{error.solution}</dd></div>
         </dl>
-        <button type="button" autoFocus onClick={onClose}>返回继续处理</button>
+        <button type="button" autoFocus onClick={onClose}>定位并修改</button>
       </section>
     </div>
   );
@@ -1495,9 +1593,9 @@ function auditLabel(action: string) { return ({ "portfolio.draft.saved": "保存
 function formatDate(value: string) { return new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(value)); }
 function formatStorage(value: number) { return value >= 1024 * 1024 * 1024 ? `${(value / (1024 * 1024 * 1024)).toFixed(1)} GB` : `${Math.max(0, value / (1024 * 1024)).toFixed(value < 10 * 1024 * 1024 ? 1 : 0)} MB`; }
 function errorMessage(error: unknown) { return error instanceof Error ? error.message : "操作失败"; }
-function isFailureMessage(message: string) { return /失败|不能|无法|无效|超过|不存在|请先|至少需要|暂时|中断|冲突|权限/u.test(message); }
+function isFailureMessage(message: string) { return /失败|不能|无法|无效|超过|不存在|请先|需要|格式不正确|暂时|中断|冲突|权限/u.test(message); }
 function failureGuidance(message: string): OperationError {
-  if (/settings\.contact\.title/u.test(message)) return { title: "联系方式主标题需要修改", reason: "联系方式主标题不能为空，最多输入 100 个字符，支持直接输入中文。", solution: "返回“联系方式”的“主标题”输入框直接填写；在画布中双击编辑时，中文输入法选词不会再被 Enter 提前结束。" };
+  if (/（(?:settings|hero|projects|categories|endCovers)[^)]+）：/u.test(message)) return { title: "已找到需要修改的位置", reason: message, solution: "点击“定位并修改”，系统会打开对应作品或封底、滚动到具体字段并高亮输入框。中文可直接输入，允许留空的字段不会再报长度错误。" };
   if (/超过|过大|50 MB|10 MiB|8 MiB|空间不足/u.test(message)) return { title: "文件没有上传", reason: message, solution: "压缩文件、删除不再使用的媒体，或重新选择更小的文件后再上传。" };
   if (/登录|身份|权限/u.test(message)) return { title: "当前操作没有完成", reason: message, solution: "重新输入管理员密码后再试。" };
   if (/草稿已|冲突|修订/u.test(message)) return { title: "版本已经变化", reason: message, solution: "刷新后台读取最新草稿，再重新应用并保存本次修改。" };
