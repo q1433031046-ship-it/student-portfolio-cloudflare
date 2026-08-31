@@ -13,11 +13,11 @@
   "records": {
     "plan": "governance/runtime/records/governance-1/01-plan.md",
     "planAudit": null,
-    "releaseCandidate": "governance/runtime/records/governance-1/04-release-candidate-r2.md",
+    "releaseCandidate": "governance/runtime/records/governance-1/04-release-candidate.md",
     "rcAudit": "governance/runtime/records/governance-1/05-rc-audit.md",
     "releaseReceipt": null
   },
-  "candidateSha": "7caf24d4c52f1502d43cbf668329701986669a6e",
+  "candidateSha": "e24d78fd76cfbca9ebd957d16c406ffbc1c09e1b",
   "releaseTag": null,
   "bootstrap": {
     "isBootstrapCandidate": true,
