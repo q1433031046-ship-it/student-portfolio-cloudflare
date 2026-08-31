@@ -14,11 +14,13 @@
 
 版本：governance-1
 
-审计对象 Candidate SHA：`7caf24d4c52f1502d43cbf668329701986669a6e`
+审计对象 Candidate SHA：`e24d78fd76cfbca9ebd957d16c406ffbc1c09e1b`
 
-审计对象 Tree SHA：`067b253b39729a3b50d51d2fe048ee1899e32bad`
+审计对象 Tree SHA：`a54f47d5f5b5b54e18454d5faa7a4fc3a403228d`
 
 审计对象分支：`governance/four-role-auto-handoff`
+
+审计对象 PR：`#13`
 
 审计范围：四角色治理固化、动态状态与自动交接、bootstrap、可信状态来源、受保护写入/CAS、Cloudflare 零版本/零预览验证及候选冻结一致性。
 
@@ -44,9 +46,9 @@
 
 ## 测试与证据
 
-- 审计针对固定 Candidate SHA `7caf24d4c52f1502d43cbf668329701986669a6e`。
-- 对应 Tree SHA 为 `067b253b39729a3b50d51d2fe048ee1899e32bad`。
-- 角色 3 的 Candidate 记录已声明治理合同测试、全量测试、构建、Lint、TypeScript、依赖审计、语法检查、Wrangler dry-run 与 `git diff --check` 通过；但本次审计认为真实受保护写入/CAS与 Cloudflare 零版本/零预览的实证仍未闭环。
+- 审计针对 PR #13 当前固定 Candidate SHA `e24d78fd76cfbca9ebd957d16c406ffbc1c09e1b`。
+- 对应 Tree SHA 为 `a54f47d5f5b5b54e18454d5faa7a4fc3a403228d`。
+- 角色 3 的 Candidate 记录声明完整测试 217/217、治理专项 19/19、构建、Lint、TypeScript、依赖审计、Migration 漂移检查、语法检查、Wrangler dry-run 与 GitHub CI 通过；但本次审计认为真实受保护写入/CAS与 Cloudflare 零版本/零预览的实证仍未闭环。
 - 原审计在收尾阶段因本地工作区/Work 连接中断，正式附件未生成；本文件依据角色 2 已在对话中固化的完整审计结论恢复入库，不改变原审计结论，也不视为重新审计。
 
 ## 剩余风险
