@@ -1,0 +1,178 @@
+{
+  "schemaVersion": 2,
+  "project": "student-portfolio-cloudflare",
+  "repository": "q1433031046-ship-it/student-portfolio-cloudflare",
+  "productionBranch": "main",
+  "runtime": {
+    "stateBranch": "governance-state",
+    "currentPath": "governance/runtime/current.json",
+    "versionStatePattern": "governance/runtime/versions/<activeVersion>.json",
+    "recordsRoot": "governance/runtime/records/",
+    "productionDeploymentTriggeredByStateBranch": false,
+    "writeWorkflow": ".github/workflows/governance-state.yml",
+    "writeCommand": "/governance-transition <expected-tip> <expected-revision> <role-number> <target-stage>",
+    "bootstrapRecoveryCommand": "/governance-bootstrap-recover <expected-tip> 2 13 14 <candidate-sha> <tree-sha> <recovery-head-sha>",
+    "writeTransport": "protected-pull-request",
+    "requiredStatusContext": "governance-state-write",
+    "requiredStatusAppId": 15368,
+    "statusProducer": "default-branch-repository-dispatch-proposal-gate",
+    "requiredCheckTransport": "checks-api-head-sha",
+    "writerRequestsIndependentGate": true,
+    "authorizationSource": "repository-owner-issue-comment",
+    "authorizationRevalidatedByGate": true,
+    "writerMayCreateStatus": false,
+    "writerMayCreateCheckRun": false,
+    "proposalVerifierExecutesHeadCode": false,
+    "pullRequestRequired": true,
+    "strictUpToDateRequired": true,
+    "directPushAllowed": false,
+    "branchProtectionRequired": true,
+    "cloudflarePreviewBuildsAllowed": false,
+    "recordFirstThenPointer": true,
+    "compareAndSwapRequired": true
+  },
+  "bootstrapPolicy": {
+    "activeVersion": "governance-1",
+    "candidateBranch": "governance/four-role-auto-handoff",
+    "baseSha": "d81785dd51bb0c9be339449566a15d3b3971e02a",
+    "planAuditMayBeNull": true,
+    "disableAfterContractOnMain": true,
+    "failedAuditRecovery": {
+      "legacyTip": "3e7867d3cdba75045f6dc8aa0448ccaac3547b68",
+      "legacyRevision": 2,
+      "legacyCandidateSha": "7caf24d4c52f1502d43cbf668329701986669a6e",
+      "candidatePullRequest": 13,
+      "candidateSha": "e24d78fd76cfbca9ebd957d16c406ffbc1c09e1b",
+      "candidateTreeSha": "a54f47d5f5b5b54e18454d5faa7a4fc3a403228d",
+      "recoveryPullRequest": 14,
+      "recoveryBranch": "recovery/governance-rc-audit-r1",
+      "recoveryHeadSha": "9451ef05fbe289aaade134bb60fb1a57e5eb15a6",
+      "auditConclusion": "failed",
+      "targetStage": "IMPLEMENTATION_REQUIRED",
+      "resultSchemaVersion": 2,
+      "resultRevision": 3,
+      "singleUse": true,
+      "retainCompletedReceipt": true
+    }
+  },
+  "requiredWorkflowStages": [
+    "IDLE",
+    "PLANNING",
+    "PLAN_AUDIT_PENDING",
+    "IMPLEMENTATION_APPROVED",
+    "IMPLEMENTING",
+    "RC_AUDIT_PENDING",
+    "RELEASE_APPROVED",
+    "PRODUCTION_PREFLIGHT",
+    "RELEASING",
+    "PRODUCTION_VERIFIED",
+    "IMPLEMENTATION_REQUIRED",
+    "PLANNING_REQUIRED",
+    "BLOCKED",
+    "ROLLED_BACK"
+  ],
+  "roles": [
+    {
+      "roleNumber": 1,
+      "roleName": "超级规划",
+      "slug": "super-planning",
+      "contractPath": "governance/roles/super-planning.md",
+      "handoffTemplate": "governance/handoff/plan-handoff.md",
+      "capabilities": {
+        "canModifyProductCode": false,
+        "canExpandFrozenScope": false,
+        "canApproveOwnPlan": false,
+        "canAuditReleaseCandidate": false,
+        "canDeployProduction": false,
+        "canModifyProductCodeDuringRelease": false,
+        "canDeployUnapprovedCandidate": false
+      },
+      "readStages": ["IDLE", "PLANNING", "PLANNING_REQUIRED", "BLOCKED"],
+      "transitions": [
+        { "from": "IDLE", "to": "PLANNING" },
+        { "from": "PLANNING_REQUIRED", "to": "PLANNING" },
+        { "from": "PLANNING", "to": "PLAN_AUDIT_PENDING" },
+        { "from": "BLOCKED", "to": "PLANNING" }
+      ]
+    },
+    {
+      "roleNumber": 2,
+      "roleName": "超级审计",
+      "slug": "super-audit",
+      "contractPath": "governance/roles/super-audit.md",
+      "handoffTemplate": "governance/handoff/audit-report.md",
+      "capabilities": {
+        "canModifyProductCode": false,
+        "canExpandFrozenScope": false,
+        "canApproveOwnPlan": false,
+        "canAuditReleaseCandidate": true,
+        "canDeployProduction": false,
+        "canModifyProductCodeDuringRelease": false,
+        "canDeployUnapprovedCandidate": false
+      },
+      "readStages": ["PLAN_AUDIT_PENDING", "RC_AUDIT_PENDING", "BLOCKED"],
+      "transitions": [
+        { "from": "PLAN_AUDIT_PENDING", "to": "IMPLEMENTATION_APPROVED" },
+        { "from": "PLAN_AUDIT_PENDING", "to": "PLANNING_REQUIRED" },
+        { "from": "PLAN_AUDIT_PENDING", "to": "BLOCKED" },
+        { "from": "RC_AUDIT_PENDING", "to": "RELEASE_APPROVED" },
+        { "from": "RC_AUDIT_PENDING", "to": "IMPLEMENTATION_REQUIRED" },
+        { "from": "RC_AUDIT_PENDING", "to": "BLOCKED" },
+        { "from": "BLOCKED", "to": "PLAN_AUDIT_PENDING" },
+        { "from": "BLOCKED", "to": "RC_AUDIT_PENDING" }
+      ]
+    },
+    {
+      "roleNumber": 3,
+      "roleName": "超级工作",
+      "slug": "super-work",
+      "contractPath": "governance/roles/super-work.md",
+      "handoffTemplate": "governance/handoff/release-candidate.md",
+      "capabilities": {
+        "canModifyProductCode": true,
+        "canExpandFrozenScope": false,
+        "canApproveOwnPlan": false,
+        "canAuditReleaseCandidate": false,
+        "canDeployProduction": false,
+        "canModifyProductCodeDuringRelease": false,
+        "canDeployUnapprovedCandidate": false
+      },
+      "readStages": ["IMPLEMENTATION_APPROVED", "IMPLEMENTATION_REQUIRED", "IMPLEMENTING", "BLOCKED", "ROLLED_BACK"],
+      "transitions": [
+        { "from": "IMPLEMENTATION_APPROVED", "to": "IMPLEMENTING" },
+        { "from": "IMPLEMENTATION_REQUIRED", "to": "IMPLEMENTING" },
+        { "from": "IMPLEMENTING", "to": "RC_AUDIT_PENDING" },
+        { "from": "IMPLEMENTING", "to": "BLOCKED" },
+        { "from": "BLOCKED", "to": "IMPLEMENTING" },
+        { "from": "ROLLED_BACK", "to": "IMPLEMENTATION_REQUIRED" }
+      ]
+    },
+    {
+      "roleNumber": 4,
+      "roleName": "超级发布",
+      "slug": "super-release",
+      "contractPath": "governance/roles/super-release.md",
+      "handoffTemplate": "governance/handoff/release-receipt.md",
+      "capabilities": {
+        "canModifyProductCode": false,
+        "canExpandFrozenScope": false,
+        "canApproveOwnPlan": false,
+        "canAuditReleaseCandidate": false,
+        "canDeployProduction": true,
+        "canModifyProductCodeDuringRelease": false,
+        "canDeployUnapprovedCandidate": false
+      },
+      "readStages": ["RELEASE_APPROVED", "PRODUCTION_PREFLIGHT", "RELEASING", "BLOCKED"],
+      "transitions": [
+        { "from": "RELEASE_APPROVED", "to": "PRODUCTION_PREFLIGHT" },
+        { "from": "PRODUCTION_PREFLIGHT", "to": "RELEASING" },
+        { "from": "PRODUCTION_PREFLIGHT", "to": "BLOCKED" },
+        { "from": "RELEASING", "to": "PRODUCTION_VERIFIED" },
+        { "from": "RELEASING", "to": "ROLLED_BACK" },
+        { "from": "RELEASING", "to": "BLOCKED" },
+        { "from": "BLOCKED", "to": "PRODUCTION_PREFLIGHT" },
+        { "from": "BLOCKED", "to": "RELEASING" }
+      ]
+    }
+  ]
+}

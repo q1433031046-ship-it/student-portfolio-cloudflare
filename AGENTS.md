@@ -107,3 +107,15 @@ The comment entry is owner-only, accepts no arbitrary SHA, requires the release 
 - If deployment stops after resources are created, inspect and resume those resources instead of creating duplicates.
 - Losing both the administrator password and the latest recovery code requires an operator-assisted credential reset in D1. Do not weaken authentication to work around that condition.
 - For mainland-China audiences, verify the final `workers.dev` address on the owner's actual mobile and broadband networks.
+
+## Four-role governance entry
+
+This project separates formal work across fixed roles: 1=超级规划, 2=超级审计, 3=超级工作, and 4=超级发布. Before a formal governance task, read `governance/README.md`, `governance/workflow.md`, `governance/role-contract.json`, and the matching `governance/roles/*.md` contract.
+
+Read dynamic handoff state from `governance/runtime/current.json` on the dedicated `governance-state` branch, then follow its version and record pointers. The current repository governance contract and coordinated state take priority over old chat memory. Keep the full role contracts in `governance/`; this section is navigation only and must not replace or weaken the existing version, deployment, upgrade, or security contract above.
+
+Governance state is written only by `.github/workflows/governance-state.yml` after the default-branch verifier re-reads the repository owner's exact source comment, previous tip/revision, immutable records, remote Candidate, and compare-and-swap inputs. After opening each proposal, the writer may request the independent Gate through the fixed `repository_dispatch` event, but its job has no `checks: write` authority. The Gate runs trusted code from `main`, treats proposal branches and PR bodies as untrusted data, never executes proposal-tree code, and creates the head-bound `governance-state-write` Check through the Checks API. That Check must come from GitHub Actions App id `15368`; the writer cannot authorize its own proposal, and the ruleset has no bypass actors.
+
+The governance bootstrap trust root must first be reviewed by role 2 in its own PR. Until that review passes and the trust root reaches `main`, do not execute the failed-audit recovery or describe PR #14 as effective. The recovery is then limited to the fixed legacy tip, revision 2, PR #13 Candidate commit/tree, and PR #14 recovery head; it writes records before pointers and produces schema 2 revision 3 at `IMPLEMENTATION_REQUIRED`.
+
+Direct pushes and Cloudflare previews from `governance-state`, `governance/*`, and `governance-write/*` are forbidden. A two-parent `main` merge that changes the trust-root workflow must also stop before build or version creation after its complete changed-path set is verified, independent of GitHub's configured merge-title format; the `Governance trust root:` subject remains an additional fail-closed signal. If GitHub or Cloudflare protections cannot be proven active, stop the handoff as `BLOCKED` instead of editing state locally.

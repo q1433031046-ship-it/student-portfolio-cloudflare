@@ -31,11 +31,12 @@ The existing Candidate cannot legally restore its failed audit:
 
 ## Security model
 
-The proposal branch and its pull-request body are always untrusted. A successful status is accepted only when all of the following are true:
+The proposal branch and its pull-request body are always untrusted. A successful Check is accepted only when all of the following are true:
 
 - the verifier workflow definition comes from `main`;
-- the verifier uses `pull_request_target` and never checks out or executes proposal code;
-- the fixed job name is `governance-state-write`;
+- the verifier runs from the default branch through a fixed `repository_dispatch`, with `pull_request_target` as a supplemental trigger, and never checks out or executes proposal code;
+- the authorization envelope binds the original GitHub issue-comment id, and the verifier re-reads that comment to require the repository owner, exact command, and exact source pull request;
+- the Gate creates a Checks API run named `governance-state-write` on the exact proposal head SHA;
 - the check run is produced by the GitHub Actions App, integration id `15368`;
 - the active Ruleset independently requires the same context and integration id;
 - the verifier reconstructs the permitted transition from immutable GitHub and `governance-state` facts and compares exact files and values;
@@ -52,7 +53,7 @@ A dedicated pull request based on the current `main` installs the smallest code 
 
 - `.github/workflows/governance-state.yml`
   - owner-only `issue_comment` command orchestration;
-  - independent `pull_request_target` proposal verification;
+  - independent default-branch proposal verification, requested through a fixed `repository_dispatch` after proposal creation with `pull_request_target` as a supplemental trigger;
   - no Wrangler, tag, release, Worker, D1, KV, or Secrets operations.
 - `scripts/governance-state.mjs`
   - deterministic schema and transition validation;
@@ -67,17 +68,23 @@ Role 2 audits this trust-root pull request before it is merged. The failed PR #1
 
 ### 2. Independent proposal verifier
 
-The `pull_request_target` job runs only for pull requests whose base is `governance-state`. It performs these checks without executing proposal content:
+Events created by a workflow's `GITHUB_TOKEN` do not generally start another workflow run, while `repository_dispatch` is an explicit supported exception. Therefore the writer requests a separate default-branch Gate run after it opens each proposal. A matching `pull_request_target` event reaches the same Gate when GitHub emits one, but correctness does not depend on that event. The writer uses its existing `contents: write` permission for the fixed dispatch and has no `checks: write`; the Gate job has `checks: write` and otherwise read-only repository permissions.
+
+Primary GitHub references: [triggering a workflow from a workflow](https://docs.github.com/en/actions/how-tos/writing-workflows/choosing-when-your-workflow-runs/triggering-a-workflow#triggering-a-workflow-from-a-workflow), [`pull_request_target` SHA semantics](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#pull_request_target), and [creating a Check Run](https://docs.github.com/en/rest/checks/runs#create-a-check-run).
+
+The Gate accepts only an exact proposal PR number and performs these checks without executing proposal content:
 
 1. Read the pull request through the GitHub API and require an open, non-draft, same-repository head.
 2. Require a `governance-write/<run-id>-<attempt>-<phase>` branch and a machine-readable authorization envelope in the PR body.
-3. Read the exact current `governance-state` tip and require it to match the envelope's expected tip.
-4. Fetch the proposal commit and exact base commit as data.
-5. Reconstruct the expected record or pointer files using `main` validation code and immutable source PR metadata.
-6. Compare the proposal's complete changed-path set, file bytes, state values, record digests, Candidate commit/tree/base/branch, and expected parent.
-7. Reject extra paths, symlinks, deletions, mutable references, same-stage rewrites, secrets, or an invalid audit chain.
+3. Re-read the envelope's authorization comment through GitHub, require the repository owner, parse the exact command, and bind it to the source PR and envelope values.
+4. Read the exact current `governance-state` tip and require it to match the envelope's expected tip.
+5. Fetch the proposal commit and exact base commit as data.
+6. Reconstruct the expected record or pointer files using `main` validation code and immutable source PR metadata.
+7. Compare the proposal's complete changed-path set, file bytes, state values, record digests, Candidate commit/tree/base/branch, and expected parent.
+8. Require the PR head to remain identical to the SHA on which the Check was created.
+9. Reject extra paths, symlinks, deletions, mutable references, same-stage rewrites, secrets, or an invalid audit chain.
 
-The job itself produces the GitHub Actions check run named `governance-state-write`. Skipped jobs are not allowed to satisfy the Ruleset: the workflow uses a single always-created gate job that explicitly fails for an out-of-scope PR.
+The Gate creates an in-progress GitHub Actions Check named `governance-state-write` directly on the proposal head through the Checks API, then always completes that same Check with success or failure. This explicit head binding is required because the workflow run's own default SHA is not the proposal head for `pull_request_target` or a dispatch on `main`. An invalid proposal cannot obtain a successful Check.
 
 ### 3. Protected writer transport
 
@@ -87,10 +94,11 @@ The transport script has no authority to approve its own proposal. For each phas
 2. Re-reads the remote state tip before committing.
 3. Commits only the declared `governance/runtime/**` paths on a unique proposal branch.
 4. Opens a pull request targeting `governance-state`.
-5. Polls the proposal head's check runs and accepts only a completed successful `governance-state-write` check from GitHub Actions App id `15368`.
-6. Re-reads the PR head and target tip.
-7. Merges with the exact head SHA and `merge` method.
-8. Confirms the returned merge SHA equals the new remote state tip and that the result has two parents.
+5. Dispatches the independent Gate with the exact proposal PR number.
+6. Polls the proposal head's check runs and accepts only the newest completed successful `governance-state-write` check from GitHub Actions App id `15368`.
+7. Re-reads the PR head and target tip.
+8. Merges with the exact head SHA and `merge` method.
+9. Confirms the returned merge SHA equals the new remote state tip and that the result has two parents.
 
 Failure at any step stops the current phase. A record merge may exist without a pointer merge; this is recoverable because `current.json` remains unchanged and the next attempt starts from repository facts.
 
@@ -107,7 +115,7 @@ The migration must:
 - preserve the governance-1 plan and its allowed bootstrap `planAudit=null` exception;
 - populate release-candidate and rc-audit pointers and SHA-256 digests;
 - populate the exact Candidate context;
-- clear the legacy bootstrap marker so the migration cannot run again.
+- replace the legacy bootstrap marker with an immutable schema-2 recovery receipt. The receipt records the source tip, source revision, fixed Candidate/audit identities, and `completed: true`; it preserves the truthful governance-1 `planAudit=null` exception but cannot authorize a second migration because the migration accepts only schema 1.
 
 The state is written through two protected pull requests:
 
@@ -138,7 +146,7 @@ The pre-build guard runs before dependency-heavy build work and recognizes:
 - `governance-state`;
 - `governance/*`;
 - `governance-write/*`;
-- the specifically marked governance-only trust-root merge on `main` after verifying its changed-path allowlist.
+- every two-parent governance-only merge on `main` that changes `.github/workflows/governance-state.yml`, after verifying its changed-path allowlist, regardless of GitHub's configured merge-title format; the `Governance trust root:` subject is an additional fail-closed signal.
 
 The trust-root changed-path allowlist is exact:
 
@@ -148,6 +156,7 @@ The trust-root changed-path allowlist is exact:
 - `scripts/governance-*.sh` and `scripts/governance-*.mjs`;
 - `scripts/build-verified.sh`;
 - `tests/governance-contract.test.mjs`;
+- `docs/plans/**`;
 - `docs/superpowers/specs/**` and `docs/superpowers/plans/**`;
 - the governance-script entries in `package.json` and their corresponding `package-lock.json` metadata only.
 
@@ -168,9 +177,10 @@ The accepted result is zero new Worker Versions, zero preview deployments or ali
 ### Deterministic tests
 
 - A failed audit migrates only from the exact schema-1 revision-2 state to schema-2 revision 3 `IMPLEMENTATION_REQUIRED`.
+- The resulting immutable bootstrap-recovery receipt remains attached to governance-1 states that legitimately lack `planAudit`; it is evidence, not a reusable migration switch.
 - A passing audit, changed Candidate, changed tree, changed PR head, changed legacy tip, or second migration attempt fails.
 - The proposal verifier rejects extra files, missing files, byte changes, digest changes, wrong parent, wrong base, wrong phase, and mutable Candidate identity.
-- The writer contains no status-creation call and accepts only the fixed check name plus App id.
+- The writer contains no status or Check creation call, dispatches the independent Gate, and accepts only the fixed check name plus App id.
 - Record and pointer phases cannot be reversed.
 - Tip changes at proposal creation, after authorization, or before merge fail closed.
 - Cloudflare guard tests cover all governance branches and the exact governance-only main-merge case before any build marker.
