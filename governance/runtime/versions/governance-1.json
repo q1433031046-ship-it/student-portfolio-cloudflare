@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "project": "student-portfolio-cloudflare",
+  "repository": "q1433031046-ship-it/student-portfolio-cloudflare",
+  "activeVersion": "governance-1",
+  "stage": "RC_AUDIT_PENDING",
+  "taskLevel": "L2",
+  "revision": 1,
+  "lastUpdatedBy": {
+    "roleNumber": 3,
+    "roleName": "超级工作"
+  },
+  "records": {
+    "plan": "governance/runtime/records/governance-1/01-plan.md",
+    "planAudit": null,
+    "releaseCandidate": "governance/runtime/records/governance-1/04-release-candidate.md",
+    "rcAudit": null,
+    "releaseReceipt": null
+  },
+  "candidateSha": "2d6c573297832d4ef941dda7071c8014409a570d",
+  "releaseTag": null,
+  "bootstrap": {
+    "isBootstrapCandidate": true,
+    "reason": "治理合同尚未进入 main；本状态仅用于将初始治理 Candidate 交给角色 2 审计，不代表角色 2 已完成方案审计。"
+  }
+}
