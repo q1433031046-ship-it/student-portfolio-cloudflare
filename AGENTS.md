@@ -113,3 +113,5 @@ The comment entry is owner-only, accepts no arbitrary SHA, requires the release 
 This project separates formal work across fixed roles: 1=超级规划, 2=超级审计, 3=超级工作, and 4=超级发布. Before a formal governance task, read `governance/README.md`, `governance/workflow.md`, `governance/role-contract.json`, and the matching `governance/roles/*.md` contract.
 
 Read dynamic handoff state from `governance/runtime/current.json` on the dedicated `governance-state` branch, then follow its version and record pointers. The current repository governance contract and coordinated state take priority over old chat memory. Keep the full role contracts in `governance/`; this section is navigation only and must not replace or weaken the existing version, deployment, upgrade, or security contract above.
+
+Governance state is written only by `.github/workflows/governance-state.yml` after exact owner-command, previous-tip/revision, immutable-record, remote-Candidate, and compare-and-swap checks. Direct pushes and Cloudflare preview builds from `governance-state` are forbidden; if those remote protections cannot be proven active, stop the handoff as `BLOCKED` instead of editing state locally.

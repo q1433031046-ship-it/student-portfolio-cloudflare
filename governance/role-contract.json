@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "project": "student-portfolio-cloudflare",
   "repository": "q1433031046-ship-it/student-portfolio-cloudflare",
   "productionBranch": "main",
@@ -8,7 +8,22 @@
     "currentPath": "governance/runtime/current.json",
     "versionStatePattern": "governance/runtime/versions/<activeVersion>.json",
     "recordsRoot": "governance/runtime/records/",
-    "productionDeploymentTriggeredByStateBranch": false
+    "productionDeploymentTriggeredByStateBranch": false,
+    "writeWorkflow": ".github/workflows/governance-state.yml",
+    "writeCommand": "/governance-transition <expected-tip> <expected-revision> <role-number> <target-stage>",
+    "bootstrapWriteCommand": "/governance-bootstrap <expected-tip> <expected-revision> <candidate-pr-number>",
+    "directPushAllowed": false,
+    "branchProtectionRequired": true,
+    "cloudflarePreviewBuildsAllowed": false,
+    "recordFirstThenPointer": true,
+    "compareAndSwapRequired": true
+  },
+  "bootstrapPolicy": {
+    "activeVersion": "governance-1",
+    "candidateBranch": "governance/four-role-auto-handoff",
+    "baseSha": "d81785dd51bb0c9be339449566a15d3b3971e02a",
+    "planAuditMayBeNull": true,
+    "disableAfterContractOnMain": true
   },
   "requiredWorkflowStages": [
     "IDLE",
@@ -46,7 +61,8 @@
       "transitions": [
         { "from": "IDLE", "to": "PLANNING" },
         { "from": "PLANNING_REQUIRED", "to": "PLANNING" },
-        { "from": "PLANNING", "to": "PLAN_AUDIT_PENDING" }
+        { "from": "PLANNING", "to": "PLAN_AUDIT_PENDING" },
+        { "from": "BLOCKED", "to": "PLANNING" }
       ]
     },
     {
@@ -71,7 +87,9 @@
         { "from": "PLAN_AUDIT_PENDING", "to": "BLOCKED" },
         { "from": "RC_AUDIT_PENDING", "to": "RELEASE_APPROVED" },
         { "from": "RC_AUDIT_PENDING", "to": "IMPLEMENTATION_REQUIRED" },
-        { "from": "RC_AUDIT_PENDING", "to": "BLOCKED" }
+        { "from": "RC_AUDIT_PENDING", "to": "BLOCKED" },
+        { "from": "BLOCKED", "to": "PLAN_AUDIT_PENDING" },
+        { "from": "BLOCKED", "to": "RC_AUDIT_PENDING" }
       ]
     },
     {
@@ -89,12 +107,14 @@
         "canModifyProductCodeDuringRelease": false,
         "canDeployUnapprovedCandidate": false
       },
-      "readStages": ["IMPLEMENTATION_APPROVED", "IMPLEMENTATION_REQUIRED", "IMPLEMENTING", "BLOCKED"],
+      "readStages": ["IMPLEMENTATION_APPROVED", "IMPLEMENTATION_REQUIRED", "IMPLEMENTING", "BLOCKED", "ROLLED_BACK"],
       "transitions": [
         { "from": "IMPLEMENTATION_APPROVED", "to": "IMPLEMENTING" },
         { "from": "IMPLEMENTATION_REQUIRED", "to": "IMPLEMENTING" },
         { "from": "IMPLEMENTING", "to": "RC_AUDIT_PENDING" },
-        { "from": "IMPLEMENTING", "to": "BLOCKED" }
+        { "from": "IMPLEMENTING", "to": "BLOCKED" },
+        { "from": "BLOCKED", "to": "IMPLEMENTING" },
+        { "from": "ROLLED_BACK", "to": "IMPLEMENTATION_REQUIRED" }
       ]
     },
     {
@@ -112,14 +132,16 @@
         "canModifyProductCodeDuringRelease": false,
         "canDeployUnapprovedCandidate": false
       },
-      "readStages": ["RELEASE_APPROVED", "PRODUCTION_PREFLIGHT", "RELEASING", "BLOCKED", "ROLLED_BACK"],
+      "readStages": ["RELEASE_APPROVED", "PRODUCTION_PREFLIGHT", "RELEASING", "BLOCKED"],
       "transitions": [
         { "from": "RELEASE_APPROVED", "to": "PRODUCTION_PREFLIGHT" },
         { "from": "PRODUCTION_PREFLIGHT", "to": "RELEASING" },
         { "from": "PRODUCTION_PREFLIGHT", "to": "BLOCKED" },
         { "from": "RELEASING", "to": "PRODUCTION_VERIFIED" },
         { "from": "RELEASING", "to": "ROLLED_BACK" },
-        { "from": "RELEASING", "to": "BLOCKED" }
+        { "from": "RELEASING", "to": "BLOCKED" },
+        { "from": "BLOCKED", "to": "PRODUCTION_PREFLIGHT" },
+        { "from": "BLOCKED", "to": "RELEASING" }
       ]
     }
   ]

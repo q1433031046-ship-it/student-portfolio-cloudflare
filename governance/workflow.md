@@ -1,78 +1,69 @@
 # 四角色治理工作流
 
-## 状态与责任角色
+## 状态与接手角色
 
-| 状态 | 含义 | 主要角色 |
+| 状态 | 接手角色 | 必需证据 |
 | --- | --- | --- |
-| `IDLE` | 当前无活跃正式版本流程 | 任意 |
-| `PLANNING` | 正在规划 | 1 |
-| `PLAN_AUDIT_PENDING` | 规划已入库，等待方案审计 | 2 |
-| `IMPLEMENTATION_APPROVED` | 方案审计通过，允许实现 | 3 |
-| `IMPLEMENTING` | 正在实现 | 3 |
-| `RC_AUDIT_PENDING` | Candidate 已入库，等待候选审计 | 2 |
-| `RELEASE_APPROVED` | 候选审计通过，允许生产预检 | 4 |
-| `PRODUCTION_PREFLIGHT` | 正在生产预检 | 4 |
-| `RELEASING` | 正在正式发布 | 4 |
-| `PRODUCTION_VERIFIED` | 生产验证通过，版本关闭 | 4 |
-| `IMPLEMENTATION_REQUIRED` | 候选审计退回实现 | 3 |
-| `PLANNING_REQUIRED` | 方案审计退回规划 | 1 |
-| `BLOCKED` | 存在阻断 | 按阻断来源 |
-| `ROLLED_BACK` | 发布已回滚并冻结 | 4 / 3 |
+| IDLE / PLANNING / PLANNING_REQUIRED | 1 | 规划链 |
+| PLAN_AUDIT_PENDING | 2 | plan |
+| IMPLEMENTATION_APPROVED / IMPLEMENTING / IMPLEMENTATION_REQUIRED | 3 | plan + planAudit；退回时加 rcAudit |
+| RC_AUDIT_PENDING | 2 | plan + planAudit + releaseCandidate |
+| RELEASE_APPROVED / PRODUCTION_PREFLIGHT / RELEASING | 4 | 完整双审计链与固定 Candidate |
+| PRODUCTION_VERIFIED | 4 | releaseReceipt |
+| ROLLED_BACK | 3 | releaseReceipt 与完整审计链 |
+| BLOCKED | block.ownerRoleNumber | 来源阶段证据 + blocked |
 
-完整允许转换以 `role-contract.json` 为准。角色 3 不得直接跳到角色 4；必须同时存在方案审计与候选版本审计。角色 4 的第一步只能从 `RELEASE_APPROVED` 进入 `PRODUCTION_PREFLIGHT`。
+首次 governance-1 bootstrap 可缺少不存在的 planAudit，但必须绑定固定分支、基线和远端 Candidate；该例外不能用于其他版本。
 
-## 标准流程
+## 标准转换
 
-1. 角色 1：`IDLE/PLANNING_REQUIRED → PLANNING → PLAN_AUDIT_PENDING`。
-2. 角色 2：方案审计后进入 `IMPLEMENTATION_APPROVED`、`PLANNING_REQUIRED` 或 `BLOCKED`。
-3. 角色 3：`IMPLEMENTATION_APPROVED/IMPLEMENTATION_REQUIRED → IMPLEMENTING → RC_AUDIT_PENDING`。
-4. 角色 2：候选审计后进入 `RELEASE_APPROVED`、`IMPLEMENTATION_REQUIRED` 或 `BLOCKED`。
-5. 角色 4：`RELEASE_APPROVED → PRODUCTION_PREFLIGHT → RELEASING → PRODUCTION_VERIFIED/ROLLED_BACK/BLOCKED`。
+1. 角色 1：IDLE/PLANNING_REQUIRED → PLANNING → PLAN_AUDIT_PENDING。
+2. 角色 2：PLAN_AUDIT_PENDING → IMPLEMENTATION_APPROVED/PLANNING_REQUIRED/BLOCKED。
+3. 角色 3：IMPLEMENTATION_APPROVED/IMPLEMENTATION_REQUIRED → IMPLEMENTING → RC_AUDIT_PENDING/BLOCKED。
+4. 角色 2：RC_AUDIT_PENDING → RELEASE_APPROVED/IMPLEMENTATION_REQUIRED/BLOCKED。
+5. 角色 4：RELEASE_APPROVED → PRODUCTION_PREFLIGHT → RELEASING → PRODUCTION_VERIFIED/ROLLED_BACK/BLOCKED。
+6. ROLLED_BACK → IMPLEMENTATION_REQUIRED 只能由角色 3 接手。
+
+同阶段 revision 更新一律禁止。每条转换都有独立字段允许列表；进入 RELEASE_APPROVED 后，activeVersion、candidateSha、Candidate 上下文、releaseCandidate 和 rcAudit 全部冻结。
+
+## BLOCKED 恢复
+
+进入 BLOCKED 时必须保存 sourceStage、责任角色和 07-blocked.md。只有记录的责任角色能恢复，而且只能回到来源对应的最小安全阶段：
+
+- 规划来源 → PLANNING
+- 方案审计来源 → PLAN_AUDIT_PENDING
+- 实现来源 → IMPLEMENTING
+- 候选审计来源 → RC_AUDIT_PENDING
+- 发布批准/预检来源 → PRODUCTION_PREFLIGHT
+- 发布中来源 → RELEASING
+
+正常恢复和越权恢复都由测试覆盖。
 
 ## 新对话自动恢复
 
-角色收到“角色编号 + 接手”后必须：
+角色收到短句后自动读取 main 合同、受保护状态、必需记录及摘要。Candidate 阶段还要核对远端 commit/tree、分支 tip、开放 PR、main 基线和祖先关系。错误角色接手时指出应由哪个编号继续，不猜测，也不要求用户搬运已有交接文件。
 
-1. 自动读取 `main` 的治理入口、工作流、机器合同和本角色合同。
-2. 自动读取 `governance-state` 的 current 状态。
-3. 按 records 指针加载本阶段需要的交接记录。
-4. 核对 Candidate SHA、版本与审计结论（如适用）。
-5. 使用进度模板说明恢复阶段并立即继续。
+## 受保护的两提交协议
 
-如果 current 是 `PLANNING` 而用户要求角色 2 审计，角色 2 必须指出“角色 1 尚未写入 PLAN_AUDIT_PENDING，请让 1 完成交接入库”。它不能猜测，也不能要求用户搬运上一角色的长文。
+1. 所有者在同仓库开放 PR 上提交精确 governance-transition 指令，携带刚读取的 tip、revision、角色和目标阶段。
+2. 默认分支上的可信工作流解析指令；PR 内容始终按未信任输入处理。
+3. 工作流读取 governance-state 并严格比对 expected tip/revision。
+4. 运行 Draft 2020-12 Schema、角色允许列表、转换字段差异、完整审计链、固定记录路径、摘要和无秘密/泄密检查。
+5. 对 Candidate 回读 GitHub commit、tree、branch、PR、base 与 ancestry。
+6. 先提交记录；提交前用远端 ref 做 compare-and-swap（CAS）。
+7. 再提交 current 与版本快照；再次读取 ref 并执行第二次 fast-forward CAS。
+8. 任一步竞争或验证失败立即停止；孤立记录不改变 current。
 
-## 一句话交接场景
+普通用户、管理员和插件不得直接更新 governance-state。分支规则只允许受信任的 GitHub Actions 写入。
 
-| 用户只说 | 当前合法状态 | 角色自动读取 | 结果 |
-| --- | --- | --- | --- |
-| 对 2：“规划已经OK了，去检查。” | `PLAN_AUDIT_PENDING` | plan | 执行方案审计 |
-| 对 3：“审计通过了，开始做。” | `IMPLEMENTATION_APPROVED` | plan + planAudit | 确认冻结范围并实现 |
-| 对 2：“候选做好了，去检查。” | `RC_AUDIT_PENDING` | plan、planAudit、releaseCandidate | 自动识别候选审计并锁定 SHA |
-| 对 4：“审计通过了，发布。” | `RELEASE_APPROVED` | releaseCandidate + rcAudit | 只预检并发布批准 SHA |
+## Cloudflare 隔离
 
-## 动态协调分支写入协议
+治理写入启用前必须关闭 governance-state 的 Workers Builds，或用分支/Build watch paths 排除治理运行时路径。即使远端分支构建被误开，`scripts/build-verified.sh` 也必须根据 Cloudflare 官方 `WORKERS_CI` 与 `WORKERS_CI_BRANCH` 在任何构建、`wrangler versions upload` 和 Worker Version 创建之前失败关闭。必须以一次真实治理分支提交证明 Cloudflare 检查停在该门禁，没有 Worker Version 或预览别名；仅仅“不切生产流量”不算关闭此项。
 
-1. 读取 `refs/heads/governance-state` 的最新 tip、current 与目标版本快照。
-2. 运行状态校验；确认当前角色允许读取该 stage。
-3. 生成无秘密的交接记录，先以最新 tip 为父提交写入 records 路径。
-4. 重新读取分支 tip 与 current；发现 stage/revision 已变化就停止并重新加载。
-5. 生成 `revision + 1` 的新 current，并在一个提交中同步 current 与版本快照。
-6. 以重新读取的 tip 做 compare-and-swap 更新；失败就丢弃旧状态更新并重试读取。
-7. 再次读取并验证记录、current、版本快照和分支 tip，成功后才宣布交接完成。
-
-孤立但未被 current 引用的记录不会改变正式阶段，可以由后续治理维护安全清理；不得为了清理而覆盖并发写入。
-
-## 协调通道不会发布生产
-
-- 动态分支固定为 `governance-state`，生产分支固定为 `main`。
-- 状态分支不创建发布标签、不合并产品代码、不调用 Wrangler 或 Cloudflare。
-- 仓库现有 Actions 的 push 仅匹配 `main`；状态分支 push 不运行现有验证/标记发布工作流。
-- 如果未来 CI 或 Cloudflare 配置改变并使该分支可能触发生产，角色必须进入 `BLOCKED`，先修复隔离再写状态。
+治理工作流不得包含 Wrangler、Cloudflare 部署、标签创建或生产资源权限。
 
 ## 校验命令
 
-```bash
-node scripts/governance-state.mjs validate governance/runtime-example/current.json
-```
+结构与 Schema 使用 npm run governance:validate。
 
-传入 `--previous <old.json>` 时会检查 revision 严格 +1，并按 `role-contract.json` 验证阶段转换。
+正式转换必须执行 validate-transition，并同时提供 previous、完整 records-root 和 role-contract。previous 不能省略，同阶段写入不允许。

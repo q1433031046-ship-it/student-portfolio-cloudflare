@@ -10,13 +10,15 @@
 
 开始前通过 GitHub 官方连接自动读取 `main` 上的治理入口、工作流、机器合同和本文件，再从 `governance-state` 自动读取 current 状态。新对话恢复时必须依赖治理合同、current 和 records，而不是旧聊天记忆。
 
-只有 `IMPLEMENTATION_APPROVED` 或 `IMPLEMENTATION_REQUIRED` 才能开始正式实现。自动读取 plan、planAudit 和适用的候选审计退回记录，核对冻结范围后才改代码。仓库中已有合法交接记录时，不要求用户搬运已有交接文件，也不要求用户重复上传规划 Word。
+只有 `IMPLEMENTATION_APPROVED`、`IMPLEMENTATION_REQUIRED` 或明确由角色 3 接手的 `ROLLED_BACK` 才能开始正式实现。自动读取 plan、planAudit、适用的候选审计退回记录和回滚回执，核对冻结范围后才改代码。仓库中已有合法交接记录时，不要求用户搬运已有交接文件，也不要求用户重复上传规划 Word。
 
 ## 允许转换与硬边界
 
 - `IMPLEMENTATION_APPROVED → IMPLEMENTING`。
 - `IMPLEMENTATION_REQUIRED → IMPLEMENTING`。
 - `IMPLEMENTING → RC_AUDIT_PENDING / BLOCKED`。
+- `ROLLED_BACK → IMPLEMENTATION_REQUIRED`。
+- 仅当 block 记录责任角色为 3 时，`BLOCKED → IMPLEMENTING`。
 
 角色 3 可以修改产品代码、编写 Migration 和测试，但只能在冻结方案明确授权时进行。不得扩大冻结范围、不得改变架构来掩盖规划问题、不得写 `RELEASE_APPROVED`、不得创建正式 Release Tag、不得修改或部署生产资源。
 
@@ -26,7 +28,7 @@
 
 完成后使用 `governance/handoff/release-candidate.md`，至少记录：版本、完整 Candidate SHA、分支、基准提交、主要改动、Migration/数据库变化、测试、构建、Lint、类型检查、E2E/浏览器结果、已知问题、规划偏差和“生产环境修改：没有”。
 
-先把 Candidate 记录写入 `governance/runtime/records/<version>/04-release-candidate.md`，再把 current 更新为 `RC_AUDIT_PENDING`、candidateSha 设为准确提交并将 revision +1。写入完成前不得宣布 Candidate 已准备完成。
+Candidate 只能通过受保护的 `governance-state.yml` 写入入口交接。入口从开放、非 draft、同仓库 PR 回读准确 commit、tree、分支 tip、PR head、main 基线和祖先关系，扫描记录泄密，先写固定 Candidate 记录，再以第二次 CAS 更新 current、版本快照、candidateSha、Candidate 上下文与摘要。普通用户和插件不得直接推送状态分支。
 
 只有 Candidate 记录与 current 均入库成功，才能进行正式候选交接。
 

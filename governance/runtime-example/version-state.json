@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "project": "student-portfolio-cloudflare",
   "repository": "q1433031046-ship-it/student-portfolio-cloudflare",
   "activeVersion": "1.3.1",
@@ -11,12 +11,24 @@
     "roleName": "超级规划"
   },
   "records": {
-    "plan": "governance/runtime/records/v1.3.1/01-plan.md",
+    "plan": "governance/runtime/records/1.3.1/01-plan.md",
     "planAudit": null,
     "releaseCandidate": null,
     "rcAudit": null,
-    "releaseReceipt": null
+    "releaseReceipt": null,
+    "blocked": null
+  },
+  "recordDigests": {
+    "plan": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "planAudit": null,
+    "releaseCandidate": null,
+    "rcAudit": null,
+    "releaseReceipt": null,
+    "blocked": null
   },
   "candidateSha": null,
-  "releaseTag": null
+  "candidateContext": null,
+  "releaseTag": null,
+  "block": null,
+  "bootstrap": null
 }

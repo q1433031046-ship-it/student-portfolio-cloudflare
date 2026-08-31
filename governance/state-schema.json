@@ -14,11 +14,15 @@
     "revision",
     "lastUpdatedBy",
     "records",
+    "recordDigests",
     "candidateSha",
-    "releaseTag"
+    "candidateContext",
+    "releaseTag",
+    "block",
+    "bootstrap"
   ],
   "properties": {
-    "schemaVersion": { "const": 1 },
+    "schemaVersion": { "const": 2 },
     "project": { "const": "student-portfolio-cloudflare" },
     "repository": { "const": "q1433031046-ship-it/student-portfolio-cloudflare" },
     "activeVersion": {
@@ -49,13 +53,27 @@
     "records": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["plan", "planAudit", "releaseCandidate", "rcAudit", "releaseReceipt"],
+      "required": ["plan", "planAudit", "releaseCandidate", "rcAudit", "releaseReceipt", "blocked"],
       "properties": {
         "plan": { "$ref": "#/$defs/runtimePointer" },
         "planAudit": { "$ref": "#/$defs/runtimePointer" },
         "releaseCandidate": { "$ref": "#/$defs/runtimePointer" },
         "rcAudit": { "$ref": "#/$defs/runtimePointer" },
-        "releaseReceipt": { "$ref": "#/$defs/runtimePointer" }
+        "releaseReceipt": { "$ref": "#/$defs/runtimePointer" },
+        "blocked": { "$ref": "#/$defs/runtimePointer" }
+      }
+    },
+    "recordDigests": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["plan", "planAudit", "releaseCandidate", "rcAudit", "releaseReceipt", "blocked"],
+      "properties": {
+        "plan": { "$ref": "#/$defs/digest" },
+        "planAudit": { "$ref": "#/$defs/digest" },
+        "releaseCandidate": { "$ref": "#/$defs/digest" },
+        "rcAudit": { "$ref": "#/$defs/digest" },
+        "releaseReceipt": { "$ref": "#/$defs/digest" },
+        "blocked": { "$ref": "#/$defs/digest" }
       }
     },
     "candidateSha": {
@@ -64,20 +82,57 @@
         { "type": "string", "pattern": "^[0-9a-f]{40}$" }
       ]
     },
+    "candidateContext": {
+      "anyOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["branch", "pullRequest", "baseSha", "treeSha"],
+          "properties": {
+            "branch": { "type": "string", "pattern": "^[A-Za-z0-9._/-]+$" },
+            "pullRequest": { "type": "integer", "minimum": 1 },
+            "baseSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+            "treeSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" }
+          }
+        }
+      ]
+    },
     "releaseTag": {
       "anyOf": [
         { "type": "null" },
         { "type": "string", "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+$" }
       ]
     },
+    "block": {
+      "anyOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sourceStage", "ownerRoleNumber"],
+          "properties": {
+            "sourceStage": { "$ref": "#/$defs/nonTerminalStage" },
+            "ownerRoleNumber": { "type": "integer", "minimum": 1, "maximum": 4 }
+          }
+        }
+      ]
+    },
     "bootstrap": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["isBootstrapCandidate", "reason"],
-      "properties": {
-        "isBootstrapCandidate": { "const": true },
-        "reason": { "type": "string", "minLength": 1 }
-      }
+      "anyOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["isBootstrapCandidate", "candidateSha", "candidateBranch", "baseSha"],
+          "properties": {
+            "isBootstrapCandidate": { "const": true },
+            "candidateSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+            "candidateBranch": { "const": "governance/four-role-auto-handoff" },
+            "baseSha": { "const": "d81785dd51bb0c9be339449566a15d3b3971e02a" }
+          }
+        }
+      ]
     }
   },
   "$defs": {
@@ -86,8 +141,14 @@
         { "type": "null" },
         {
           "type": "string",
-          "pattern": "^governance/runtime/(?:records|versions)/[A-Za-z0-9._/-]+$"
+          "pattern": "^governance/runtime/records/[A-Za-z0-9.-]+/(?:01-plan|02-plan-audit|04-release-candidate|05-rc-audit|06-release-receipt|07-blocked)\\.md$"
         }
+      ]
+    },
+    "digest": {
+      "anyOf": [
+        { "type": "null" },
+        { "type": "string", "pattern": "^[0-9a-f]{64}$" }
       ]
     },
     "roleIdentity": {
@@ -96,63 +157,86 @@
           "type": "object",
           "additionalProperties": false,
           "required": ["roleNumber", "roleName"],
-          "properties": {
-            "roleNumber": { "const": 1 },
-            "roleName": { "const": "超级规划" }
-          }
+          "properties": { "roleNumber": { "const": 1 }, "roleName": { "const": "超级规划" } }
         },
         {
           "type": "object",
           "additionalProperties": false,
           "required": ["roleNumber", "roleName"],
-          "properties": {
-            "roleNumber": { "const": 2 },
-            "roleName": { "const": "超级审计" }
-          }
+          "properties": { "roleNumber": { "const": 2 }, "roleName": { "const": "超级审计" } }
         },
         {
           "type": "object",
           "additionalProperties": false,
           "required": ["roleNumber", "roleName"],
-          "properties": {
-            "roleNumber": { "const": 3 },
-            "roleName": { "const": "超级工作" }
-          }
+          "properties": { "roleNumber": { "const": 3 }, "roleName": { "const": "超级工作" } }
         },
         {
           "type": "object",
           "additionalProperties": false,
           "required": ["roleNumber", "roleName"],
-          "properties": {
-            "roleNumber": { "const": 4 },
-            "roleName": { "const": "超级发布" }
-          }
+          "properties": { "roleNumber": { "const": 4 }, "roleName": { "const": "超级发布" } }
         }
+      ]
+    },
+    "nonTerminalStage": {
+      "enum": [
+        "PLANNING",
+        "PLAN_AUDIT_PENDING",
+        "IMPLEMENTATION_APPROVED",
+        "IMPLEMENTING",
+        "RC_AUDIT_PENDING",
+        "RELEASE_APPROVED",
+        "PRODUCTION_PREFLIGHT",
+        "RELEASING",
+        "IMPLEMENTATION_REQUIRED",
+        "PLANNING_REQUIRED"
       ]
     }
   },
   "allOf": [
     {
-      "if": { "properties": { "stage": { "const": "PLAN_AUDIT_PENDING" } } },
-      "then": { "properties": { "records": { "properties": { "plan": { "type": "string" } } } } }
+      "if": { "properties": { "stage": { "enum": ["PLAN_AUDIT_PENDING", "IMPLEMENTATION_APPROVED", "IMPLEMENTING", "RC_AUDIT_PENDING", "RELEASE_APPROVED", "PRODUCTION_PREFLIGHT", "RELEASING", "PRODUCTION_VERIFIED", "IMPLEMENTATION_REQUIRED", "PLANNING_REQUIRED", "ROLLED_BACK"] } } },
+      "then": { "properties": { "records": { "properties": { "plan": { "type": "string" } } }, "recordDigests": { "properties": { "plan": { "type": "string" } } } } }
     },
     {
-      "if": { "properties": { "stage": { "const": "RC_AUDIT_PENDING" } } },
+      "if": {
+        "allOf": [
+          { "properties": { "stage": { "enum": ["IMPLEMENTATION_APPROVED", "IMPLEMENTING", "RC_AUDIT_PENDING", "RELEASE_APPROVED", "PRODUCTION_PREFLIGHT", "RELEASING", "PRODUCTION_VERIFIED", "IMPLEMENTATION_REQUIRED", "PLANNING_REQUIRED", "ROLLED_BACK"] } } },
+          { "properties": { "bootstrap": { "type": "null" } } }
+        ]
+      },
+      "then": { "properties": { "records": { "properties": { "planAudit": { "type": "string" } } }, "recordDigests": { "properties": { "planAudit": { "type": "string" } } } } }
+    },
+    {
+      "if": { "properties": { "stage": { "enum": ["RC_AUDIT_PENDING", "RELEASE_APPROVED", "PRODUCTION_PREFLIGHT", "RELEASING", "PRODUCTION_VERIFIED", "IMPLEMENTATION_REQUIRED", "ROLLED_BACK"] } } },
       "then": {
         "properties": {
           "records": { "properties": { "releaseCandidate": { "type": "string" } } },
-          "candidateSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" }
+          "recordDigests": { "properties": { "releaseCandidate": { "type": "string" } } },
+          "candidateSha": { "type": "string" },
+          "candidateContext": { "type": "object" }
         }
       }
     },
     {
-      "if": { "properties": { "stage": { "const": "RELEASE_APPROVED" } } },
+      "if": { "properties": { "stage": { "enum": ["RELEASE_APPROVED", "PRODUCTION_PREFLIGHT", "RELEASING", "PRODUCTION_VERIFIED", "IMPLEMENTATION_REQUIRED", "ROLLED_BACK"] } } },
+      "then": { "properties": { "records": { "properties": { "rcAudit": { "type": "string" } } }, "recordDigests": { "properties": { "rcAudit": { "type": "string" } } } } }
+    },
+    {
+      "if": { "properties": { "stage": { "enum": ["PRODUCTION_VERIFIED", "ROLLED_BACK"] } } },
+      "then": { "properties": { "records": { "properties": { "releaseReceipt": { "type": "string" } } }, "recordDigests": { "properties": { "releaseReceipt": { "type": "string" } } } } }
+    },
+    {
+      "if": { "properties": { "stage": { "const": "BLOCKED" } } },
       "then": {
         "properties": {
-          "records": { "properties": { "rcAudit": { "type": "string" } } },
-          "candidateSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" }
+          "block": { "type": "object" },
+          "records": { "properties": { "blocked": { "type": "string" } } },
+          "recordDigests": { "properties": { "blocked": { "type": "string" } } }
         }
-      }
+      },
+      "else": { "properties": { "block": { "type": "null" } } }
     }
   ]
 }

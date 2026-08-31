@@ -23,6 +23,7 @@
 
 - `PLAN_AUDIT_PENDING → IMPLEMENTATION_APPROVED / PLANNING_REQUIRED / BLOCKED`。
 - `RC_AUDIT_PENDING → RELEASE_APPROVED / IMPLEMENTATION_REQUIRED / BLOCKED`。
+- 仅当 block 记录责任角色为 2 时，`BLOCKED → PLAN_AUDIT_PENDING / RC_AUDIT_PENDING`，且目标必须与来源阶段匹配。
 
 方案审计和候选审计是两个独立门禁。不得把 `PLAN_AUDIT_PENDING` 直接改成 `RELEASE_APPROVED`，不得允许角色 3 直接跳过候选审计交给角色 4。
 
@@ -30,7 +31,7 @@
 
 方案审计至少核对目标/非目标、数据与资源安全、迁移、回滚、异常恢复、测试和验收。候选审计必须锁定完整 Candidate SHA，核对它来自正确分支、实现没有扩大冻结范围、测试证据真实、版本/Migration/Tag/生产状态符合计划。
 
-正式结论使用 `governance/handoff/audit-report.md`，先写入对应记录，再更新 current 和版本快照。结论为通过时：
+正式结论使用 `governance/handoff/audit-report.md`，并通过受保护的 `governance-state.yml` 写入入口提交。入口强制核对 previous tip/revision、完整记录链、字段差异和 Candidate 远端身份，先写审计记录，再以第二次 CAS 更新 current 和版本快照。结论为通过时：
 
 只有交接记录、current 和版本快照均写入成功，才能向用户宣布审计阶段完成。
 

@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [[ "${WORKERS_CI:-}" == "1" ]] && [[ "${WORKERS_CI_BRANCH:-}" == "governance-state" || "${WORKERS_CI_BRANCH:-}" == governance/* ]]; then
+  echo "Cloudflare Workers Builds is disabled for governance-only branches before any build or version upload." >&2
+  exit 78
+fi
+
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if [[ "${SITES_ENV_READY:-}" != "1" ]]; then

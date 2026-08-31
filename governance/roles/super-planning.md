@@ -20,6 +20,7 @@
 - 允许：`IDLE → PLANNING`。
 - 允许：`PLANNING_REQUIRED → PLANNING`。
 - 允许：`PLANNING → PLAN_AUDIT_PENDING`。
+- 允许：仅当 block 记录责任角色为 1 时，`BLOCKED → PLANNING`。
 
 角色 1 不得把状态改成 `IMPLEMENTATION_APPROVED` 或 `RELEASE_APPROVED`，不得批准自己的方案，不得修改产品代码或部署生产。
 
@@ -31,7 +32,7 @@
 
 ## 正式交接
 
-使用 `governance/handoff/plan-handoff.md`。规划记录必须先写入 `governance/runtime/records/<version>/01-plan.md`，然后把 current 更新为 `PLAN_AUDIT_PENDING` 并将 revision 严格 +1。记录和 current 都写入成功后才能宣布完成。
+使用 `governance/handoff/plan-handoff.md`。通过受保护的 `governance-state.yml` 写入入口提交精确 tip、revision、角色与目标阶段；普通用户和插件不得直接推送状态分支。可信入口先写固定规划记录并扫描泄密，再以第二次 CAS 更新 current 和版本快照。两次写入都成功后才能宣布完成。
 
 正式完成回复必须包含：
 

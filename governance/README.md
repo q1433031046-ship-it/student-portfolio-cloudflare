@@ -1,62 +1,65 @@
 # 学生作品展示｜四角色治理入口
 
-本目录是项目的正式治理合同。它把职责、阶段、交接和恢复规则放进 GitHub，而不是依赖某一次聊天记录。仓库中的最新有效合同与协调状态优先于本地 Word 和旧聊天记忆。
+本目录是项目的正式治理合同。长期事实写进 GitHub，旧聊天和本地文档不能覆盖仓库中已经验证的合同与状态。
 
-## 永久角色代号
+## 永久角色
 
-| 代号 | 正式名称 | 核心职责 | 常见下一角色 |
-| --- | --- | --- | --- |
-| 1 | 超级规划 | 把需求变成可审计、可执行的冻结方案 | 2 |
-| 2 | 超级审计 | 审计方案或候选版本，拥有否决权 | 3、4 或退回 |
-| 3 | 超级工作 | 按冻结方案实现、验证并生成准确 Candidate | 2 |
-| 4 | 超级发布 | 只发布角色 2 批准的准确 Candidate | 结束或退回 3 |
+| 编号 | 正式名称 | 核心职责 |
+| --- | --- | --- |
+| 1 | 超级规划 | 形成可审计的冻结方案 |
+| 2 | 超级审计 | 独立审计方案与 Candidate，拥有否决权 |
+| 3 | 超级工作 | 按冻结方案实现并生成 Candidate |
+| 4 | 超级发布 | 只发布角色 2 批准的准确 Candidate |
 
-角色编号不可重排、复用或改名。完整机器权限见 [`role-contract.json`](./role-contract.json)，流程见 [`workflow.md`](./workflow.md)。
+编号、名称、权限、可读阶段和转换均由 role-contract.json 的严格允许列表固定，任何新增、删除或改写都会失败。
 
-## 正式任务的读取顺序
+## 新对话读取顺序
 
-1. 通过 GitHub 官方连接做一次无害只读检查；连接有效就复用。
-2. 从 `main` 读取本文件、`workflow.md`、`role-contract.json` 与本角色的 `roles/*.md`。
-3. 从 `governance-state` 分支读取 `governance/runtime/current.json`。
-4. 根据 `activeVersion`、`stage` 和 `records` 自动读取前置交接记录。
-5. 核对版本、审计结论和 Candidate SHA；阶段不合法就停止。
-6. 继续本角色工作，不询问用户“上次做到哪了”，也不要求用户搬运仓库中已有的 Word、Markdown 或截图。
+1. 从 main 读取本文件、workflow.md、role-contract.json 和对应 roles 文件。
+2. 从受保护的 governance-state 分支读取 governance/runtime/current.json。
+3. 核对 activeVersion、stage、revision、记录路径与 SHA-256。
+4. 自动读取当前阶段所需记录，并核对 Candidate 的 commit、tree、分支、PR 和基线。
+5. 阶段与角色不匹配时失败关闭，不要求用户搬运仓库已有文件。
 
-新对话可以只收到“你是 1/2/3/4，接手学生作品展示项目”这一句。只要协调状态完整，角色必须按上述顺序自动恢复。
+## 静态合同与动态事实
 
-## 静态合同与动态状态
+- main/governance：角色、状态机、Schema、模板和验证器。
+- governance-state/governance/runtime/current.json：唯一当前事实指针。
+- governance-state/governance/runtime/versions/activeVersion.json：同 revision 的版本快照。
+- governance-state/governance/runtime/records/activeVersion：固定类型的规划、审计、Candidate、发布与阻断记录。
 
-- `main/governance/`：稳定合同、模板、示例和验证规则。
-- `governance-state/governance/runtime/current.json`：唯一当前事实指针。
-- `governance-state/governance/runtime/versions/<version>.json`：对应版本快照。
-- `governance-state/governance/runtime/records/<version>/`：规划、审计、Candidate 与发布回执。
+每个记录路径必须绑定当前版本和固定文件名，状态同时保存记录 SHA-256。跨版本指针、错类型文件或摘要不一致全部拒绝。
 
-`governance-state` 不是产品来源，不合并到生产分支，也不创建 Release Tag。现有 GitHub Actions 的 push 触发器仅监听 `main`，因此状态分支更新不会启动现有生产发布流程。
+## 受保护写入
 
-## 写入与并发规则
+正式状态只能由 .github/workflows/governance-state.yml 写入。仓库所有者在开放、非 draft、同仓库 PR 中提交精确指令：
 
-- 每次写入前重新读取分支最新提交、`stage` 和 `revision`。
-- 先提交交接记录，再在同一状态提交中更新 `current.json` 与版本快照。
-- 新状态 `revision` 必须严格等于旧状态 `revision + 1`。
-- 更新分支引用时必须以刚读取的分支 tip 为父提交；tip 已变化就放弃旧写入并重新加载。
-- 只有记录与 current 都成功入库后，角色才可以宣布正式阶段完成。
-- 写入失败时如实报告“交接无法入库”，不得伪称完成。
+/governance-transition <expected-tip> <expected-revision> <role-number> <target-stage>
 
-## 公开仓库安全边界
+可信工作流从 main 运行验证代码，不执行 PR 中的脚本。它强制检查所有者身份、previous tip/revision、角色转换、字段差异、记录存在性与摘要、泄密扫描以及 Candidate 远端身份。记录先提交，随后 current 与版本快照在第二次 fast-forward CAS 中提交；任一 ref 竞争都会停止并要求重新读取。
 
-动态记录不得包含管理员凭据、恢复材料、初始化口令、访问令牌、浏览器状态、二维码或访问链接、私人联系方式、学生私人内容或生产资源原始 ID。生产资源只记录“已核对 / 匹配 / 不匹配”等结论。`scripts/governance-state.mjs` 会拒绝禁止字段与越权状态。
+以下三项是启用硬门，缺一项就必须保持 BLOCKED：
 
-## 模板和下一句话
+1. governance-state 受 GitHub 规则保护，禁止普通用户和管理员直接推送，只允许受信任的 GitHub Actions 写入。
+2. Cloudflare Workers Builds 已关闭非生产分支构建，或明确排除 governance-state / governance/runtime。
+3. `scripts/build-verified.sh` 必须在 Cloudflare 官方注入的 `WORKERS_CI=1` 且分支为 `governance-state` 或 `governance/*` 时，于构建和 `wrangler versions upload` 之前以状态 78 失败关闭。
+4. 用真实治理分支提交证明 Cloudflare 检查停在上述门禁，没有创建 Worker Version 或公开预览别名。
 
-关键里程碑使用 [`handoff/`](./handoff/) 下的正式模板。完成后同时告诉用户下一角色编号和最短指令：
+状态通道永远不得调用 Wrangler、创建 Release Tag、改 Worker/D1/KV/Secrets 或部署生产。
 
-- 1 完成规划：对 2 说“规划已经OK了，去检查。”
-- 2 方案审计通过：对 3 说“审计通过了，开始做。”
-- 3 生成 Candidate：对 2 说“候选做好了，去检查。”
-- 2 候选审计通过：对 4 说“审计通过了，发布。”
+## 无秘密与泄密门禁
 
-正常讨论可以自然回答；只有正式状态、交接、进度与阻断必须模板化。
+可信写入入口同时扫描 current、版本快照和本次记录。禁止管理员凭据、恢复材料、初始化口令、访问令牌、浏览器状态、二维码或访问链接、私人联系方式、网络地址、学生私人内容和生产资源原始 ID。错误只报告命中类别与文件，不回显发现的值。
 
-## 初次启用说明
+## 一次性 bootstrap
 
-治理合同尚未进入 `main` 之前，本治理 Candidate 本身属于一次性 bootstrap：协调状态可以指向 Candidate 与冻结任务记录，但不得伪造不存在的方案审计。Candidate 通过角色 2 审计并合并后，所有产品版本一律按正常状态机执行，不再允许 bootstrap 例外。
+bootstrap 只允许 governance-1、分支 governance/four-role-auto-handoff 和基线 d81785dd51bb0c9be339449566a15d3b3971e02a。candidateSha 必须与远端 PR head 一致。治理合同进入 main 后不得再次创建 bootstrap；后续产品版本必须同时具备方案审计和候选审计。
+
+## 交接短句
+
+- 1 → 2：“规划已经OK了，去检查。”
+- 2 → 3：“审计通过了，开始做。”
+- 3 → 2：“候选做好了，去检查。”
+- 2 → 4：“审计通过了，发布。”
+
+只有受保护写入成功后才能宣布交接完成。

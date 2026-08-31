@@ -17,6 +17,7 @@
 - `RELEASE_APPROVED → PRODUCTION_PREFLIGHT`。
 - `PRODUCTION_PREFLIGHT → RELEASING / BLOCKED`。
 - `RELEASING → PRODUCTION_VERIFIED / ROLLED_BACK / BLOCKED`。
+- 仅当 block 记录责任角色为 4 时，`BLOCKED → PRODUCTION_PREFLIGHT / RELEASING`，目标必须匹配阻断来源。
 
 角色 4 可以执行生产发布，但不能在发布阶段修改产品代码、不能自行审批候选、不能部署未批准 Candidate、不能用另一个 SHA 替换批准 SHA。生产预检发现代码问题时退回角色 3，不现场修补。
 
@@ -24,7 +25,7 @@
 
 发布前重新核对 GitHub/Cloudflare 官方连接、目标 Worker、资源绑定结论、基线、Migration、安全恢复条件与批准 SHA。敏感资源只记录“已核对 / 匹配 / 不匹配”，不写公开原始 ID 或秘密。
 
-正式完成使用 `governance/handoff/release-receipt.md`。发布记录先入库，再把 current 更新为 `PRODUCTION_VERIFIED`、`ROLLED_BACK` 或 `BLOCKED`。成功时向用户明确版本已关闭；失败时说明需要角色 3 还是角色 4 继续处理。
+正式完成使用 `governance/handoff/release-receipt.md`，并只通过受保护的 `governance-state.yml` 写入入口交接。入口冻结已批准 Candidate 身份、扫描泄密、先写发布记录，再以第二次 CAS 更新 current。进入 `ROLLED_BACK` 后下一责任角色固定为 3；角色 4 不得自行改写 Candidate。
 
 只有发布回执与 current 均写入成功，才能宣布正式发布阶段完成。
 
