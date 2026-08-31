@@ -5,7 +5,7 @@
   "activeVersion": "governance-1",
   "stage": "RC_AUDIT_PENDING",
   "taskLevel": "L2",
-  "revision": 1,
+  "revision": 2,
   "lastUpdatedBy": {
     "roleNumber": 3,
     "roleName": "超级工作"
@@ -13,11 +13,11 @@
   "records": {
     "plan": "governance/runtime/records/governance-1/01-plan.md",
     "planAudit": null,
-    "releaseCandidate": "governance/runtime/records/governance-1/04-release-candidate.md",
+    "releaseCandidate": "governance/runtime/records/governance-1/04-release-candidate-r2.md",
     "rcAudit": null,
     "releaseReceipt": null
   },
-  "candidateSha": "2d6c573297832d4ef941dda7071c8014409a570d",
+  "candidateSha": "7caf24d4c52f1502d43cbf668329701986669a6e",
   "releaseTag": null,
   "bootstrap": {
     "isBootstrapCandidate": true,
