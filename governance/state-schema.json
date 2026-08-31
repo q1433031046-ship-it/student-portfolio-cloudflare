@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/q1433031046-ship-it/student-portfolio-cloudflare/governance/state-schema.json",
+  "title": "Student portfolio governance current state",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "project",
+    "repository",
+    "activeVersion",
+    "stage",
+    "taskLevel",
+    "revision",
+    "lastUpdatedBy",
+    "records",
+    "candidateSha",
+    "releaseTag"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "project": { "const": "student-portfolio-cloudflare" },
+    "repository": { "const": "q1433031046-ship-it/student-portfolio-cloudflare" },
+    "activeVersion": {
+      "type": "string",
+      "pattern": "^(?:[0-9]+\\.[0-9]+\\.[0-9]+|governance-[a-z0-9][a-z0-9.-]*)$"
+    },
+    "stage": {
+      "enum": [
+        "IDLE",
+        "PLANNING",
+        "PLAN_AUDIT_PENDING",
+        "IMPLEMENTATION_APPROVED",
+        "IMPLEMENTING",
+        "RC_AUDIT_PENDING",
+        "RELEASE_APPROVED",
+        "PRODUCTION_PREFLIGHT",
+        "RELEASING",
+        "PRODUCTION_VERIFIED",
+        "IMPLEMENTATION_REQUIRED",
+        "PLANNING_REQUIRED",
+        "BLOCKED",
+        "ROLLED_BACK"
+      ]
+    },
+    "taskLevel": { "enum": ["L0", "L1", "L2", "L3"] },
+    "revision": { "type": "integer", "minimum": 0 },
+    "lastUpdatedBy": { "$ref": "#/$defs/roleIdentity" },
+    "records": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["plan", "planAudit", "releaseCandidate", "rcAudit", "releaseReceipt"],
+      "properties": {
+        "plan": { "$ref": "#/$defs/runtimePointer" },
+        "planAudit": { "$ref": "#/$defs/runtimePointer" },
+        "releaseCandidate": { "$ref": "#/$defs/runtimePointer" },
+        "rcAudit": { "$ref": "#/$defs/runtimePointer" },
+        "releaseReceipt": { "$ref": "#/$defs/runtimePointer" }
+      }
+    },
+    "candidateSha": {
+      "anyOf": [
+        { "type": "null" },
+        { "type": "string", "pattern": "^[0-9a-f]{40}$" }
+      ]
+    },
+    "releaseTag": {
+      "anyOf": [
+        { "type": "null" },
+        { "type": "string", "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+$" }
+      ]
+    },
+    "bootstrap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["isBootstrapCandidate", "reason"],
+      "properties": {
+        "isBootstrapCandidate": { "const": true },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    }
+  },
+  "$defs": {
+    "runtimePointer": {
+      "anyOf": [
+        { "type": "null" },
+        {
+          "type": "string",
+          "pattern": "^governance/runtime/(?:records|versions)/[A-Za-z0-9._/-]+$"
+        }
+      ]
+    },
+    "roleIdentity": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["roleNumber", "roleName"],
+          "properties": {
+            "roleNumber": { "const": 1 },
+            "roleName": { "const": "超级规划" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["roleNumber", "roleName"],
+          "properties": {
+            "roleNumber": { "const": 2 },
+            "roleName": { "const": "超级审计" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["roleNumber", "roleName"],
+          "properties": {
+            "roleNumber": { "const": 3 },
+            "roleName": { "const": "超级工作" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["roleNumber", "roleName"],
+          "properties": {
+            "roleNumber": { "const": 4 },
+            "roleName": { "const": "超级发布" }
+          }
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "stage": { "const": "PLAN_AUDIT_PENDING" } } },
+      "then": { "properties": { "records": { "properties": { "plan": { "type": "string" } } } } }
+    },
+    {
+      "if": { "properties": { "stage": { "const": "RC_AUDIT_PENDING" } } },
+      "then": {
+        "properties": {
+          "records": { "properties": { "releaseCandidate": { "type": "string" } } },
+          "candidateSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "stage": { "const": "RELEASE_APPROVED" } } },
+      "then": {
+        "properties": {
+          "records": { "properties": { "rcAudit": { "type": "string" } } },
+          "candidateSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" }
+        }
+      }
+    }
+  ]
+}

@@ -15,6 +15,7 @@
     "cloudflare:deploy": "npm run build && bash scripts/deploy-cloudflare.sh --mode upgrade --fingerprint .wrangler/upgrade-before-fingerprint.json",
     "cloudflare:fingerprint": "bash scripts/deploy-cloudflare.sh --mode upgrade --inspect --output .wrangler/upgrade-before-fingerprint.json",
     "cloudflare:package": "bash scripts/package-cloudflare.sh",
+    "governance:validate": "node scripts/governance-state.mjs validate governance/runtime-example/current.json",
     "start": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext start",
     "test": "npm run build && node --experimental-strip-types --test tests/*.test.mjs",
     "test:e2e": "node scripts/run-playwright-suite.mjs mobile",

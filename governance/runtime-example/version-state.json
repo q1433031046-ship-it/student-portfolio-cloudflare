@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "project": "student-portfolio-cloudflare",
+  "repository": "q1433031046-ship-it/student-portfolio-cloudflare",
+  "activeVersion": "1.3.1",
+  "stage": "PLAN_AUDIT_PENDING",
+  "taskLevel": "L2",
+  "revision": 12,
+  "lastUpdatedBy": {
+    "roleNumber": 1,
+    "roleName": "超级规划"
+  },
+  "records": {
+    "plan": "governance/runtime/records/v1.3.1/01-plan.md",
+    "planAudit": null,
+    "releaseCandidate": null,
+    "rcAudit": null,
+    "releaseReceipt": null
+  },
+  "candidateSha": null,
+  "releaseTag": null
+}
