@@ -36,11 +36,11 @@
 
 /governance-transition <expected-tip> <expected-revision> <role-number> <target-stage>
 
-可信工作流从 main 运行验证代码，不执行 PR 中的脚本。它强制检查所有者身份、previous tip/revision、角色转换、字段差异、记录存在性与摘要、泄密扫描以及 Candidate 远端身份。记录先提交，随后 current 与版本快照在第二次 fast-forward CAS 中提交；任一 ref 竞争都会停止并要求重新读取。
+可信工作流从 main 运行验证代码，不执行 PR 中的脚本。它强制检查所有者身份、previous tip/revision、角色转换、字段差异、记录存在性与摘要、泄密扫描以及 Candidate 远端身份。记录先通过第一个受保护 PR 合并，随后 current 与版本快照通过第二个受保护 PR 合并；两个 PR 都绑定准确目标 tip、固定 `governance-state-write` 状态和分支最新要求，以受保护合并实现 compare-and-swap（CAS），任一竞争都会停止并要求重新读取。
 
 以下三项是启用硬门，缺一项就必须保持 BLOCKED：
 
-1. governance-state 受 GitHub 规则保护，禁止普通用户和管理员直接推送，只允许受信任的 GitHub Actions 写入。
+1. governance-state 受 GitHub 规则保护，绕过名单为空；必须通过 PR、`governance-state-write` 状态和最新分支检查，同时禁止删除与强制推送。
 2. Cloudflare Workers Builds 已关闭非生产分支构建，或明确排除 governance-state / governance/runtime。
 3. `scripts/build-verified.sh` 必须在 Cloudflare 官方注入的 `WORKERS_CI=1` 且分支为 `governance-state` 或 `governance/*` 时，于构建和 `wrangler versions upload` 之前以状态 78 失败关闭。
 4. 用真实治理分支提交证明 Cloudflare 检查停在上述门禁，没有创建 Worker Version 或公开预览别名。

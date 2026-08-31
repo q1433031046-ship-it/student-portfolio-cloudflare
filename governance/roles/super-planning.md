@@ -32,7 +32,7 @@
 
 ## 正式交接
 
-使用 `governance/handoff/plan-handoff.md`。通过受保护的 `governance-state.yml` 写入入口提交精确 tip、revision、角色与目标阶段；普通用户和插件不得直接推送状态分支。可信入口先写固定规划记录并扫描泄密，再以第二次 CAS 更新 current 和版本快照。两次写入都成功后才能宣布完成。
+使用 `governance/handoff/plan-handoff.md`。通过受保护的 `governance-state.yml` 写入入口提交精确 tip、revision、角色与目标阶段；普通用户和插件不得直接更新状态分支。可信入口先以状态门禁 PR 写入固定规划记录并扫描泄密，再从准确合并 tip 以第二个状态门禁 PR 更新 current 和版本快照。两次写入都成功后才能宣布完成。
 
 正式完成回复必须包含：
 

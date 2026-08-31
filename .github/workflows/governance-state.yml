@@ -23,7 +23,8 @@ jobs:
     permissions:
       contents: write
       issues: write
-      pull-requests: read
+      pull-requests: write
+      statuses: write
     env:
       GH_TOKEN: ${{ github.token }}
       COMMENT_ACTOR: ${{ github.actor }}
@@ -159,7 +160,7 @@ jobs:
             echo "record_path=$record_path"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Commit the immutable record before the pointer
+      - name: Write the immutable record through a protected pull request
         id: record_commit
         shell: bash
         env:
@@ -172,16 +173,17 @@ jobs:
           git -C "$STATE_ROOT" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           current_tip="$EXPECTED_TIP"
           if [[ -n "$RECORD_PATH" ]]; then
-            git -C "$STATE_ROOT" add -- "$RECORD_PATH"
-            git -C "$STATE_ROOT" commit -m "Record verified governance transition"
-            remote_tip="$(git ls-remote "https://x-access-token:$GH_TOKEN@github.com/$REPOSITORY.git" refs/heads/governance-state | cut -f1)"
-            [[ "$remote_tip" == "$EXPECTED_TIP" ]]
-            git -C "$STATE_ROOT" push origin HEAD:refs/heads/governance-state
-            current_tip="$(git -C "$STATE_ROOT" rev-parse HEAD)"
+            output="$RUNNER_TEMP/record-write-output"
+            GITHUB_OUTPUT="$output" bash scripts/governance-protected-write.sh \
+              "$STATE_ROOT" "$EXPECTED_TIP" record \
+              "Record verified governance transition" \
+              "Record verified governance transition" \
+              "$RECORD_PATH"
+            current_tip="$(sed -n 's/^tip=//p' "$output")"
           fi
           echo "tip=$current_tip" >> "$GITHUB_OUTPUT"
 
-      - name: Commit current and version snapshot with a second CAS
+      - name: Write current and version snapshot through a protected pull request
         id: pointer_commit
         shell: bash
         env:
@@ -190,16 +192,18 @@ jobs:
           EXPECTED_TIP: ${{ steps.record_commit.outputs.tip }}
         run: |
           set -euo pipefail
+          git -C "$STATE_ROOT" fetch --no-tags --depth=1 origin refs/heads/governance-state
+          [[ "$(git -C "$STATE_ROOT" rev-parse FETCH_HEAD)" == "$EXPECTED_TIP" ]]
+          git -C "$STATE_ROOT" reset --hard FETCH_HEAD
           active_version="$(jq -r '.activeVersion' "$NEXT_PATH")"
           cp "$NEXT_PATH" "$STATE_ROOT/governance/runtime/current.json"
           mkdir -p "$STATE_ROOT/governance/runtime/versions"
           cp "$NEXT_PATH" "$STATE_ROOT/governance/runtime/versions/$active_version.json"
-          git -C "$STATE_ROOT" add -- governance/runtime/current.json "governance/runtime/versions/$active_version.json"
-          git -C "$STATE_ROOT" commit -m "Advance verified governance state"
-          remote_tip="$(git ls-remote "https://x-access-token:$GH_TOKEN@github.com/$REPOSITORY.git" refs/heads/governance-state | cut -f1)"
-          [[ "$remote_tip" == "$EXPECTED_TIP" ]]
-          git -C "$STATE_ROOT" push origin HEAD:refs/heads/governance-state
-          echo "tip=$(git -C "$STATE_ROOT" rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          bash scripts/governance-protected-write.sh \
+            "$STATE_ROOT" "$EXPECTED_TIP" pointer \
+            "Advance verified governance state" \
+            "Advance verified governance state" \
+            governance/runtime/current.json "governance/runtime/versions/$active_version.json"
 
       - name: Confirm the verified handoff
         shell: bash
@@ -219,7 +223,8 @@ jobs:
     permissions:
       contents: write
       issues: write
-      pull-requests: read
+      pull-requests: write
+      statuses: write
     env:
       GH_TOKEN: ${{ github.token }}
       COMMENT_ACTOR: ${{ github.actor }}
@@ -336,7 +341,7 @@ jobs:
           GITHUB_TOKEN="$GH_TOKEN" node scripts/governance-state.mjs verify-remote "$next" --contract governance/role-contract.json
           echo "next=$next" >> "$GITHUB_OUTPUT"
 
-      - name: Commit bootstrap records before the migrated pointer
+      - name: Write bootstrap records through a protected pull request
         id: records
         shell: bash
         env:
@@ -346,14 +351,14 @@ jobs:
           set -euo pipefail
           git -C "$STATE_ROOT" config user.name "github-actions[bot]"
           git -C "$STATE_ROOT" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git -C "$STATE_ROOT" add -- governance/runtime/records/governance-1/04-release-candidate.md governance/runtime/records/governance-1/05-rc-audit.md
-          git -C "$STATE_ROOT" commit -m "Record approved governance bootstrap"
-          remote_tip="$(git ls-remote "https://x-access-token:$GH_TOKEN@github.com/$REPOSITORY.git" refs/heads/governance-state | cut -f1)"
-          [[ "$remote_tip" == "$EXPECTED_TIP" ]]
-          git -C "$STATE_ROOT" push origin HEAD:refs/heads/governance-state
-          echo "tip=$(git -C "$STATE_ROOT" rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          bash scripts/governance-protected-write.sh \
+            "$STATE_ROOT" "$EXPECTED_TIP" bootstrap-records \
+            "Record approved governance bootstrap" \
+            "Record approved governance bootstrap" \
+            governance/runtime/records/governance-1/04-release-candidate.md \
+            governance/runtime/records/governance-1/05-rc-audit.md
 
-      - name: Commit the migrated current pointer with CAS
+      - name: Write the migrated current pointer through a protected pull request
         id: pointer
         shell: bash
         env:
@@ -362,14 +367,16 @@ jobs:
           EXPECTED_TIP: ${{ steps.records.outputs.tip }}
         run: |
           set -euo pipefail
+          git -C "$STATE_ROOT" fetch --no-tags --depth=1 origin refs/heads/governance-state
+          [[ "$(git -C "$STATE_ROOT" rev-parse FETCH_HEAD)" == "$EXPECTED_TIP" ]]
+          git -C "$STATE_ROOT" reset --hard FETCH_HEAD
           cp "$NEXT_PATH" "$STATE_ROOT/governance/runtime/current.json"
           cp "$NEXT_PATH" "$STATE_ROOT/governance/runtime/versions/governance-1.json"
-          git -C "$STATE_ROOT" add -- governance/runtime/current.json governance/runtime/versions/governance-1.json
-          git -C "$STATE_ROOT" commit -m "Migrate approved governance bootstrap"
-          remote_tip="$(git ls-remote "https://x-access-token:$GH_TOKEN@github.com/$REPOSITORY.git" refs/heads/governance-state | cut -f1)"
-          [[ "$remote_tip" == "$EXPECTED_TIP" ]]
-          git -C "$STATE_ROOT" push origin HEAD:refs/heads/governance-state
-          echo "tip=$(git -C "$STATE_ROOT" rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          bash scripts/governance-protected-write.sh \
+            "$STATE_ROOT" "$EXPECTED_TIP" bootstrap-pointer \
+            "Migrate approved governance bootstrap" \
+            "Migrate approved governance bootstrap" \
+            governance/runtime/current.json governance/runtime/versions/governance-1.json
 
       - name: Confirm the one-time migration
         shell: bash

@@ -31,7 +31,7 @@
 
 方案审计至少核对目标/非目标、数据与资源安全、迁移、回滚、异常恢复、测试和验收。候选审计必须锁定完整 Candidate SHA，核对它来自正确分支、实现没有扩大冻结范围、测试证据真实、版本/Migration/Tag/生产状态符合计划。
 
-正式结论使用 `governance/handoff/audit-report.md`，并通过受保护的 `governance-state.yml` 写入入口提交。入口强制核对 previous tip/revision、完整记录链、字段差异和 Candidate 远端身份，先写审计记录，再以第二次 CAS 更新 current 和版本快照。结论为通过时：
+正式结论使用 `governance/handoff/audit-report.md`，并通过受保护的 `governance-state.yml` 写入入口提交。入口强制核对 previous tip/revision、完整记录链、字段差异和 Candidate 远端身份，先以状态门禁 PR 写审计记录，再从准确合并 tip 以第二个状态门禁 PR 更新 current 和版本快照。结论为通过时：
 
 只有交接记录、current 和版本快照均写入成功，才能向用户宣布审计阶段完成。
 

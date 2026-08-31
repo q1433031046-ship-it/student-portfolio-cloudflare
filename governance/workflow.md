@@ -43,18 +43,18 @@
 
 角色收到短句后自动读取 main 合同、受保护状态、必需记录及摘要。Candidate 阶段还要核对远端 commit/tree、分支 tip、开放 PR、main 基线和祖先关系。错误角色接手时指出应由哪个编号继续，不猜测，也不要求用户搬运已有交接文件。
 
-## 受保护的两提交协议
+## 受保护的两阶段 PR 协议
 
 1. 所有者在同仓库开放 PR 上提交精确 governance-transition 指令，携带刚读取的 tip、revision、角色和目标阶段。
 2. 默认分支上的可信工作流解析指令；PR 内容始终按未信任输入处理。
 3. 工作流读取 governance-state 并严格比对 expected tip/revision。
 4. 运行 Draft 2020-12 Schema、角色允许列表、转换字段差异、完整审计链、固定记录路径、摘要和无秘密/泄密检查。
 5. 对 Candidate 回读 GitHub commit、tree、branch、PR、base 与 ancestry。
-6. 先提交记录；提交前用远端 ref 做 compare-and-swap（CAS）。
-7. 再提交 current 与版本快照；再次读取 ref 并执行第二次 fast-forward CAS。
-8. 任一步竞争或验证失败立即停止；孤立记录不改变 current。
+6. 从准确 previous tip 创建记录提交和短期提案分支，打开第一个目标为 governance-state 的 PR；写入固定 `governance-state-write` 状态，重读目标 tip 后才允许受保护合并，以此执行 compare-and-swap（CAS）。
+7. 从第一个 PR 的准确合并 tip 创建 current 与版本快照提交，再以相同状态门禁和最新分支要求合并第二个 PR。
+8. 任一步 tip 竞争、状态门禁或验证失败立即停止；已合并记录不改变 current，后续恢复从仓库事实继续。
 
-普通用户、管理员和插件不得直接更新 governance-state。分支规则只允许受信任的 GitHub Actions 写入。
+普通用户、管理员和插件不得直接更新 governance-state。规则集绕过名单为空，并要求 PR、固定状态、目标分支最新、禁止删除和禁止强制推送。
 
 ## Cloudflare 隔离
 

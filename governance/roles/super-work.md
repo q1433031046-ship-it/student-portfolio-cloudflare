@@ -28,7 +28,7 @@
 
 完成后使用 `governance/handoff/release-candidate.md`，至少记录：版本、完整 Candidate SHA、分支、基准提交、主要改动、Migration/数据库变化、测试、构建、Lint、类型检查、E2E/浏览器结果、已知问题、规划偏差和“生产环境修改：没有”。
 
-Candidate 只能通过受保护的 `governance-state.yml` 写入入口交接。入口从开放、非 draft、同仓库 PR 回读准确 commit、tree、分支 tip、PR head、main 基线和祖先关系，扫描记录泄密，先写固定 Candidate 记录，再以第二次 CAS 更新 current、版本快照、candidateSha、Candidate 上下文与摘要。普通用户和插件不得直接推送状态分支。
+Candidate 只能通过受保护的 `governance-state.yml` 写入入口交接。入口从开放、非 draft、同仓库 PR 回读准确 commit、tree、分支 tip、PR head、main 基线和祖先关系，扫描记录泄密，先以状态门禁 PR 写固定 Candidate 记录，再从准确合并 tip 以第二个状态门禁 PR 更新 current、版本快照、candidateSha、Candidate 上下文与摘要。普通用户和插件不得直接更新状态分支。
 
 只有 Candidate 记录与 current 均入库成功，才能进行正式候选交接。
 

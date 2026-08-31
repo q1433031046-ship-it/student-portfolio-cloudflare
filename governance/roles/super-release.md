@@ -25,7 +25,7 @@
 
 发布前重新核对 GitHub/Cloudflare 官方连接、目标 Worker、资源绑定结论、基线、Migration、安全恢复条件与批准 SHA。敏感资源只记录“已核对 / 匹配 / 不匹配”，不写公开原始 ID 或秘密。
 
-正式完成使用 `governance/handoff/release-receipt.md`，并只通过受保护的 `governance-state.yml` 写入入口交接。入口冻结已批准 Candidate 身份、扫描泄密、先写发布记录，再以第二次 CAS 更新 current。进入 `ROLLED_BACK` 后下一责任角色固定为 3；角色 4 不得自行改写 Candidate。
+正式完成使用 `governance/handoff/release-receipt.md`，并只通过受保护的 `governance-state.yml` 写入入口交接。入口冻结已批准 Candidate 身份、扫描泄密，先以状态门禁 PR 写发布记录，再从准确合并 tip 以第二个状态门禁 PR 更新 current。进入 `ROLLED_BACK` 后下一责任角色固定为 3；角色 4 不得自行改写 Candidate。
 
 只有发布回执与 current 均写入成功，才能宣布正式发布阶段完成。
 

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -451,9 +451,7 @@ test("allows exactly one legacy bootstrap migration only with a passing audit of
   }, contract), /旧 bootstrap 阶段不匹配/u);
 });
 
-test("ships an owner-only protected writer with mandatory previous state, record-first commits and ref CAS", async () => {
-  const workflow = await readText(".github/workflows/governance-state.yml");
-  const contract = await readJson(contractPath);
+function assertProtectedWriterSurface(workflow, writer, contract) {
   assert.match(workflow, /issue_comment:\s*\n\s*types: \[created\]/u);
   assert.match(workflow, /COMMENT_ACTOR.*REPOSITORY_OWNER/su);
   assert.match(workflow, /\^\/governance-transition.*\[0-9a-f\]\{40\}/u);
@@ -461,13 +459,162 @@ test("ships an owner-only protected writer with mandatory previous state, record
   assert.match(workflow, /persist-credentials: false/u);
   assert.match(workflow, /validate-transition.*--previous.*--records-root/su);
   assert.match(workflow, /verify-remote/u);
-  assert.match(workflow, /Commit the immutable record before the pointer[\s\S]*Commit current and version snapshot/u);
-  assert.match(workflow, /git ls-remote[\s\S]*git .* push/u);
+  assert.match(workflow, /Write the immutable record through a protected pull request[\s\S]*Write current and version snapshot through a protected pull request/u);
+  assert.match(workflow, /pull-requests: write/u);
+  assert.match(workflow, /statuses: write/u);
+  assert.match(workflow, /governance-protected-write\.sh/u);
+  assert.match(writer, /governance-state-write/u);
+  assert.match(writer, /repos\/\$REPOSITORY\/pulls/u);
+  assert.match(writer, /repos\/\$REPOSITORY\/statuses\/\$head_sha/u);
+  assert.match(writer, /pulls\/\$pull_request\/merge/u);
+  assert.equal((writer.match(/if \[\[ "\$remote_tip" != "\$EXPECTED_TIP" \]\]; then/gu) ?? []).length, 3);
+  assert.match(writer, /base=governance-state|base_ref.*governance-state/u);
+  assert.doesNotMatch(workflow, /push origin HEAD:refs\/heads\/governance-state/u);
+  assert.doesNotMatch(writer, /HEAD:refs\/heads\/governance-state/u);
   assert.doesNotMatch(workflow, /governance-state\.mjs[^\n]* \+\s/u);
-  assert.doesNotMatch(workflow, /wrangler|cloudflare:deploy|git tag|refs\/tags\//u);
+  assert.doesNotMatch(workflow + writer, /wrangler|cloudflare:deploy|git tag|refs\/tags\//u);
+  assert.equal(contract.runtime.writeTransport, "protected-pull-request");
+  assert.equal(contract.runtime.requiredStatusContext, "governance-state-write");
+  assert.equal(contract.runtime.pullRequestRequired, true);
+  assert.equal(contract.runtime.strictUpToDateRequired, true);
   assert.equal(contract.runtime.directPushAllowed, false);
   assert.equal(contract.runtime.branchProtectionRequired, true);
   assert.equal(contract.runtime.cloudflarePreviewBuildsAllowed, false);
+}
+
+test("ships an owner-only protected writer through two status-gated pull requests", async () => {
+  const [workflow, writer, contract] = await Promise.all([
+    readText(".github/workflows/governance-state.yml"),
+    readText("scripts/governance-protected-write.sh"),
+    readJson(contractPath),
+  ]);
+  assertProtectedWriterSurface(workflow, writer, contract);
+});
+
+test("detects protected writer drift before Candidate creation", async () => {
+  const [workflow, writer, contract] = await Promise.all([
+    readText(".github/workflows/governance-state.yml"),
+    readText("scripts/governance-protected-write.sh"),
+    readJson(contractPath),
+  ]);
+  const mutations = [
+    [workflow, writer.replace("governance-state-write", "untrusted-status"), contract],
+    [workflow, writer.replace("base=governance-state", "base=main"), contract],
+    [workflow, writer.replace('if [[ "$remote_tip" != "$EXPECTED_TIP" ]]; then', "if false; then"), contract],
+    [workflow + "\ngit push origin HEAD:refs/heads/governance-state\n", writer, contract],
+    [
+      workflow
+        .replace("Write the immutable record through a protected pull request", "TEMP_POINTER")
+        .replace("Write current and version snapshot through a protected pull request", "Write the immutable record through a protected pull request")
+        .replace("TEMP_POINTER", "Write current and version snapshot through a protected pull request"),
+      writer,
+      contract,
+    ],
+  ];
+  for (const mutation of mutations) {
+    assert.throws(() => assertProtectedWriterSurface(...mutation), assert.AssertionError);
+  }
+});
+
+test("merges one governance phase through an exact-tip protected pull request", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "governance-protected-writer-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const remote = join(root, "remote.git");
+  const work = join(root, "work");
+  const bin = join(root, "bin");
+  const runnerTemp = join(root, "runner");
+  const output = join(root, "github-output");
+  await mkdir(work, { recursive: true });
+  await mkdir(bin, { recursive: true });
+  await mkdir(runnerTemp, { recursive: true });
+
+  const run = (command, args, options = {}) => {
+    const result = spawnSync(command, args, { encoding: "utf8", ...options });
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    return result.stdout.trim();
+  };
+  run("git", ["init", "--bare", remote]);
+  run("git", ["init", work]);
+  run("git", ["-C", work, "config", "user.name", "Governance Test"]);
+  run("git", ["-C", work, "config", "user.email", "governance-test@users.noreply.github.com"]);
+  await mkdir(join(work, "governance/runtime"), { recursive: true });
+  await writeFile(join(work, "governance/runtime/current.json"), "{}\n");
+  run("git", ["-C", work, "add", "governance/runtime/current.json"]);
+  run("git", ["-C", work, "commit", "-m", "Initialize governance state"]);
+  run("git", ["-C", work, "remote", "add", "origin", remote]);
+  run("git", ["-C", work, "push", "origin", "HEAD:refs/heads/governance-state"]);
+  const expectedTip = run("git", ["--git-dir", remote, "rev-parse", "refs/heads/governance-state"]);
+
+  const recordPath = "governance/runtime/records/1.3.1/01-plan.md";
+  await mkdir(join(work, "governance/runtime/records/1.3.1"), { recursive: true });
+  await writeFile(join(work, recordPath), "规划编号：TEST-1\n");
+
+  const fakeGh = `#!/usr/bin/env bash
+set -euo pipefail
+endpoint="$2"
+shift 2
+method="GET"
+jq_filter=""
+declare -A fields=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --method) method="$2"; shift 2 ;;
+    --jq) jq_filter="$2"; shift 2 ;;
+    -f) fields["\${2%%=*}"]="\${2#*=}"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+if [[ "$endpoint" == "repos/$REPOSITORY/pulls" && "$method" == "POST" ]]; then
+  head_ref="\${fields[head]}"
+  head_sha="$(git --git-dir="$TEST_REMOTE" rev-parse "refs/heads/$head_ref")"
+  printf '{"number":42,"state":"open","draft":false,"base":{"ref":"governance-state","repo":{"full_name":"%s"}},"head":{"ref":"%s","sha":"%s","repo":{"full_name":"%s"}}}\n' "$REPOSITORY" "$head_ref" "$head_sha" "$REPOSITORY"
+elif [[ "$endpoint" == "repos/$REPOSITORY/statuses/"* && "$method" == "POST" ]]; then
+  printf '{}\n'
+elif [[ "$endpoint" == "repos/$REPOSITORY/pulls/42" && "$jq_filter" == ".mergeable" ]]; then
+  printf 'true\n'
+elif [[ "$endpoint" == "repos/$REPOSITORY/pulls/42/merge" && "$method" == "PUT" ]]; then
+  head_sha="\${fields[sha]}"
+  base_sha="$(git --git-dir="$TEST_REMOTE" rev-parse refs/heads/governance-state)"
+  tree_sha="$(git --git-dir="$TEST_REMOTE" rev-parse "$head_sha^{tree}")"
+  merge_sha="$(printf 'Merge protected governance proposal\n' | GIT_AUTHOR_NAME='GitHub' GIT_AUTHOR_EMAIL='noreply@github.com' GIT_COMMITTER_NAME='GitHub' GIT_COMMITTER_EMAIL='noreply@github.com' git --git-dir="$TEST_REMOTE" commit-tree "$tree_sha" -p "$base_sha" -p "$head_sha")"
+  git --git-dir="$TEST_REMOTE" update-ref refs/heads/governance-state "$merge_sha" "$base_sha"
+  printf '{"merged":true,"sha":"%s"}\n' "$merge_sha"
+else
+  echo "Unexpected fake gh call: $endpoint $method $jq_filter" >&2
+  exit 1
+fi
+`;
+  const ghPath = join(bin, "gh");
+  await writeFile(ghPath, fakeGh);
+  await chmod(ghPath, 0o755);
+
+  run("bash", [
+    "scripts/governance-protected-write.sh",
+    work,
+    expectedTip,
+    "record",
+    "Record verified governance transition",
+    "Record verified governance transition",
+    recordPath,
+  ], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      PATH: bin + ":" + process.env.PATH,
+      GH_TOKEN: "fictional",
+      REPOSITORY: "owner/repo",
+      REPOSITORY_OWNER: "owner",
+      GITHUB_RUN_ID: "123",
+      GITHUB_RUN_ATTEMPT: "1",
+      GITHUB_OUTPUT: output,
+      RUNNER_TEMP: runnerTemp,
+      TEST_REMOTE: remote,
+    },
+  });
+  const mergedTip = run("git", ["--git-dir", remote, "rev-parse", "refs/heads/governance-state"]);
+  assert.match(await readFile(output, "utf8"), new RegExp("tip=" + mergedTip, "u"));
+  assert.equal(run("git", ["--git-dir", remote, "show", mergedTip + ":" + recordPath]), "规划编号：TEST-1");
+  assert.equal(run("git", ["--git-dir", remote, "rev-list", "--parents", "-n", "1", mergedTip]).split(" ").length, 3);
 });
 
 test("stops Cloudflare Workers Builds for governance branches before build or version upload", () => {
