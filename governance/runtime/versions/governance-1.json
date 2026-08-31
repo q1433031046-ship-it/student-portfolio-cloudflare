@@ -3,24 +3,24 @@
   "project": "student-portfolio-cloudflare",
   "repository": "q1433031046-ship-it/student-portfolio-cloudflare",
   "activeVersion": "governance-1",
-  "stage": "RC_AUDIT_PENDING",
+  "stage": "IMPLEMENTATION_REQUIRED",
   "taskLevel": "L2",
-  "revision": 2,
+  "revision": 3,
   "lastUpdatedBy": {
-    "roleNumber": 3,
-    "roleName": "超级工作"
+    "roleNumber": 2,
+    "roleName": "超级审计"
   },
   "records": {
     "plan": "governance/runtime/records/governance-1/01-plan.md",
     "planAudit": null,
-    "releaseCandidate": "governance/runtime/records/governance-1/04-release-candidate-r2.md",
-    "rcAudit": null,
+    "releaseCandidate": "governance/runtime/records/governance-1/04-release-candidate.md",
+    "rcAudit": "governance/runtime/records/governance-1/05-rc-audit.md",
     "releaseReceipt": null
   },
-  "candidateSha": "7caf24d4c52f1502d43cbf668329701986669a6e",
+  "candidateSha": "e24d78fd76cfbca9ebd957d16c406ffbc1c09e1b",
   "releaseTag": null,
   "bootstrap": {
     "isBootstrapCandidate": true,
-    "reason": "治理合同尚未进入 main；本状态仅用于将初始治理 Candidate 交给角色 2 审计，不代表角色 2 已完成方案审计。"
+    "reason": "治理合同尚未进入 main；本状态用于初始治理 Candidate 的审计与返工闭环，不代表角色 2 已完成方案审计。"
   }
 }
