@@ -41,6 +41,7 @@ next-env.d.ts
 /cloudflare-pages-dist/
 /.wrangler/
 /cloudflare/.wrangler/
+/.wrangler-upgrade-bridge-*.json
 /.sites-runtime/
 /outputs/
 /work/

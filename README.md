@@ -552,6 +552,42 @@ student-portfolio-name-03
 
 v1.3.0 自动升级只支持已有固定 D1 `DB` 资源 ID 和唯一 `MEDIA_KV` 资源 ID，且当前 Worker 使用同一组绑定的 v1.1+ 站点，或满足相同前置条件的旧站。纯 v1.0 R2-only 站点没有 `MEDIA_KV`，本版本未支持直接自动升级；GPT 必须在指纹和部署前停止，不得创建、复用或认领新的 `MEDIA_KV`，不得改动任何远端资源。R2 → KV 迁移只适用于已经满足前置条件、同时保留旧 R2 行的站点。
 
+### GitHub → Cloudflare Workers Builds Upgrade Bridge
+
+这个桥只用于**已经存在并且已经连接 GitHub 的正式旧站**。学生侧 ChatGPT / Work 只把经过审计的升级提交推到该学生自己的现有仓库；Cloudflare Workers Builds 使用该 Worker 已有的构建授权，在 Cloudflare 内完成构建、D1 Migration 和同一 Worker 的部署。聊天端不需要、也不得索取 Cloudflare Token、Cookie、管理员密码、`INITIAL_ADMIN_CODE` 或系统恢复码。
+
+开始前必须同时满足：
+
+- Cloudflare Workers Builds 已连接当前这个旧站的 Worker 和当前学生仓库；
+- Workers Builds 当前选中的构建令牌具有账户级 `Workers Scripts:Edit` 和 `D1:Edit`。Cloudflare 自动创建的构建令牌目前不含 `D1:Edit`；站点所有者须在 Cloudflare 的 **My Profile → API Tokens** 中给当前选中的令牌补充该权限，令牌值始终留在 Cloudflare，不复制到聊天或仓库；
+- 原仓库的 `wrangler.jsonc` 保留唯一 `DB.database_id` 和唯一 `MEDIA_KV.id`；
+- 当前 Worker 的 DB、`MEDIA_KV`、可选旧 `BUCKET` 与配置逐项相同；
+- 产品运行时代码仍是固定 v1.3.0 release commit `4658bc834d6ea21aa94ce0db0d9c99e82b856235`；
+- 正式分支的 Build command 为 `npm run build`，Deploy command 为 `npm run deploy`。
+
+Cloudflare 中的执行顺序固定为：
+
+1. 核对固定 v1.3.0 产品摘要、构建产物、Cloudflare 提供的 `WRANGLER_CI_OVERRIDE_NAME` 和全部 active Worker versions；
+2. 核对同一个 Worker、固定 DB、固定 `MEDIA_KV`、可选 R2、远程 vars 与 Secret binding 名称；
+3. 可靠列出 pending Migration，只接受无 pending、只剩 `0007`，或依次为 `0006`、`0007`；
+4. 只执行缺少的 Migration；Migration 失败会立即停止，不会部署新运行时代码；
+5. 再次 list，只有 pending 明确为空才继续；
+6. 部署前再次核对同一 Worker；部署时使用临时的无 `vars` 配置、`--keep-vars` 和 `--strict`，因此源码 `vars` 不会覆盖 Cloudflare 控制台中的远程 vars，已有 Secrets 也不会被删除；
+7. 部署后必须观察到新的 Worker version，并再次证明 DB、`MEDIA_KV`、R2、远程 vars 摘要和 Secret binding 名称全部未变，才允许报告成功。
+
+日志含义：
+
+| 日志 | 含义 |
+|---|---|
+| `[BRIDGE][CHECK]` | 当前只读核对或 Migration 门已通过，还不代表升级成功 |
+| `[BRIDGE][BLOCKED]` | 资格、身份、配置、产品摘要或 pending 集合不符合合同；没有继续部署 |
+| `[BRIDGE][FAILED]` | 已开始的 list、Migration、部署或部署后核验失败；不得写成成功 |
+| `[BRIDGE][SUCCESS]` | 已观察到新版本，且部署后资源与远程配置复核通过 |
+
+这个桥没有任何共享的 Worker、D1 或 KV 标识。不同学生仓库分别使用自己的固定资源 ID、Cloudflare 构建授权和 Worker 名，可并行独立升级。缺少固定 ID、Worker 不存在、资源不一致或只存在 R2 而没有 `MEDIA_KV` 时会关闭失败；桥不会创建或认领任何新资源。
+
+若构建令牌缺少 `D1:Edit`，D1 list/apply 会以 `[BRIDGE][FAILED]` 停止，Worker 部署不会开始，也不会出现 `[BRIDGE][SUCCESS]`。只在 Cloudflare 官方页面调整当前构建令牌权限，不要把令牌内容提供给聊天端。
+
 ### 学生要做的 8 步
 
 1. 在电脑上找到并打开本网站的“当前最新系统恢复码”文件；新版文件内的“站点”必须是当前 `workers.dev` 地址。旧文件没有站点信息时，把文件与当前网站地址放在同一个离线文件夹中。恢复码内容不要发给 GPT。
@@ -565,7 +601,7 @@ v1.3.0 自动升级只支持已有固定 D1 `DB` 资源 ID 和唯一 `MEDIA_KV` 
 
 符合上述前置条件的升级会保留当前 Worker 与 `workers.dev` 地址、D1 与内容、`MEDIA_KV` 与媒体、Secrets 名称、管理员身份、草稿与已发布内容、二维码、统计和管理记录。正式确认会按设计重设密码验证、轮换恢复码并撤销旧管理员会话。
 
-`npm run deploy` 只用于 Deploy Button 首次部署。现有 Worker 在 push 后触发的 Cloudflare Builds 自动 deploy 会按设计关闭失败，它不代表升级成功，也不代替“指纹 → `npm run cloudflare:deploy`”严格升级流程。
+在这个 3B 升级桥 Candidate 中，`npm run deploy` 是现有 Worker 的 Cloudflare Workers Builds 严格升级入口；首次创建站点是另一条流程，显式命令为 `npm run cloudflare:deploy:new`，不属于本桥。原有“指纹 → `npm run cloudflare:deploy`”人工严格升级入口仍保留，不能与桥接日志混写成同一次成功证据。
 
 `.wrangler/upgrade-before-fingerprint.json` 以 0600 权限独占创建，每轮升级只捕获一次，并在跨失败续跑时原样保留。文件已存在时程序会停止，不会覆盖。只有站点所有者确认已经开始全新一轮升级、旧基线不再需要时，才先把旧文件移入归档位置，再重新捕获；代理不得静默覆盖。
 

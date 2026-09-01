@@ -4,10 +4,11 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 test("version metadata publishes the authenticated v1.3.0 upgrade contract", async () => {
-  const [manifest, promptManifest, agentManifest, migration0007] = await Promise.all([
+  const [manifest, promptManifest, agentManifest, migration0006, migration0007] = await Promise.all([
     readFile("deployment/template-version.json", "utf8").then(JSON.parse),
     readFile("deployment/upgrade-prompt.json", "utf8").then(JSON.parse),
     readFile("deployment/agent-manifest.json", "utf8").then(JSON.parse),
+    readFile("drizzle/0006_auth_v2.sql", "utf8"),
     readFile("drizzle/0007_legacy_media_and_access_state.sql", "utf8"),
   ]);
 
@@ -40,6 +41,10 @@ test("version metadata publishes the authenticated v1.3.0 upgrade contract", asy
   ]);
   assert.equal(agentManifest.databaseMigrationPolicy.runtimeBootstrapRoute, "/admin");
   assert.equal(
+    agentManifest.databaseMigrationPolicy.migrationSha256["0006_auth_v2.sql"],
+    createHash("sha256").update(migration0006, "utf8").digest("hex"),
+  );
+  assert.equal(
     agentManifest.databaseMigrationPolicy.migrationSha256["0007_legacy_media_and_access_state.sql"],
     createHash("sha256").update(migration0007, "utf8").digest("hex"),
   );
@@ -65,7 +70,9 @@ test("version metadata publishes the authenticated v1.3.0 upgrade contract", asy
   assert.deepEqual(agentManifest.newDeploymentProvisioning.declaredBindings, ["DB", "MEDIA_KV"]);
   assert.equal(agentManifest.newDeploymentProvisioning.verifyClonedConfigAgainstLiveWorker, true);
   assert.equal(agentManifest.newDeploymentProvisioning.guessOrReuseResourceIds, false);
-  assert.equal(agentManifest.commands.cloudBuildFirstDeployment, "npm run deploy");
+  assert.match(agentManifest.commands.cloudBuildFirstDeployment, /npm run cloudflare:deploy:new/u);
+  assert.equal(agentManifest.commands.cloudBuildExistingWorker, "npm run deploy");
+  assert.equal(agentManifest.commands.workersBuildsUpgrade, "npm run deploy");
   assert.equal("firstDirectDeploy" in agentManifest.commands, false);
   assert.equal(agentManifest.effectiveWorkerName.overrideVariable, "WRANGLER_CI_OVERRIDE_NAME");
   assert.equal(agentManifest.effectiveWorkerName.useForAllRemoteOperations, true);

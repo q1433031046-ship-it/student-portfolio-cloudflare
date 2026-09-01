@@ -52,6 +52,41 @@
     "provisionMissingResources": false,
     "remoteMutationBeforeEligibility": false
   },
+  "workersBuildsUpgradeBridge": {
+    "schemaVersion": 1,
+    "contract": "deployment/workers-builds-upgrade-bridge.json",
+    "productSourceCommit": "4658bc834d6ea21aa94ce0db0d9c99e82b856235",
+    "productSourceTree": "2d9bc4a77dc96bbc75aa85ed5bdca13c9823ea54",
+    "existingWorkerOnly": true,
+    "trigger": "push the audited bridge candidate to the production branch of the repository already connected to the existing Worker",
+    "buildCommand": "npm run build",
+    "deployCommand": "npm run deploy",
+    "platformIdentity": "validated WRANGLER_CI_OVERRIDE_NAME supplied by Cloudflare Workers Builds",
+    "authentication": "reuse only the Cloudflare Workers Builds credentials already attached to that Worker; never request credentials in chat",
+    "transaction": [
+      "verify frozen v1.3.0 product payload, build output, fixed local ids and every active-version resource fingerprint",
+      "list the complete pending D1 migration set",
+      "allow only the ordered suffix 0006_auth_v2.sql and 0007_legacy_media_and_access_state.sql",
+      "apply pending migrations and stop on every error including permission errors",
+      "list again and require no pending migration",
+      "recheck the same existing Worker fingerprint",
+      "deploy with a temporary vars-free config, --keep-vars and --strict",
+      "observe a new active Worker version and strictly match the pre-deploy resource fingerprint"
+    ],
+    "preserve": [
+      "same Worker and workers.dev configuration",
+      "same DB database_id and all D1 data",
+      "same MEDIA_KV id and all media",
+      "same optional R2 bindings and objects",
+      "all remote vars by binding, type and value SHA-256",
+      "all Secret binding names; Secret values are never read"
+    ],
+    "removeSourceVarsBeforeDeploy": true,
+    "provisionResources": false,
+    "permissionFallback": false,
+    "parallelIsolation": "each student repository supplies its own fixed ids, Worker override and Cloudflare build credentials; the bridge has no shared remote state",
+    "successCondition": "emit [BRIDGE][SUCCESS] only after a new active version and the unchanged post-deploy fingerprint are proven"
+  },
   "newDeploymentProvisioning": {
     "declaredBindings": [
       "DB",
@@ -210,8 +245,9 @@
       "npm run test:e2e:codec:chrome",
       "npm run test:e2e:codec:webkit"
     ],
-    "cloudBuildFirstDeployment": "npm run deploy",
-    "cloudBuildExistingWorker": "fail-closed; never an upgrade entry",
+    "cloudBuildFirstDeployment": "npm run cloudflare:deploy:new (separate from this existing-site bridge)",
+    "cloudBuildExistingWorker": "npm run deploy",
+    "workersBuildsUpgrade": "npm run deploy",
     "legacyBaselineTool": "invoke the verified refs/tags/v1.3.0 worktree's absolute scripts/cloudflare-deploy.mjs path; the script pins Wrangler cwd and dependencies to that tag root while reading the original site's absolute wrangler.jsonc and writing its .wrangler/upgrade-before-fingerprint.json",
     "captureUpgradeFingerprint": "npm run cloudflare:fingerprint",
     "upgradeFingerprintPath": ".wrangler/upgrade-before-fingerprint.json",
@@ -270,10 +306,12 @@
       "0007_legacy_media_and_access_state.sql"
     ],
     "migrationSha256": {
+      "0006_auth_v2.sql": "edee5672e5b8281ec495cf5f9d34db7df4311f51dfcb6136c9bdfe127d815ad4",
       "0007_legacy_media_and_access_state.sql": "c29e080e93d8fa71378c43d7afdbcef97a591e434dca092af84741428acd9a1e"
     },
     "runtimeBootstrapRoute": "/admin",
     "permissionFallback": "only after migrations list succeeds and reliably enumerates all pending files, apply then clearly fails for D1 permission, the exact target fingerprint matches, and every pending migration is allowlisted and verified as idempotent DDL",
+    "workersBuildsPermissionFallback": "forbidden; every list/apply/re-list error stops before Worker deployment",
     "migrationListFailure": "fail-closed because the complete pending set is unproven",
     "allOtherMigrationErrors": "fail-closed"
   },

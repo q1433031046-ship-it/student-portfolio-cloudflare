@@ -1,23 +1,45 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
-import { chmod, mkdir, readFile, stat, writeFile } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join, resolve } from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+import { chmod, mkdir, readFile, readdir, stat, unlink, writeFile } from "node:fs/promises";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const MAX_COMMAND_OUTPUT_BYTES = 1024 * 1024;
 const DEFAULT_SECRET_BINDING = "INITIAL_ADMIN_CODE";
-const VALID_MODES = new Set(["auto", "new", "upgrade"]);
+const VALID_MODES = new Set(["auto", "new", "upgrade", "workers-builds-upgrade"]);
 const SCRIPT_PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const BRIDGE_RELEASE = Object.freeze({
+  version: "1.3.0",
+  tag: "v1.3.0",
+  commit: "4658bc834d6ea21aa94ce0db0d9c99e82b856235",
+  tree: "2d9bc4a77dc96bbc75aa85ed5bdca13c9823ea54",
+});
+const BRIDGE_MIGRATIONS = Object.freeze([
+  Object.freeze({
+    name: "0006_auth_v2.sql",
+    sha256: "edee5672e5b8281ec495cf5f9d34db7df4311f51dfcb6136c9bdfe127d815ad4",
+  }),
+  Object.freeze({
+    name: "0007_legacy_media_and_access_state.sql",
+    sha256: "c29e080e93d8fa71378c43d7afdbcef97a591e434dca092af84741428acd9a1e",
+  }),
+]);
+const BRIDGE_BUILD_TOKEN_PERMISSIONS = Object.freeze([
+  Object.freeze({ scope: "Account", permission: "Workers Scripts", access: "Edit" }),
+  Object.freeze({ scope: "Account", permission: "D1", access: "Edit" }),
+]);
 
 function usage() {
   return `用法: bash scripts/deploy-cloudflare.sh [选项]
 
 选项:
-  --mode auto|new|upgrade   自动识别、仅首次部署或仅现有站点升级（默认 auto）
+  --mode auto|new|upgrade|workers-builds-upgrade
+                           自动识别、仅首次部署、人工升级或 Workers Builds 严格升级（默认 auto）
   --config PATH            Wrangler 配置（默认 wrangler.jsonc）
   --manifest PATH          部署契约（默认 deployment/agent-manifest.json）
+  --bridge-manifest PATH   Workers Builds 升级桥契约（严格升级模式必需）
   --output PATH            将升级前资源指纹写入指定文件（仅与 --inspect 同用）
   --fingerprint PATH       升级前资源指纹；现有站点升级时必须提供并严格复核
   --inspect                仅核对现有站点资源指纹，不迁移或部署
@@ -32,6 +54,7 @@ function parseArgs(argv) {
     manifest: "deployment/agent-manifest.json",
     output: null,
     fingerprint: null,
+    bridgeManifest: null,
     inspect: false,
   };
 
@@ -51,6 +74,7 @@ function parseArgs(argv) {
       ["--manifest", "manifest"],
       ["--output", "output"],
       ["--fingerprint", "fingerprint"],
+      ["--bridge-manifest", "bridgeManifest"],
     ]).get(argument);
     if (!key) {
       throw new Error(`未知参数：${argument}`);
@@ -64,7 +88,7 @@ function parseArgs(argv) {
   }
 
   if (!VALID_MODES.has(options.mode)) {
-    throw new Error(`--mode 只能是 auto、new 或 upgrade，收到：${options.mode}`);
+    throw new Error(`--mode 只能是 auto、new、upgrade 或 workers-builds-upgrade，收到：${options.mode}`);
   }
   if (options.inspect && options.mode === "new") {
     throw new Error("--inspect 只能用于现有站点，不能与 --mode new 同时使用");
@@ -80,6 +104,16 @@ function parseArgs(argv) {
   }
   if (options.mode === "upgrade" && !options.inspect && !options.fingerprint) {
     throw new Error("现有站点升级必须提供 --fingerprint <升级前指纹文件>");
+  }
+  if (options.mode === "workers-builds-upgrade") {
+    if (!options.bridgeManifest) {
+      throw new Error("workers-builds-upgrade 必须提供 --bridge-manifest <升级桥契约>");
+    }
+    if (options.inspect || options.output || options.fingerprint) {
+      throw new Error("workers-builds-upgrade 不接受 --inspect、--output 或 --fingerprint");
+    }
+  } else if (options.bridgeManifest) {
+    throw new Error("--bridge-manifest 只能与 --mode workers-builds-upgrade 同时使用");
   }
   return options;
 }
@@ -173,6 +207,163 @@ async function readJson(path, { jsonc = false } = {}) {
   }
 }
 
+function bridgeBlocked(message) {
+  const error = new Error(`[BRIDGE][BLOCKED] ${message}`);
+  error.bridgeOutcome = "blocked";
+  return error;
+}
+
+function bridgeFailed(message) {
+  const error = new Error(`[BRIDGE][FAILED] ${message}`);
+  error.bridgeOutcome = "failed";
+  return error;
+}
+
+function bridgeCheck(message) {
+  process.stdout.write(`[BRIDGE][CHECK] ${message}\n`);
+}
+
+function assertBridgeValue(condition, message) {
+  if (!condition) throw bridgeBlocked(message);
+}
+
+async function collectProductPayloadFiles(includePaths) {
+  assertBridgeValue(Array.isArray(includePaths) && includePaths.length > 0, "升级桥 productPayload.includePaths 非法");
+  const files = new Map();
+
+  async function walk(target) {
+    const metadata = await stat(target).catch((error) => {
+      throw bridgeBlocked(`无法读取固定 v1.3.0 产品文件 ${relative(SCRIPT_PROJECT_ROOT, target)}：${error.message}`);
+    });
+    if (metadata.isDirectory()) {
+      const entries = await readdir(target);
+      for (const entry of entries.sort()) await walk(join(target, entry));
+      return;
+    }
+    assertBridgeValue(metadata.isFile(), `固定 v1.3.0 产品路径不是普通文件：${relative(SCRIPT_PROJECT_ROOT, target)}`);
+    const productPath = relative(SCRIPT_PROJECT_ROOT, target).split(sep).join("/");
+    assertBridgeValue(!productPath.startsWith("../") && productPath !== "..", `固定产品路径越出项目根目录：${productPath}`);
+    assertBridgeValue(!files.has(productPath), `固定产品路径重复：${productPath}`);
+    files.set(productPath, target);
+  }
+
+  for (const includePath of includePaths) {
+    assertBridgeValue(
+      typeof includePath === "string" && includePath !== "" && !isAbsolute(includePath),
+      "升级桥 productPayload.includePaths 必须是非空相对路径",
+    );
+    const target = resolve(SCRIPT_PROJECT_ROOT, includePath);
+    assertBridgeValue(
+      target === SCRIPT_PROJECT_ROOT || target.startsWith(`${SCRIPT_PROJECT_ROOT}${sep}`),
+      `固定产品路径越出项目根目录：${includePath}`,
+    );
+    await walk(target);
+  }
+  return [...files.entries()].sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0));
+}
+
+async function verifyBridgeContract({ bridge, manifest, config, configPath }) {
+  assertBridgeValue(bridge?.schemaVersion === 1, "升级桥 schemaVersion 必须为 1");
+  assertBridgeValue(JSON.stringify(bridge.productRelease) === JSON.stringify(BRIDGE_RELEASE), "升级桥产品来源不是固定 v1.3.0 release commit/tree");
+  assertBridgeValue(manifest?.releaseContract?.version === BRIDGE_RELEASE.version, "agent manifest 产品版本不是 1.3.0");
+  assertBridgeValue(manifest?.releaseContract?.releaseTag === BRIDGE_RELEASE.tag, "agent manifest 发布标签不是 v1.3.0");
+
+  const payload = bridge.productPayload;
+  assertBridgeValue(payload?.algorithm === "sha256-path-nul-file-sha256-newline-v1", "升级桥 productPayload 算法非法");
+  assertBridgeValue(Number.isInteger(payload.fileCount) && payload.fileCount > 0, "升级桥 productPayload.fileCount 非法");
+  assertBridgeValue(typeof payload.sha256 === "string" && /^[a-f0-9]{64}$/u.test(payload.sha256), "升级桥 productPayload.sha256 非法");
+  const productFiles = await collectProductPayloadFiles(payload.includePaths);
+  assertBridgeValue(productFiles.length === payload.fileCount, `v1.3.0 产品文件数量不一致：预期 ${payload.fileCount}，实际 ${productFiles.length}`);
+  const productHash = createHash("sha256");
+  for (const [productPath, target] of productFiles) {
+    const bytes = await readFile(target);
+    const fileHash = createHash("sha256").update(bytes).digest("hex");
+    productHash.update(productPath).update("\0").update(fileHash).update("\n");
+  }
+  assertBridgeValue(productHash.digest("hex") === payload.sha256, "当前产品文件不是固定 v1.3.0 release payload");
+
+  const projectionContract = bridge.packageRuntimeProjection;
+  const projectionFields = ["name", "version", "private", "engines", "dependencies", "devDependencies", "type"];
+  const scriptFields = ["build"];
+  assertBridgeValue(
+    projectionContract?.algorithm === "canonical-json-sha256-v1"
+      && JSON.stringify(projectionContract.fields) === JSON.stringify(projectionFields)
+      && JSON.stringify(projectionContract.scriptFields) === JSON.stringify(scriptFields)
+      && typeof projectionContract.sha256 === "string"
+      && /^[a-f0-9]{64}$/u.test(projectionContract.sha256),
+    "升级桥 packageRuntimeProjection 契约非法",
+  );
+  const packageJson = await readJson(join(SCRIPT_PROJECT_ROOT, "package.json"));
+  const projection = Object.fromEntries(projectionFields.map((field) => [field, packageJson[field]]));
+  projection.scripts = Object.fromEntries(scriptFields.map((field) => [field, packageJson.scripts?.[field]]));
+  const projectionSha256 = createHash("sha256").update(canonicalJson(projection)).digest("hex");
+  assertBridgeValue(projectionSha256 === projectionContract.sha256, "当前运行依赖不是固定 v1.3.0 release 依赖");
+
+  assertBridgeValue(
+    JSON.stringify(bridge.allowedPendingMigrations) === JSON.stringify(BRIDGE_MIGRATIONS),
+    "升级桥只允许固定的 0006/0007 Migration 及 SHA-256",
+  );
+  assertBridgeValue(
+    bridge.eligibleBindings?.d1 === "DB"
+      && bridge.eligibleBindings?.kv === "MEDIA_KV"
+      && bridge.eligibleBindings?.fixedIdsRequired === true,
+    "升级桥固定资源绑定契约非法",
+  );
+  assertBridgeValue(
+    JSON.stringify(bridge.requiredBuildTokenPermissions) === JSON.stringify(BRIDGE_BUILD_TOKEN_PERMISSIONS),
+    "升级桥必须声明 Workers Scripts Edit 与 D1 Edit 构建令牌权限",
+  );
+  assertBridgeValue(
+    bridge.preserveRemote?.vars === true
+      && bridge.preserveRemote?.secrets === true
+      && bridge.preserveRemote?.removeSourceVarsBeforeDeploy === true,
+    "升级桥必须保留远程 vars/Secrets 并移除源码 vars",
+  );
+
+  const journal = await readJson(join(SCRIPT_PROJECT_ROOT, "drizzle", "meta", "_journal.json"));
+  const journalMigrations = (Array.isArray(journal.entries) ? journal.entries : []).map((entry) => `${entry.tag}.sql`);
+  assertBridgeValue(
+    JSON.stringify(journalMigrations) === JSON.stringify([
+      "0000_bumpy_ultimo.sql",
+      "0001_perpetual_firestar.sql",
+      "0002_nosy_silhouette.sql",
+      "0003_careful_justice.sql",
+      "0004_owner_email_onboarding.sql",
+      "0005_password_auth_kv_media.sql",
+      ...BRIDGE_MIGRATIONS.map(({ name }) => name),
+    ]),
+    "v1.3.0 Migration journal 不完整或顺序发生变化",
+  );
+
+  assertBridgeValue(config.main === "./cloudflare/worker-entry.js", "现有站点配置必须使用固定 v1.3.0 Worker 入口");
+  const assetsDirectory = config.assets?.directory;
+  assertBridgeValue(typeof assetsDirectory === "string" && assetsDirectory !== "", "现有站点配置缺少静态构建目录");
+  const builtAssets = isAbsolute(assetsDirectory) ? assetsDirectory : resolve(dirname(configPath), assetsDirectory);
+  const builtAssetsMetadata = await stat(builtAssets).catch(() => null);
+  assertBridgeValue(builtAssetsMetadata?.isDirectory() === true, "Cloudflare Workers Builds 的生产构建产物不存在；未开始远程迁移");
+  const builtAssetEntries = await readdir(builtAssets).catch(() => []);
+  assertBridgeValue(builtAssetEntries.length > 0, "Cloudflare Workers Builds 的静态构建目录为空；未开始远程迁移");
+  const serverBundle = resolve(dirname(configPath), "dist", "server", "index.js");
+  const serverBundleMetadata = await stat(serverBundle).catch(() => null);
+  assertBridgeValue(serverBundleMetadata?.isFile() === true, "Cloudflare Workers Builds 的服务端构建产物不存在；未开始远程迁移");
+
+  const d1Bindings = (Array.isArray(config.d1_databases) ? config.d1_databases : [])
+    .filter((entry) => entry?.binding === "DB");
+  assertBridgeValue(d1Bindings.length === 1, `现有站点固定资源配置必须且只能包含一个 DB D1 绑定，当前为 ${d1Bindings.length} 个`);
+  const [d1] = d1Bindings;
+  const migrationsDirectory = typeof d1.migrations_dir === "string" ? d1.migrations_dir : "./migrations";
+  const migrationRoot = isAbsolute(migrationsDirectory) ? migrationsDirectory : resolve(dirname(configPath), migrationsDirectory);
+  for (const migration of BRIDGE_MIGRATIONS) {
+    const source = await readFile(join(migrationRoot, migration.name)).catch((error) => {
+      throw bridgeBlocked(`无法读取固定 Migration ${migration.name}：${error.message}`);
+    });
+    const actualSha256 = createHash("sha256").update(source).digest("hex");
+    assertBridgeValue(actualSha256 === migration.sha256, `${migration.name} 与固定 v1.3.0 SHA-256 不一致`);
+  }
+  bridgeCheck(`固定产品来源已核对：v${BRIDGE_RELEASE.version} / ${BRIDGE_RELEASE.commit.slice(0, 12)}`);
+  bridgeCheck("构建令牌权限合同已核对；Cloudflare 运行时将由 D1 list/apply 证明 D1 访问，令牌值不进入日志");
+}
+
 function exactlyOne(items, description) {
   if (items.length !== 1) {
     throw new Error(`部署配置必须且只能包含一个 ${description}，当前为 ${items.length} 个`);
@@ -192,6 +383,17 @@ function effectiveWorkerName(config) {
   const ciOverrideName = process.env.WRANGLER_CI_OVERRIDE_NAME;
   if (ciOverrideName === undefined) return configuredName;
   return validatedWorkerName(ciOverrideName, "WRANGLER_CI_OVERRIDE_NAME");
+}
+
+function requiredWorkersBuildsName(config) {
+  if (process.env.WRANGLER_CI_OVERRIDE_NAME === undefined || process.env.WRANGLER_CI_OVERRIDE_NAME.trim() === "") {
+    throw bridgeBlocked("缺少 Cloudflare Workers Builds 提供的 WRANGLER_CI_OVERRIDE_NAME；不会猜测或创建 Worker");
+  }
+  try {
+    return effectiveWorkerName(config);
+  } catch (error) {
+    throw bridgeBlocked(error.message);
+  }
 }
 
 function canonicalJson(value) {
@@ -442,7 +644,7 @@ function remoteResourceFingerprint(payload, local) {
   };
 }
 
-function verifyLiveResourceFingerprint(expected, actual, versionId) {
+function verifyLiveResourceFingerprint(expected, actual, versionId, { compareConfiguredVariables = true } = {}) {
   const mismatches = [];
   if (actual.d1.id !== expected.d1.id) {
     mismatches.push(`DB: 远端 ${actual.d1.id}，配置 ${expected.d1.id}`);
@@ -456,11 +658,13 @@ function verifyLiveResourceFingerprint(expected, actual, versionId) {
   if (JSON.stringify(actual.r2Buckets) !== JSON.stringify(expected.r2Buckets)) {
     mismatches.push("R2 BUCKET binding/name 与配置不一致");
   }
-  const liveVariables = new Map(actual.runtimeVariables.map((entry) => [entry.binding, entry]));
-  for (const configuredVariable of expected.runtimeVariables) {
-    const liveVariable = liveVariables.get(configuredVariable.binding);
-    if (!liveVariable || liveVariable.type !== configuredVariable.type || liveVariable.sha256 !== configuredVariable.sha256) {
-      mismatches.push(`运行变量 ${configuredVariable.binding} 与配置不一致`);
+  if (compareConfiguredVariables) {
+    const liveVariables = new Map(actual.runtimeVariables.map((entry) => [entry.binding, entry]));
+    for (const configuredVariable of expected.runtimeVariables) {
+      const liveVariable = liveVariables.get(configuredVariable.binding);
+      if (!liveVariable || liveVariable.type !== configuredVariable.type || liveVariable.sha256 !== configuredVariable.sha256) {
+        mismatches.push(`运行变量 ${configuredVariable.binding} 与配置不一致`);
+      }
     }
   }
   if (mismatches.length > 0) {
@@ -617,6 +821,123 @@ function extractMigrationNames(output) {
   throw new Error("无法从 Wrangler 输出中确定待执行迁移；为避免跳过未知迁移，已停止部署");
 }
 
+function extractBridgeMigrationNames(output) {
+  const names = [...String(output).matchAll(/\b\d{4}_[a-z0-9_]+\.sql\b/giu)].map((match) => match[0]);
+  if (names.length > 0) {
+    if (new Set(names).size !== names.length) {
+      throw bridgeBlocked(`pending Migration 输出含重复文件：${names.join(", ")}`);
+    }
+    return names;
+  }
+  if (/\bno\s+migrations?\b|nothing\s+to\s+(?:apply|migrate)|database\s+is\s+up\s+to\s+date/iu.test(output)) {
+    return [];
+  }
+  throw bridgeBlocked("无法从 Wrangler 输出中可靠确定完整 pending Migration 集合");
+}
+
+function validateBridgePendingMigrations(pendingMigrations) {
+  const allowed = BRIDGE_MIGRATIONS.map(({ name }) => name);
+  const allowedSuffixes = [[], [allowed[1]], allowed];
+  if (!allowedSuffixes.some((suffix) => JSON.stringify(suffix) === JSON.stringify(pendingMigrations))) {
+    throw bridgeBlocked(`pending Migration 不属于允许的 0006/0007 前向后缀：${pendingMigrations.join(", ") || "（空）"}`);
+  }
+  return pendingMigrations;
+}
+
+function normalizedFingerprintJson(fingerprint, label) {
+  return JSON.stringify(normalizeFingerprint(fingerprint, label));
+}
+
+function assertBridgeFingerprintUnchanged(expected, actual, stage) {
+  if (normalizedFingerprintJson(expected, `${stage}基线`) !== normalizedFingerprintJson(actual, `${stage}当前状态`)) {
+    throw bridgeFailed(`${stage} Worker 资源发生变化；DB、MEDIA_KV、R2、远程 vars 或 Secret binding 名称未保持一致`);
+  }
+}
+
+function readBridgeExistingState({ commonArgs, local, stage, expectedFingerprint = null }) {
+  const status = runWrangler(["deployments", "status", ...commonArgs, "--json"]);
+  let deployment;
+  try {
+    deployment = classifyDeploymentState(status);
+  } catch (error) {
+    throw bridgeFailed(`${stage}无法确认现有 Worker：${error.message}`);
+  }
+  if (deployment.kind !== "existing") {
+    if (stage === "升级前") {
+      throw bridgeBlocked("Cloudflare Workers Builds 连接的 Worker 不存在；升级桥禁止创建新 Worker");
+    }
+    throw bridgeFailed(`${stage}未找到原有 Worker；停止并禁止把结果报告为成功`);
+  }
+
+  let fingerprint = null;
+  for (const versionId of deployment.versionIds) {
+    const view = runWrangler(["versions", "view", versionId, ...commonArgs, "--json"]);
+    if (view.status !== 0) throw bridgeFailed(`${stage}读取 Worker version 失败：${redactSensitiveOutput(`${view.stderr}\n${view.stdout}`).trim()}`);
+    let remote;
+    try {
+      const payload = parseCommandJson(`${stage}读取 Worker version`, view.stdout);
+      remote = remoteResourceFingerprint(payload, local);
+      verifyLiveResourceFingerprint(local, remote, versionId, { compareConfiguredVariables: false });
+    } catch (error) {
+      throw stage === "升级前"
+        ? bridgeBlocked(`${stage}资源身份不符合升级条件：${error.message}`)
+        : bridgeFailed(`${stage}资源身份核验失败：${error.message}`);
+    }
+    if (fingerprint && normalizedFingerprintJson(fingerprint, `${stage} active version`) !== normalizedFingerprintJson(remote, `${stage} active version`)) {
+      throw stage === "升级前"
+        ? bridgeBlocked(`${stage}多个 active Worker versions 的资源身份不一致`)
+        : bridgeFailed(`${stage}多个 active Worker versions 的资源身份不一致`);
+    }
+    fingerprint ??= remote;
+  }
+  if (!fingerprint) throw bridgeFailed(`${stage}没有可核验的 active Worker version`);
+  if (expectedFingerprint) assertBridgeFingerprintUnchanged(expectedFingerprint, fingerprint, stage);
+  return { fingerprint: normalizeFingerprint(fingerprint, `${stage}资源指纹`), versionIds: deployment.versionIds };
+}
+
+async function withVarsFreeDeployConfig(configPath, config, callback) {
+  const temporaryPath = join(
+    dirname(configPath),
+    `.wrangler-upgrade-bridge-${process.pid}-${randomUUID()}.json`,
+  );
+  const deployConfig = structuredClone(config);
+  delete deployConfig.vars;
+  if (deployConfig.env && typeof deployConfig.env === "object" && !Array.isArray(deployConfig.env)) {
+    for (const environment of Object.values(deployConfig.env)) {
+      if (environment && typeof environment === "object" && !Array.isArray(environment)) delete environment.vars;
+    }
+  }
+  deployConfig.keep_vars = true;
+  await writeFile(temporaryPath, `${JSON.stringify(deployConfig, null, 2)}\n`, { flag: "wx", mode: 0o600 });
+  await chmod(temporaryPath, 0o600);
+  try {
+    return await callback(temporaryPath);
+  } finally {
+    await unlink(temporaryPath).catch((error) => {
+      if (error?.code !== "ENOENT") throw error;
+    });
+  }
+}
+
+function sleep(milliseconds) {
+  return new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds));
+}
+
+async function waitForBridgePostDeployState({ commonArgs, local, baselineFingerprint, beforeVersionIds }) {
+  const before = new Set(beforeVersionIds);
+  for (let attempt = 1; attempt <= 6; attempt += 1) {
+    const current = readBridgeExistingState({
+      commonArgs,
+      local,
+      stage: "部署后",
+      expectedFingerprint: baselineFingerprint,
+    });
+    if (current.versionIds.some((versionId) => !before.has(versionId))) return current;
+    if (attempt < 6) await sleep(2_000);
+  }
+  throw bridgeFailed("部署后没有观察到新的 Worker version；禁止把 Wrangler 命令退出 0 冒充为升级成功");
+}
+
 function isD1PermissionError(output) {
   const detail = String(output);
   return /(?:\bD1\b[\s\S]{0,200}\b(?:forbidden|unauthori[sz]ed|permission|access\s+denied)\b|\b(?:forbidden|unauthori[sz]ed|permission|access\s+denied)\b[\s\S]{0,200}\bD1\b)/iu.test(detail);
@@ -743,6 +1064,85 @@ function printCommandOutput(result) {
   if (stderr) process.stderr.write(stderr.endsWith("\n") ? stderr : `${stderr}\n`);
 }
 
+async function runWorkersBuildsUpgrade({ options, configPath, config, manifest }) {
+  let local;
+  const workerName = requiredWorkersBuildsName(config);
+  const bridgePath = resolve(options.bridgeManifest);
+  const bridge = await readJson(bridgePath).catch((error) => {
+    throw bridgeBlocked(`无法读取 Workers Builds 升级桥契约：${error.message}`);
+  });
+  await verifyBridgeContract({ bridge, manifest, config, configPath });
+  try {
+    local = localResourceFingerprint(config, manifest, workerName);
+    assertExistingUpgradeResourceIds(local);
+  } catch (error) {
+    throw bridgeBlocked(`现有站点固定资源配置不符合升级条件：${error.message}`);
+  }
+
+  const commonArgs = ["--config", configPath, "--name", local.workerName];
+  const before = readBridgeExistingState({ commonArgs, local, stage: "升级前" });
+  bridgeCheck("现有 Worker、固定 DB/MEDIA_KV、可选 R2、远程 vars 与 Secret binding 名称已核对");
+
+  const firstList = runWrangler(["d1", "migrations", "list", "DB", "--remote", "--config", configPath]);
+  if (firstList.status !== 0) {
+    throw bridgeFailed(`读取完整 pending Migration 集合失败：${redactSensitiveOutput(`${firstList.stderr}\n${firstList.stdout}`).trim()}`);
+  }
+  const pendingMigrations = validateBridgePendingMigrations(
+    extractBridgeMigrationNames(`${firstList.stdout}\n${firstList.stderr}`),
+  );
+  bridgeCheck(`pending Migration 已确定：${pendingMigrations.length === 0 ? "无" : pendingMigrations.join(", ")}`);
+
+  if (pendingMigrations.length > 0) {
+    const apply = runWrangler(["d1", "migrations", "apply", "DB", "--remote", "--config", configPath]);
+    if (apply.status !== 0) {
+      throw bridgeFailed(`D1 Migration 执行失败；不会部署 Worker：${redactSensitiveOutput(`${apply.stderr}\n${apply.stdout}`).trim()}`);
+    }
+    printCommandOutput(apply);
+    const secondList = runWrangler(["d1", "migrations", "list", "DB", "--remote", "--config", configPath]);
+    if (secondList.status !== 0) {
+      throw bridgeFailed(`D1 Migration 后复查 pending 集合失败；不会部署 Worker：${redactSensitiveOutput(`${secondList.stderr}\n${secondList.stdout}`).trim()}`);
+    }
+    let remaining;
+    try {
+      remaining = extractBridgeMigrationNames(`${secondList.stdout}\n${secondList.stderr}`);
+    } catch (error) {
+      throw bridgeFailed(`D1 Migration 后无法证明 pending 已清零；不会部署 Worker：${error.message}`);
+    }
+    if (remaining.length > 0) {
+      throw bridgeFailed(`D1 Migration 后仍有 pending 文件 ${remaining.join(", ")}；不会部署 Worker`);
+    }
+    bridgeCheck("D1 Migration 已成功，第二次 list 证明 pending 为空");
+  }
+
+  readBridgeExistingState({
+    commonArgs,
+    local,
+    stage: "迁移后部署前",
+    expectedFingerprint: before.fingerprint,
+  });
+  await withVarsFreeDeployConfig(configPath, config, async (deployConfigPath) => {
+    const deploy = runWrangler([
+      "deploy",
+      "--config", deployConfigPath,
+      "--name", local.workerName,
+      "--keep-vars",
+      "--strict",
+    ]);
+    if (deploy.status !== 0) {
+      throw bridgeFailed(`Worker 部署失败：${redactSensitiveOutput(`${deploy.stderr}\n${deploy.stdout}`).trim()}`);
+    }
+    printCommandOutput(deploy);
+  });
+
+  await waitForBridgePostDeployState({
+    commonArgs,
+    local,
+    baselineFingerprint: before.fingerprint,
+    beforeVersionIds: before.versionIds,
+  });
+  process.stdout.write(`[BRIDGE][SUCCESS] v${BRIDGE_RELEASE.version} 已迁移并部署到同一个现有 Worker；部署后资源与远程配置核验通过。\n`);
+}
+
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   const configPath = resolve(options.config);
@@ -751,6 +1151,10 @@ async function main() {
     readJson(configPath, { jsonc: true }),
     readJson(manifestPath),
   ]);
+  if (options.mode === "workers-builds-upgrade") {
+    await runWorkersBuildsUpgrade({ options, configPath, config, manifest });
+    return;
+  }
   const local = localResourceFingerprint(config, manifest, effectiveWorkerName(config));
   if (options.mode === "upgrade" || options.inspect || options.fingerprint) {
     assertExistingUpgradeResourceIds(local);
@@ -835,7 +1239,11 @@ async function main() {
   }
 }
 
+const requestedBridgeMode = process.argv.includes("workers-builds-upgrade");
+
 main().catch((error) => {
-  process.stderr.write(`${redactSensitiveOutput(error?.message ?? error)}\n`);
+  let message = redactSensitiveOutput(error?.message ?? error);
+  if (requestedBridgeMode && !message.startsWith("[BRIDGE]")) message = `[BRIDGE][FAILED] ${message}`;
+  process.stderr.write(`${message}\n`);
   process.exitCode = 1;
 });

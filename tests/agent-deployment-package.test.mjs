@@ -36,6 +36,16 @@ test("ships a machine-readable agent deployment contract", async () => {
   assert.equal(manifest.newDeploymentProvisioning.fixedDatabaseNameReuseAllowed, false);
   assert.equal(manifest.effectiveWorkerName.overrideVariable, "WRANGLER_CI_OVERRIDE_NAME");
   assert.equal(manifest.effectiveWorkerName.useForAllRemoteOperations, true);
+  assert.equal(manifest.workersBuildsUpgradeBridge.contract, "deployment/workers-builds-upgrade-bridge.json");
+  assert.equal(manifest.workersBuildsUpgradeBridge.productSourceCommit, "4658bc834d6ea21aa94ce0db0d9c99e82b856235");
+  assert.equal(manifest.workersBuildsUpgradeBridge.productSourceTree, "2d9bc4a77dc96bbc75aa85ed5bdca13c9823ea54");
+  assert.equal(manifest.workersBuildsUpgradeBridge.existingWorkerOnly, true);
+  assert.equal(manifest.workersBuildsUpgradeBridge.provisionResources, false);
+  assert.equal(manifest.workersBuildsUpgradeBridge.permissionFallback, false);
+  assert.equal(manifest.workersBuildsUpgradeBridge.removeSourceVarsBeforeDeploy, true);
+  assert.equal(manifest.commands.cloudBuildExistingWorker, "npm run deploy");
+  assert.equal(manifest.commands.workersBuildsUpgrade, "npm run deploy");
+  assert.match(manifest.databaseMigrationPolicy.workersBuildsPermissionFallback, /forbidden/u);
   assert.equal(manifest.responsiveUI.minimumViewportWidth, 320);
   assert.equal(manifest.responsiveUI.minimumTouchTargetPixels, 44);
   assert.equal(manifest.responsiveUI.mobileInputFontPixels, 16);
@@ -70,25 +80,81 @@ test("publishes the current chunked media and playback API contract", async () =
   assert.doesNotMatch(apiIndex, /15 分钟播放地址|流式上传图片或视频|视频最大 90 MiB/u);
 });
 
-test("separates Workers Builds deployment from the verified existing-site upgrade", async () => {
-  const packageJson = JSON.parse(await readFile("package.json", "utf8"));
+test("routes Workers Builds through the pinned existing-site upgrade bridge", async () => {
+  const [packageJson, bridge] = await Promise.all([
+    readFile("package.json", "utf8").then(JSON.parse),
+    readFile("deployment/workers-builds-upgrade-bridge.json", "utf8").then(JSON.parse),
+  ]);
   const [deployScript, deployOrchestrator] = await Promise.all([
     readFile("scripts/deploy-cloudflare.sh", "utf8"),
     readFile("scripts/cloudflare-deploy.mjs", "utf8"),
   ]);
 
+  assert.equal(bridge.schemaVersion, 1);
+  assert.deepEqual(bridge.productRelease, {
+    version: "1.3.0",
+    tag: "v1.3.0",
+    commit: "4658bc834d6ea21aa94ce0db0d9c99e82b856235",
+    tree: "2d9bc4a77dc96bbc75aa85ed5bdca13c9823ea54",
+  });
+  assert.equal(bridge.productPayload.fileCount, 139);
+  assert.equal(bridge.productPayload.sha256, "cb03afa02e202e4df39d23032e1d7997b4cce719c61c4244e30f5181ce887021");
+  assert.deepEqual(bridge.packageRuntimeProjection.scriptFields, ["build"]);
+  assert.equal(bridge.packageRuntimeProjection.sha256, "e9fb70ba1e92044f5f4f4b32d75f17d05e082e53a90f6317f3eeec26916b7ac7");
+  assert.deepEqual(bridge.allowedPendingMigrations, [
+    {
+      name: "0006_auth_v2.sql",
+      sha256: "edee5672e5b8281ec495cf5f9d34db7df4311f51dfcb6136c9bdfe127d815ad4",
+    },
+    {
+      name: "0007_legacy_media_and_access_state.sql",
+      sha256: "c29e080e93d8fa71378c43d7afdbcef97a591e434dca092af84741428acd9a1e",
+    },
+  ]);
+  assert.deepEqual(bridge.eligibleBindings, {
+    d1: "DB",
+    kv: "MEDIA_KV",
+    fixedIdsRequired: true,
+  });
+  assert.deepEqual(bridge.preserveRemote, {
+    vars: true,
+    secrets: true,
+    removeSourceVarsBeforeDeploy: true,
+  });
   assert.match(packageJson.scripts.deploy, /deploy-cloudflare\.sh/);
-  assert.match(packageJson.scripts.deploy, /--mode new/u);
-  assert.doesNotMatch(packageJson.scripts.deploy, /npm run build/);
+  assert.match(packageJson.scripts.deploy, /npm run build/);
+  assert.match(packageJson.scripts.deploy, /--mode workers-builds-upgrade/u);
+  assert.match(packageJson.scripts.deploy, /--bridge-manifest deployment\/workers-builds-upgrade-bridge\.json/u);
+  assert.match(packageJson.scripts["cloudflare:deploy:new"], /--mode new/u);
   assert.match(packageJson.scripts["cloudflare:deploy"], /npm run build/);
   assert.match(packageJson.scripts["cloudflare:deploy"], /deploy-cloudflare\.sh/);
   assert.match(packageJson.scripts["cloudflare:deploy"], /--fingerprint \.wrangler\/upgrade-before-fingerprint\.json/);
   assert.match(packageJson.scripts["cloudflare:fingerprint"], /--output \.wrangler\/upgrade-before-fingerprint\.json/);
   assert.match(deployScript, /cloudflare-deploy\.mjs/);
   assert.match(deployOrchestrator, /auto.*new.*upgrade|new.*upgrade.*auto/u);
+  assert.equal((packageJson.scripts.deploy.match(/npm run build/gu) ?? []).length, 1);
   assert.equal((packageJson.scripts["cloudflare:deploy"].match(/npm run build/gu) ?? []).length, 1);
   assert.equal("cloudflare:setup" in packageJson.scripts, false);
   assert.equal(existsSync("scripts/setup-cloudflare.sh"), false);
+});
+
+test("documents the GitHub to Workers Builds bridge without changing the immutable v1.3.0 prompt", async () => {
+  const [readme, promptManifest, templateVersion] = await Promise.all([
+    readFile("README.md", "utf8"),
+    readFile("deployment/upgrade-prompt.json", "utf8").then(JSON.parse),
+    readFile("deployment/template-version.json", "utf8").then(JSON.parse),
+  ]);
+
+  assert.match(readme, /GitHub → Cloudflare Workers Builds Upgrade Bridge/u);
+  assert.match(readme, /\[BRIDGE\]\[CHECK\]/u);
+  assert.match(readme, /\[BRIDGE\]\[BLOCKED\]/u);
+  assert.match(readme, /\[BRIDGE\]\[FAILED\]/u);
+  assert.match(readme, /\[BRIDGE\]\[SUCCESS\]/u);
+  assert.match(readme, /Migration 失败[\s\S]{0,100}不会部署/u);
+  assert.match(readme, /源码 `vars`[\s\S]{0,100}不会覆盖/u);
+  assert.equal(promptManifest.promptVersion, "1.3.0");
+  assert.equal(promptManifest.releaseTag, "v1.3.0");
+  assert.equal(templateVersion.upgradePromptSha256, "c72b072aa4c9a78121297078e572e7a1536fd5a1b1498f8cb103a825979b4149");
 });
 
 test("runs the complete production-safe gate for every main pull request", async () => {
@@ -253,4 +319,8 @@ test("tells deployment agents to use account authorization without collecting pa
   assert.match(instructions, /resume the exact interrupted step/i);
   assert.match(instructions, /resume/i);
   assert.match(instructions, /Do not expose a public `\/guide` route/i);
+  assert.match(instructions, /Workers Builds existing-site upgrade bridge/u);
+  assert.match(instructions, /apply or re-list failure stops before Worker deployment/u);
+  assert.match(instructions, /temporary config that contains no source `vars`/u);
+  assert.match(instructions, /\[BRIDGE\]\[SUCCESS\]/u);
 });
