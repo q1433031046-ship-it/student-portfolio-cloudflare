@@ -17,7 +17,7 @@
   "portfolioDocumentSchemaVersion": 5,
   "templateRepository": "https://github.com/q1433031046-ship-it/student-portfolio-cloudflare",
   "upgradePromptManifest": "deployment/upgrade-prompt.json",
-  "upgradePromptSha256": "34659bf4b27c6c3c2f6d2a1189c2bb97b5b4b07dd4bf61499ca0e1b892ecc638",
+  "upgradePromptSha256": "837f76e254a3b1fd572da5ce81fc5527e85bfb9c5131bef6b3e51ff8b8c27bb1",
   "humanGuide": "README.md",
   "adminGuide": "password-protected administrator interface",
   "publicGuideRoute": null,

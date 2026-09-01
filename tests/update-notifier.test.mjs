@@ -38,6 +38,8 @@ test("version metadata publishes the authenticated v1.3.1-b upgrade contract", a
   assert.deepEqual(agentManifest.databaseMigrationPolicy.runtimeSafeBootstrapMigrations, [
     "0006_auth_v2.sql",
     "0007_legacy_media_and_access_state.sql",
+  ]);
+  assert.deepEqual(agentManifest.databaseMigrationPolicy.normalApplyRequiredMigrations, [
     "0008_static_site_publish.sql",
   ]);
   assert.equal(agentManifest.databaseMigrationPolicy.runtimeBootstrapRoute, "/admin");
