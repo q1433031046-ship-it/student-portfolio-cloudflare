@@ -108,9 +108,25 @@ The comment entry is owner-only, accepts no arbitrary SHA, requires the release 
 - Losing both the administrator password and the latest recovery code requires an operator-assisted credential reset in D1. Do not weaken authentication to work around that condition.
 - For mainland-China audiences, verify the final `workers.dev` address on the owner's actual mobile and broadband networks.
 
+## Default manual review boundary
+
+Use this simplified manual workflow by default: plan once, audit the plan once, role 3 implements, audit the exact Candidate once, then role 4 releases only after the Candidate audit passes. When an audit fails, role 3 fixes the recorded blockers; the follow-up audit is limited to those blockers, the task-owned changes, and their direct regressions.
+
+Freeze review scope at the approved request. An audit may require changes only for unmet acceptance criteria, failing required verification, Candidate identity mismatch, or a credible risk to production, data, security, or an irreversible operation. Do not use an audit to require unrelated refactors, new features, new protocols, new monitoring, speculative cleanup, or zero known defects.
+
+Classify findings by disposition:
+
+- A Blocking Risk that can affect correctness, production, data, security, Candidate identity, or reversibility must be fixed before approval.
+- A contained Medium or Low risk may be accepted when its issue, severity, impact or blast radius, containment, stop or escalation condition, and planned follow-up are recorded.
+- A Low issue that does not cross a blocking boundary may be explicitly accepted for the current Candidate and must not block approval merely to make the known-issue count zero.
+
+End the audit when the approved behavior is complete, all Blocking Risks are closed, required checks pass, and the Candidate SHA, Tree SHA, PR, branch, and Base are exact. Re-run a full audit only when the Base, Candidate identity, approved scope, production or data behavior, or a trust boundary changes materially; otherwise do not reopen unaffected areas.
+
+Human reviewers decide release eligibility and record an unambiguous pass or fail against the exact Candidate. Do not use automated Markdown parsing or `governance-state` transitions to grant release eligibility unless the project owner explicitly reactivates that system in a separate approved change.
+
 ## Four-role governance entry
 
-This project separates formal work across fixed roles: 1=超级规划, 2=超级审计, 3=超级工作, and 4=超级发布. Before a formal governance task, read `governance/README.md`, `governance/workflow.md`, `governance/role-contract.json`, and the matching `governance/roles/*.md` contract.
+This section documents retained four-role infrastructure; it is not the default project workflow. If the project owner explicitly reactivates it in a separate approved change, use the fixed roles 1=超级规划, 2=超级审计, 3=超级工作, and 4=超级发布, and first read `governance/README.md`, `governance/workflow.md`, `governance/role-contract.json`, and the matching `governance/roles/*.md` contract.
 
 Read dynamic handoff state from `governance/runtime/current.json` on the dedicated `governance-state` branch, then follow its version and record pointers. The current repository governance contract and coordinated state take priority over old chat memory. Keep the full role contracts in `governance/`; this section is navigation only and must not replace or weaken the existing version, deployment, upgrade, or security contract above.
 
