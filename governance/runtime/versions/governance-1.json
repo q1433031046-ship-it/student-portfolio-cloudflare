@@ -3,18 +3,18 @@
   "project": "student-portfolio-cloudflare",
   "repository": "q1433031046-ship-it/student-portfolio-cloudflare",
   "activeVersion": "governance-1",
-  "stage": "RC_AUDIT_PENDING",
+  "stage": "IMPLEMENTATION_REQUIRED",
   "taskLevel": "L2",
-  "revision": 8,
+  "revision": 9,
   "lastUpdatedBy": {
-    "roleNumber": 3,
-    "roleName": "超级工作"
+    "roleNumber": 2,
+    "roleName": "超级审计"
   },
   "records": {
     "plan": "governance/runtime/records/governance-1/01-plan.md",
     "planAudit": null,
     "releaseCandidate": "governance/runtime/records/governance-1/04-release-candidate.md",
-    "rcAudit": null,
+    "rcAudit": "governance/runtime/records/governance-1/05-rc-audit.md",
     "releaseReceipt": null,
     "blocked": null
   },
@@ -22,7 +22,7 @@
     "plan": "1f0070475b50117879b47402e7dd0ab8779b1db99877ecf29c8e0102d07296f2",
     "planAudit": null,
     "releaseCandidate": "7d7a359332c09bb5a3439d61f6fbf8f2ccf57372fdd3b6a8a46500195891ec9b",
-    "rcAudit": null,
+    "rcAudit": "9f7d921f089f4bda9c9d6cee0b0652780dc94fb0cf32ab189a9ec36d736b17fc",
     "releaseReceipt": null,
     "blocked": null
   },
