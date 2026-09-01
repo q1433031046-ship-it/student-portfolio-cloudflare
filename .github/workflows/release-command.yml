@@ -45,8 +45,8 @@ jobs:
             echo "Only the repository owner can request a release." >&2
             exit 1
           fi
-          if [[ ! "$COMMENT_BODY" =~ ^/verify-and-tag\ v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
-            echo "Use the exact command: /verify-and-tag vX.Y.Z" >&2
+          if [[ ! "$COMMENT_BODY" =~ ^/verify-and-tag\ v([0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?)$ ]]; then
+            echo "Use the exact command: /verify-and-tag vX.Y.Z[-PRERELEASE]" >&2
             exit 1
           fi
           confirm_version="${BASH_REMATCH[1]}"

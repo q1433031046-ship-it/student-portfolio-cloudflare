@@ -9,6 +9,7 @@ import test from "node:test";
 const execFileAsync = promisify(execFile);
 
 function extractResolverShell(workflow) {
+  workflow = workflow.replace(/\r\n/gu, "\n");
   const stepMarker = "      - name: Resolve the exact owner-approved release PR\n";
   const stepOffset = workflow.indexOf(stepMarker);
   assert.notEqual(stepOffset, -1, "release command resolver is missing");
@@ -109,6 +110,24 @@ test("the owner command resolves only GitHub-supplied release and main SHAs", as
   assert.match(result.log, /git\/ref\/heads\/main/u);
 });
 
+test("the owner command preserves an exact SemVer prerelease identity", async (t) => {
+  const repository = "owner/student-portfolio-cloudflare";
+  const candidateSha = "a".repeat(40);
+  const version = "1.3.1-b";
+  const result = await runResolver(t, {
+    env: { COMMENT_BODY: `/verify-and-tag v${version}` },
+    pr: {
+      state: "open",
+      draft: false,
+      base: { ref: "main", repo: { full_name: repository } },
+      head: { ref: `release/v${version}`, repo: { full_name: repository }, sha: candidateSha },
+    },
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.output, /^confirm_version=1\.3\.1-b$/mu);
+});
+
 test("a non-owner or malformed command fails before reading pull-request data", async (t) => {
   const nonOwner = await runResolver(t, { env: { COMMENT_ACTOR: "collaborator" } });
   assert.notEqual(nonOwner.status, 0);
@@ -119,6 +138,17 @@ test("a non-owner or malformed command fails before reading pull-request data", 
   assert.notEqual(malformed.status, 0);
   assert.match(malformed.stderr, /exact command/u);
   assert.equal(malformed.log, "");
+
+  for (const command of [
+    "/verify-and-tag v1.3.1-",
+    "/verify-and-tag v1.3.1_b",
+    "/verify-and-tag v1.3.1-b+build.1",
+  ]) {
+    const invalidPrerelease = await runResolver(t, { env: { COMMENT_BODY: command } });
+    assert.notEqual(invalidPrerelease.status, 0, command);
+    assert.match(invalidPrerelease.stderr, /exact command/u);
+    assert.equal(invalidPrerelease.log, "");
+  }
 });
 
 test("forks, wrong branches and draft release pull requests fail closed", async (t) => {
@@ -154,4 +184,23 @@ test("forks, wrong branches and draft release pull requests fail closed", async 
   });
   assert.notEqual(draft.status, 0);
   assert.match(draft.stderr, /review-ready/u);
+});
+
+test("both protected release validators accept stable and prerelease versions only", async () => {
+  const workflow = await readFile(".github/workflows/release-verify.yml", "utf8");
+  const validators = [...workflow.matchAll(
+    /if \[\[ ! "\$confirm_version" =~ ([^\s]+) \]\]; then/gu,
+  )].map((match) => match[1]);
+
+  assert.equal(validators.length, 2, "both release verification stages must validate the version");
+  for (const validator of validators) {
+    const versionPattern = new RegExp(validator, "u");
+    for (const version of ["1.3.0", "1.3.1-b", "1.3.1-rc.1"]) {
+      assert.match(version, versionPattern);
+    }
+
+    for (const version of ["1.3", "1.3.1-", "1.3.1_b", "1.3.1-b+build.1"]) {
+      assert.doesNotMatch(version, versionPattern);
+    }
+  }
 });

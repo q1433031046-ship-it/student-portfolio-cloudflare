@@ -65,8 +65,8 @@ Before requesting GitHub or Cloudflare authorization, run one harmless read-only
 
 For future release candidates, the repository owner or an authorized GitHub plugin may start the protected release gate without opening the GitHub Actions browser form:
 
-1. Use an open, non-draft pull request from this repository's exact `release/vX.Y.Z` branch into `main`.
-2. As the repository owner, add the exact pull-request comment `/verify-and-tag vX.Y.Z`.
+1. Use an open, non-draft pull request from this repository's exact `release/vX.Y.Z[-PRERELEASE]` branch into `main`.
+2. As the repository owner, add the exact pull-request comment `/verify-and-tag vX.Y.Z[-PRERELEASE]`.
 3. `.github/workflows/release-command.yml` resolves the current release-branch tip and current `main` SHA from GitHub, then calls `.github/workflows/release-verify.yml` with those immutable values.
 
 The comment entry is owner-only, accepts no arbitrary SHA, requires the release branch and version to agree, and grants no Cloudflare access. It reuses the existing Linux, Chrome, macOS WebKit, release-contract, remote-ref, ancestry and immutable-tag checks. It may verify and create the release tag only; it does not deploy a production Worker, change D1 or KV, or bypass the strict production-upgrade workflow.
