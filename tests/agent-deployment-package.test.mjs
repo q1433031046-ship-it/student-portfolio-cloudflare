@@ -26,7 +26,11 @@ test("ships a machine-readable agent deployment contract", async () => {
   assert.equal(manifest.authorizationFlow.maximumAutomaticAuthorizationAttempts, 1);
   assert.equal(manifest.authorizationFlow.resumeInterruptedStep, true);
   assert.equal(manifest.authorizationFlow.restartDeploymentAfterAuthorization, false);
-  assert.equal(manifest.trustedReleaseCommand.exactCommand, "/verify-and-tag vX.Y.Z");
+  assert.equal(manifest.trustedReleaseCommand.exactCommand, "/verify-and-tag vX.Y.Z[-PRERELEASE]");
+  assert.equal(
+    manifest.trustedReleaseCommand.pullRequestRequirements.head,
+    "same-repository release/vX.Y.Z[-PRERELEASE]",
+  );
   assert.equal(manifest.trustedReleaseCommand.actor, "repository-owner-only");
   assert.equal(manifest.trustedReleaseCommand.reusableGate, ".github/workflows/release-verify.yml");
   assert.equal(manifest.trustedReleaseCommand.bypassExistingGates, false);
