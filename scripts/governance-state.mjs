@@ -616,8 +616,7 @@ async function githubJson(fetchImpl, url, token) {
   return response.json();
 }
 
-export async function verifyRemoteCandidate(stateInput, options = {}) {
-  const state = validateGovernanceState(stateInput);
+async function verifyRemoteCandidateObject(state, options = {}) {
   invariant(state.candidateSha && state.candidateContext, "当前阶段没有可核验的 Candidate");
   const fetchImpl = options.fetchImpl ?? globalThis.fetch;
   const token = options.token ?? process.env.GITHUB_TOKEN;
@@ -626,6 +625,18 @@ export async function verifyRemoteCandidate(stateInput, options = {}) {
   const commit = await githubJson(fetchImpl, api + "/git/commits/" + state.candidateSha, token);
   invariant(commit.sha === state.candidateSha, "Candidate 对象不是目标 commit");
   invariant(commit.tree?.sha === state.candidateContext.treeSha, "Candidate tree 不匹配");
+  return {
+    candidateSha: state.candidateSha,
+    treeSha: commit.tree.sha,
+  };
+}
+
+export async function verifyRemoteCandidate(stateInput, options = {}) {
+  const state = validateGovernanceState(stateInput);
+  const fetchImpl = options.fetchImpl ?? globalThis.fetch;
+  const token = options.token ?? process.env.GITHUB_TOKEN;
+  const objectEvidence = await verifyRemoteCandidateObject(state, { fetchImpl, token });
+  const api = "https://api.github.com/repos/" + state.repository;
   const branch = await githubJson(fetchImpl, api + "/branches/" + encodeURIComponent(state.candidateContext.branch), token);
   invariant(branch.commit?.sha === state.candidateSha, "Candidate 分支 tip 已变化");
   const pr = await githubJson(fetchImpl, api + "/pulls/" + state.candidateContext.pullRequest, token);
@@ -637,11 +648,41 @@ export async function verifyRemoteCandidate(stateInput, options = {}) {
   const comparison = await githubJson(fetchImpl, api + "/compare/" + state.candidateContext.baseSha + "..." + state.candidateSha, token);
   invariant(["ahead", "identical"].includes(comparison.status), "Candidate 不是冻结基线的后代");
   return {
-    candidateSha: state.candidateSha,
-    treeSha: commit.tree.sha,
+    ...objectEvidence,
     branch: state.candidateContext.branch,
     pullRequest: state.candidateContext.pullRequest,
     baseSha: state.candidateContext.baseSha,
+  };
+}
+
+function candidateVerificationMode(next) {
+  if (!next.candidateSha) return "none";
+  if (next.stage === "IMPLEMENTING") return "historical-object";
+  if (next.stage === "BLOCKED" && next.block?.sourceStage === "IMPLEMENTING") {
+    return "historical-object";
+  }
+  return "live";
+}
+
+export function remoteCandidateVerificationMode(previousInput, nextInput, contractInput) {
+  const next = validateGovernanceTransition(previousInput, nextInput, contractInput);
+  return candidateVerificationMode(next);
+}
+
+export async function verifyRemoteCandidateTransition(previousInput, nextInput, options = {}) {
+  const contract = validateGovernanceContract(options.contract);
+  const next = validateGovernanceTransition(previousInput, nextInput, contract);
+  const mode = candidateVerificationMode(next);
+  if (mode === "none") return { mode, candidateSha: null, treeSha: null };
+  if (mode === "historical-object") {
+    return {
+      mode,
+      ...await verifyRemoteCandidateObject(next, options),
+    };
+  }
+  return {
+    mode,
+    ...await verifyRemoteCandidate(next, options),
   };
 }
 
@@ -1232,6 +1273,16 @@ async function main() {
     process.stdout.write(JSON.stringify(evidence) + "\n");
     return;
   }
+  if (command === "verify-remote-transition" && statePath) {
+    assertKnownOptions(args, ["--contract", "--previous"]);
+    const evidence = await verifyRemoteCandidateTransition(
+      await readJson(option(args, "--previous")),
+      await readJson(statePath),
+      { contract },
+    );
+    process.stdout.write(JSON.stringify(evidence) + "\n");
+    return;
+  }
   if (command === "verify-records" && statePath) {
     assertKnownOptions(args, ["--contract", "--records-root"]);
     const root = option(args, "--records-root");
@@ -1319,7 +1370,7 @@ async function main() {
     return;
   }
   throw new GovernanceValidationError(
-    "用法：validate-static；validate-transition；verify-records；verify-remote；build-transition；build-bootstrap-recovery；build-proposal-envelope；verify-protected-proposal",
+    "用法：validate-static；validate-transition；verify-records；verify-remote；verify-remote-transition；build-transition；build-bootstrap-recovery；build-proposal-envelope；verify-protected-proposal",
   );
 }
 
