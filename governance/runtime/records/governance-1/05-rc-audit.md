@@ -1,76 +1,88 @@
-# 候选版本审计交接记录
+# 候选版本审计报告
 
-记录 ID：governance-1-rc-audit-r1
+记录 ID：GOV-AUDIT-20260901-RISK-PARSER-001
 
 生成角色编号：2
 
 生成角色名称：超级审计
 
-恢复入库时间（UTC）：2026-08-31T16:44:55Z
+生成时间（UTC）：2026-09-01T09:26:03Z
 
-审计编号：GOV-RC-AUDIT-001
+审计编号：AUD-20260901-GOV-RISK-RC-001
 
 审计类型：候选版本审计
 
 版本：governance-1
 
-审计对象 Candidate SHA：`e24d78fd76cfbca9ebd957d16c406ffbc1c09e1b`
+审计对象 Candidate SHA：`d3581477f52b46d73b57e688734d1bf375406542`
 
-审计对象 Tree SHA：`a54f47d5f5b5b54e18454d5faa7a4fc3a403228d`
-
-审计对象分支：`governance/four-role-auto-handoff`
+审计对象 Tree SHA：`7153a9b462ca394a45b5680760b107b44e815df7`
 
 审计对象 PR：`#13`
 
-审计范围：四角色治理固化、动态状态与自动交接、bootstrap、可信状态来源、受保护写入/CAS、Cloudflare 零版本/零预览验证及候选冻结一致性。
+审计范围：准确 Candidate 身份、11 个变更路径、风险接受机器合同、审计记录解析、Builder、独立 Gate、反向测试、准确 Head CI、Ruleset、revision 4→5 受保护写入以及 Cloudflare 证据边界。
 
 ## 阻断问题
 
-1. Schema 1 状态无法自动迁移，现有状态格式不能证明后续治理合同能够从旧协调状态安全、确定地进入目标状态。
-2. 当前一次性 bootstrap 设计存在可达性问题，必须重新设计为真正可到达、可验证且不会伪造前置审计的 bootstrap 路径。
-3. Ruleset 尚未固定可信状态来源，无法充分证明治理状态只能从预期来源被接受。
-4. 受保护写入权限和两阶段 CAS 尚未经过真实写入验证；仅有设计/测试不足以关闭该风险。
-5. Cloudflare “零版本 / 零预览”场景缺少闭环实证，无法证明治理状态分支和候选流程不会误触生产或留下未验证的部署路径。
+`scripts/governance-state.mjs` 的风险解析器只统计“风险处置”局部区块，并在遇到下一个一级或二级标题、或者最终结论字段时停止。它没有拒绝同一正式审计记录其他位置出现的 Known Issue 或风险字段。因此记录可以在“风险处置”中声明风险项数量为 0，再在后续区块写入 Critical、Blocking Risk 和不可豁免边界，仍被 Builder 接受并生成 `RELEASE_APPROVED`。
+
+准确 Head 的真实 `buildGovernanceTransition` 已稳定复现该旁路，结果为 `accepted=true`、`stage=RELEASE_APPROVED`。这违反冻结设计中“风险项数量为 0 时不得附带 Known Issue 块”的要求，并破坏 trusted writer 与 Candidate 发布资格的失败关闭边界。
+
+Builder 与独立 Gate 均缺少“风险处置区块之外出现 Known Issue 或风险字段”的端到端反向测试。
 
 ## 高风险问题
 
-未在原审计回复中单独列出；以上问题均按本轮重新审计前必须关闭的阻断项处理。
+无独立高风险项；测试缺口已并入上述阻断问题。
 
 ## 中风险问题
 
-未在原审计回复中单独列出。
+无。
 
 ## 低风险问题
 
-未在原审计回复中单独列出。
+无。
 
 ## 测试与证据
 
-- 审计针对 PR #13 当前固定 Candidate SHA `e24d78fd76cfbca9ebd957d16c406ffbc1c09e1b`。
-- 对应 Tree SHA 为 `a54f47d5f5b5b54e18454d5faa7a4fc3a403228d`。
-- 角色 3 的 Candidate 记录声明完整测试 217/217、治理专项 19/19、构建、Lint、TypeScript、依赖审计、Migration 漂移检查、语法检查、Wrangler dry-run 与 GitHub CI 通过；但本次审计认为真实受保护写入/CAS与 Cloudflare 零版本/零预览的实证仍未闭环。
-- 原审计在收尾阶段因本地工作区/Work 连接中断，正式附件未生成；本文件依据角色 2 已在对话中固化的完整审计结论恢复入库，不改变原审计结论，也不视为重新审计。
+- PR #13 在最终回读时仍开放、非 Draft、未合并，Head、Tree、分支和 Base 与 current 完全一致。
+- Complete Verification run `33486499638` 和 full-verify job `99787691989` 均成功；准确 Head 完成依赖安装、生产依赖审计、语法、Migration 一致性、完整测试与生产构建、Wrangler dry-run、ESLint 和 TypeScript。
+- 本地聚焦风险接受、独立 Gate 和文档合同测试 3/3 通过；治理静态验证和 `git diff --check` 通过。现有绿色测试未覆盖本次区块作用域旁路。
+- 对抗性复现结果：`{"accepted":true,"stage":"RELEASE_APPROVED","recordKey":"rcAudit"}`。
+- Ruleset `21936381` 为 active，bypass 为空，严格 required check 为 `governance-state-write`，integration id 为 `15368`；revision 4→5 的 record-first、pointer-second 写入证据完整。
+- Candidate 相对准确 Base 仅修改 11 个治理合同、验证器、测试、角色/交接和设计/计划路径，无产品、数据库、Migration 或部署资源改动。
 
 ## 剩余风险
 
-Schema 1 状态无法自动迁移；受保护写入权限和两阶段 CAS 未经真实验证；Cloudflare 无版本/无预览证据未闭环。
+Cloudflare Dashboard 的活动版本、Worker Versions 和 preview aliases 仍未实时读回。GitHub 侧未观察到当前 Candidate 或 revision 4→5 治理写入产生 Cloudflare Check，但这一证据不等同于已确认零 Worker Version 或零 preview。
 
-## 最终结论
+## 风险处置
 
-**不通过。** 当前 Candidate 不得合并为正式治理合同，不得进入发布或生产阶段。必须交回角色 3 修复，生成新的准确 Candidate SHA 与 Tree 后重新提交角色 2 审计。
+风险项数量：1
+
+### Known Issue：GOV-RISK-PARSER-SCOPE-001
+
+风险分类：Blocking Risk
+
+Issue：风险解析器可忽略风险处置区块之外的显式阻断风险，并让不合格审计记录进入 `RELEASE_APPROVED`。
+
+Severity：Critical
+
+Impact / Blast Radius：独立 Gate 可接受明确包含不可豁免风险的正式审计记录，错误授予 Candidate 发布资格；影响治理可信写入和后续发布门禁。
+
+Containment：feature-disabled | 在验证器修复并由角色 2 重新审计前，Candidate 不具备合并或发布资格。
+
+Stop / Escalation Condition：任何外置风险字段未被拒绝、风险项数量未覆盖整份正式审计记录，或对抗样例仍能进入 `RELEASE_APPROVED` 时立即停止并保持失败关闭。
+
+Planned Follow-up Version：governance-2
+
+Non-Waivable Boundary：trusted-writer-boundary
+
+最终结论：不通过
 
 批准 Candidate SHA：不适用（本轮不通过）
 
-目标状态：`IMPLEMENTATION_REQUIRED`
+目标状态：IMPLEMENTATION_REQUIRED
 
 下一角色：3（超级工作）
 
-## 角色 3 必须完成
-
-1. 强制绑定审计结论、目标状态和准确 Candidate SHA。
-2. 重新设计真正可达的一次性 bootstrap。
-3. 让 Ruleset 固定可信状态来源。
-4. 完成真实受保护两阶段 PR 写入及 Cloudflare 零版本/零预览验证。
-5. 生成新的 Candidate SHA 和 Tree 后重新审计。
-
-下一句话：“审计没通过，按审计意见修复。”
+下一句话：修复风险解析器的全记录作用域校验并补齐 Builder 与独立 Gate 端到端反向测试，生成新的 Candidate SHA 和 Tree 后重新交角色 2 审计。
