@@ -43,6 +43,13 @@ test("ships a machine-readable agent deployment contract", async () => {
   assert.equal(manifest.workersBuildsUpgradeBridge.provisionResources, false);
   assert.equal(manifest.workersBuildsUpgradeBridge.permissionFallback, false);
   assert.equal(manifest.workersBuildsUpgradeBridge.removeSourceVarsBeforeDeploy, true);
+  assert.deepEqual(manifest.workersBuildsUpgradeBridge.wranglerSafety, {
+    automaticResourceProvisioning: false,
+    automaticDraftResourceCreation: false,
+    autoconfig: false,
+    rawSuccessfulCommandOutput: false,
+    resourceIdentifiersInLogs: false,
+  });
   assert.equal(manifest.commands.cloudBuildExistingWorker, "npm run deploy");
   assert.equal(manifest.commands.workersBuildsUpgrade, "npm run deploy");
   assert.match(manifest.databaseMigrationPolicy.workersBuildsPermissionFallback, /forbidden/u);
@@ -116,6 +123,23 @@ test("routes Workers Builds through the pinned existing-site upgrade bridge", as
     kv: "MEDIA_KV",
     fixedIdsRequired: true,
   });
+  assert.deepEqual(bridge.wranglerSafety, {
+    automaticResourceProvisioning: false,
+    automaticDraftResourceCreation: false,
+    autoconfig: false,
+    supportedRemoteBindingTypes: [
+      "assets",
+      "d1",
+      "d1_database",
+      "json",
+      "kv",
+      "kv_namespace",
+      "plain_text",
+      "r2_bucket",
+      "secret",
+      "secret_text",
+    ],
+  });
   assert.deepEqual(bridge.preserveRemote, {
     vars: true,
     secrets: true,
@@ -152,6 +176,8 @@ test("documents the GitHub to Workers Builds bridge without changing the immutab
   assert.match(readme, /\[BRIDGE\]\[SUCCESS\]/u);
   assert.match(readme, /Migration 失败[\s\S]{0,100}不会部署/u);
   assert.match(readme, /源码 `vars`[\s\S]{0,100}不会覆盖/u);
+  assert.match(readme, /--experimental-provision=false/u);
+  assert.match(readme, /完整 binding 清单/u);
   assert.equal(promptManifest.promptVersion, "1.3.0");
   assert.equal(promptManifest.releaseTag, "v1.3.0");
   assert.equal(templateVersion.upgradePromptSha256, "c72b072aa4c9a78121297078e572e7a1536fd5a1b1498f8cb103a825979b4149");

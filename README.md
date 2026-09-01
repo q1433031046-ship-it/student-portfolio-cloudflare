@@ -562,18 +562,19 @@ v1.3.0 自动升级只支持已有固定 D1 `DB` 资源 ID 和唯一 `MEDIA_KV` 
 - Workers Builds 当前选中的构建令牌具有账户级 `Workers Scripts:Edit` 和 `D1:Edit`。Cloudflare 自动创建的构建令牌目前不含 `D1:Edit`；站点所有者须在 Cloudflare 的 **My Profile → API Tokens** 中给当前选中的令牌补充该权限，令牌值始终留在 Cloudflare，不复制到聊天或仓库；
 - 原仓库的 `wrangler.jsonc` 保留唯一 `DB.database_id` 和唯一 `MEDIA_KV.id`；
 - 当前 Worker 的 DB、`MEDIA_KV`、可选旧 `BUCKET` 与配置逐项相同；
+- 原仓库与全部 active Worker versions 的 binding 只包含既有 `ASSETS`、唯一 DB、唯一 `MEDIA_KV`、可选 `BUCKET`、远程 vars 和 Secrets；发现其他资源 binding 时停止，不尝试创建、认领或静默删除；
 - 产品运行时代码仍是固定 v1.3.0 release commit `4658bc834d6ea21aa94ce0db0d9c99e82b856235`；
 - 正式分支的 Build command 为 `npm run build`，Deploy command 为 `npm run deploy`。
 
 Cloudflare 中的执行顺序固定为：
 
 1. 核对固定 v1.3.0 产品摘要、构建产物、Cloudflare 提供的 `WRANGLER_CI_OVERRIDE_NAME` 和全部 active Worker versions；
-2. 核对同一个 Worker、固定 DB、固定 `MEDIA_KV`、可选 R2、远程 vars 与 Secret binding 名称；
+2. 核对同一个 Worker及每个 active version 的完整 binding 清单；未知 binding、重复 binding 或任一摘要不一致都会在 Migration 前停止；
 3. 可靠列出 pending Migration，只接受无 pending、只剩 `0007`，或依次为 `0006`、`0007`；
 4. 只执行缺少的 Migration；Migration 失败会立即停止，不会部署新运行时代码；
 5. 再次 list，只有 pending 明确为空才继续；
-6. 部署前再次核对同一 Worker；部署时使用临时的无 `vars` 配置、`--keep-vars` 和 `--strict`，因此源码 `vars` 不会覆盖 Cloudflare 控制台中的远程 vars，已有 Secrets 也不会被删除；
-7. 部署后必须观察到新的 Worker version，并再次证明 DB、`MEDIA_KV`、R2、远程 vars 摘要和 Secret binding 名称全部未变，才允许报告成功。
+6. 部署前再次核对同一 Worker；部署时使用临时的无 `vars` 配置，并显式传入 `--keep-vars --strict --experimental-provision=false --experimental-auto-create=false --autoconfig=false`，因此不会启用 Wrangler 的自动资源 provisioning；源码 `vars` 不会覆盖 Cloudflare 控制台中的远程 vars；
+7. 部署后必须观察到新的 Worker version，并再次证明完整 binding 清单与逐项摘要未变，才允许报告成功。成功的 Migration 和 deploy 原始输出不会回显，失败输出会清除 Token、Cookie、密码及资源 ID。
 
 日志含义：
 

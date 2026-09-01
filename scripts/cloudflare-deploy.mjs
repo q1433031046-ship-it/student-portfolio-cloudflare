@@ -30,6 +30,67 @@ const BRIDGE_BUILD_TOKEN_PERMISSIONS = Object.freeze([
   Object.freeze({ scope: "Account", permission: "Workers Scripts", access: "Edit" }),
   Object.freeze({ scope: "Account", permission: "D1", access: "Edit" }),
 ]);
+const BRIDGE_SUPPORTED_REMOTE_BINDING_TYPES = Object.freeze([
+  "assets",
+  "d1",
+  "d1_database",
+  "json",
+  "kv",
+  "kv_namespace",
+  "plain_text",
+  "r2_bucket",
+  "secret",
+  "secret_text",
+]);
+const BRIDGE_WRANGLER_SAFETY = Object.freeze({
+  automaticResourceProvisioning: false,
+  automaticDraftResourceCreation: false,
+  autoconfig: false,
+  supportedRemoteBindingTypes: BRIDGE_SUPPORTED_REMOTE_BINDING_TYPES,
+});
+const BRIDGE_NO_PROVISION_ARGS = Object.freeze(["--experimental-provision=false"]);
+const BRIDGE_SAFE_DEPLOY_ARGS = Object.freeze([
+  ...BRIDGE_NO_PROVISION_ARGS,
+  "--experimental-auto-create=false",
+  "--autoconfig=false",
+]);
+const BRIDGE_UNSUPPORTED_RESOURCE_CONFIG_FIELDS = Object.freeze([
+  "addresses",
+  "agent_memory",
+  "ai",
+  "ai_search",
+  "ai_search_namespaces",
+  "analytics_engine_datasets",
+  "artifacts",
+  "browser",
+  "cache",
+  "cloudchamber",
+  "connect",
+  "containers",
+  "dispatch_namespaces",
+  "durable_objects",
+  "exports",
+  "flagship",
+  "hyperdrive",
+  "images",
+  "media",
+  "mtls_certificates",
+  "pipelines",
+  "queues",
+  "ratelimits",
+  "secrets",
+  "secrets_store_secrets",
+  "send_email",
+  "services",
+  "stream",
+  "vectorize",
+  "version_metadata",
+  "vpc_networks",
+  "vpc_services",
+  "websearch",
+  "worker_loaders",
+  "workflows",
+]);
 
 function usage() {
   return `用法: bash scripts/deploy-cloudflare.sh [选项]
@@ -314,6 +375,10 @@ async function verifyBridgeContract({ bridge, manifest, config, configPath }) {
     "升级桥必须声明 Workers Scripts Edit 与 D1 Edit 构建令牌权限",
   );
   assertBridgeValue(
+    JSON.stringify(bridge.wranglerSafety) === JSON.stringify(BRIDGE_WRANGLER_SAFETY),
+    "升级桥必须显式关闭 Wrangler 自动资源 provisioning、draft auto-create 与 autoconfig，并固定完整 binding 类型门禁",
+  );
+  assertBridgeValue(
     bridge.preserveRemote?.vars === true
       && bridge.preserveRemote?.secrets === true
       && bridge.preserveRemote?.removeSourceVarsBeforeDeploy === true,
@@ -475,6 +540,51 @@ function localResourceFingerprint(config, manifest, workerName) {
   };
 }
 
+function hasConfiguredValue(value) {
+  if (value === undefined || value === null || value === false) return false;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === "object") return Object.keys(value).length > 0;
+  return true;
+}
+
+function assertBridgeLocalBindingConfiguration(config) {
+  const d1Bindings = Array.isArray(config.d1_databases) ? config.d1_databases : [];
+  const kvBindings = Array.isArray(config.kv_namespaces) ? config.kv_namespaces : [];
+  const r2Bindings = Array.isArray(config.r2_buckets) ? config.r2_buckets : [];
+  assertBridgeValue(
+    d1Bindings.length === 1 && d1Bindings[0]?.binding === "DB",
+    "升级桥只支持唯一的 DB D1 binding；额外 D1 binding 禁止进入迁移",
+  );
+  assertBridgeValue(
+    kvBindings.length === 1 && kvBindings[0]?.binding === "MEDIA_KV",
+    "升级桥只支持唯一的 MEDIA_KV binding；额外 KV binding 禁止进入迁移",
+  );
+  assertBridgeValue(
+    r2Bindings.length <= 1 && r2Bindings.every((binding) => binding?.binding === "BUCKET"),
+    "升级桥只允许一个可选的既有 BUCKET R2 binding",
+  );
+  assertBridgeValue(config.assets?.binding === "ASSETS", "升级桥要求既有 ASSETS binding，禁止部署时隐式新增或移除静态资源 binding");
+
+  const unsupportedFields = BRIDGE_UNSUPPORTED_RESOURCE_CONFIG_FIELDS
+    .filter((field) => hasConfiguredValue(config[field]));
+  if (hasConfiguredValue(config.unsafe?.bindings)) unsupportedFields.push("unsafe.bindings");
+  assertBridgeValue(
+    unsupportedFields.length === 0,
+    `现有站点配置含升级桥未建模的资源 binding 字段：${unsupportedFields.join(", ")}；已在远程调用前停止`,
+  );
+
+  for (const [environmentName, environment] of Object.entries(config.env ?? {})) {
+    if (!environment || typeof environment !== "object" || Array.isArray(environment)) continue;
+    const environmentFields = ["d1_databases", "kv_namespaces", "r2_buckets", "assets", ...BRIDGE_UNSUPPORTED_RESOURCE_CONFIG_FIELDS]
+      .filter((field) => hasConfiguredValue(environment[field]));
+    if (hasConfiguredValue(environment.unsafe?.bindings)) environmentFields.push("unsafe.bindings");
+    assertBridgeValue(
+      environmentFields.length === 0,
+      `env.${environmentName} 含独立资源 binding 配置；升级桥不选择环境且已在远程调用前停止`,
+    );
+  }
+}
+
 function assertExistingUpgradeResourceIds(local) {
   if (typeof local.d1.id !== "string") {
     throw new Error("现有站点配置缺少固定的 DB database_id；v1.3.0 自动升级只支持已具备固定 DB ID 和 MEDIA_KV 的站点，纯 v1.0 R2-only 站点本版未支持且已在任何远程改动前停止");
@@ -499,7 +609,10 @@ function assertNewDeploymentHasProvisionedResourceIds(local) {
 function redactSensitiveOutput(value) {
   return String(value ?? "")
     .replace(/(authorization\s*:\s*bearer\s+)[^\s]+/giu, "$1[REDACTED]")
-    .replace(/((?:api[_ -]?token|access[_ -]?token|password|cookie|secret(?:[_ -]?value)?)\s*[:=]\s*)[^\s,;]+/giu, "$1[REDACTED]");
+    .replace(/((?:["']?)(?:api[_ -]?token|access[_ -]?token|password|cookie|secret(?:[_ -]?value)?)["']?\s*[:=]\s*["']?)[^\s,"';}\]]+/giu, "$1[REDACTED]")
+    .replace(/((?:["']?)(?:database|namespace|bucket|resource|d1|kv)[_ -]?(?:id|name)["']?\s*[:=]\s*["']?)[^\s,"';}\]]+/giu, "$1[RESOURCE_REDACTED]")
+    .replace(/\b[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\b/giu, "[RESOURCE_REDACTED]")
+    .replace(/\b[0-9a-f]{32}\b/giu, "[RESOURCE_REDACTED]");
 }
 
 function runWrangler(args) {
@@ -581,8 +694,33 @@ function bindingArrays(value, arrays = []) {
   return arrays;
 }
 
-function remoteResourceFingerprint(payload, local) {
+function bridgeBindingInventory(bindings) {
+  const allowedTypes = new Set(BRIDGE_SUPPORTED_REMOTE_BINDING_TYPES);
+  const normalized = bindings.map((binding, index) => {
+    if (!binding || typeof binding !== "object" || Array.isArray(binding)) {
+      throw new Error(`远端 Worker 第 ${index + 1} 个 binding 不是对象；已停止部署`);
+    }
+    const name = typeof binding.name === "string" ? binding.name.trim() : "";
+    const type = typeof binding.type === "string" ? binding.type.trim().toLowerCase() : "";
+    if (!name || !type) throw new Error(`远端 Worker 第 ${index + 1} 个 binding 缺少名称或类型；已停止部署`);
+    if (!allowedTypes.has(type)) {
+      throw new Error(`远端 Worker 含未受升级桥支持的资源 binding：${name}（${type}）；已在迁移前停止`);
+    }
+    const digestSource = /^(?:secret|secret_text)$/u.test(type) ? { name, type } : binding;
+    return {
+      binding: name,
+      type,
+      sha256: createHash("sha256").update(canonicalJson(digestSource)).digest("hex"),
+    };
+  }).sort((left, right) => `${left.binding}\0${left.type}`.localeCompare(`${right.binding}\0${right.type}`));
+  const names = normalized.map(({ binding }) => binding);
+  if (new Set(names).size !== names.length) throw new Error("远端 Worker 含重复 binding 名称；已停止部署");
+  return normalized;
+}
+
+function remoteResourceFingerprint(payload, local, { completeBridgeInventory = false } = {}) {
   const bindings = bindingArrays(payload).flat();
+  const allBindings = completeBridgeInventory ? bridgeBindingInventory(bindings) : null;
   const d1 = exactlyOne(
     bindings.filter((binding) => binding?.name === "DB" && /^(?:d1|d1_database)$/iu.test(binding?.type ?? "")),
     "远端 DB D1 绑定",
@@ -591,6 +729,20 @@ function remoteResourceFingerprint(payload, local) {
     bindings.filter((binding) => binding?.name === "MEDIA_KV" && /^(?:kv|kv_namespace)$/iu.test(binding?.type ?? "")),
     "远端 MEDIA_KV KV 绑定",
   );
+  if (completeBridgeInventory) {
+    const remoteD1Bindings = bindings.filter((binding) => /^(?:d1|d1_database)$/iu.test(binding?.type ?? ""));
+    const remoteKvBindings = bindings.filter((binding) => /^(?:kv|kv_namespace)$/iu.test(binding?.type ?? ""));
+    const assetBindings = bindings.filter((binding) => binding?.type === "assets");
+    if (remoteD1Bindings.length !== 1 || remoteD1Bindings[0]?.name !== "DB") {
+      throw new Error("远端 Worker 必须且只能保留 DB D1 binding；已停止部署");
+    }
+    if (remoteKvBindings.length !== 1 || remoteKvBindings[0]?.name !== "MEDIA_KV") {
+      throw new Error("远端 Worker 必须且只能保留 MEDIA_KV binding；已停止部署");
+    }
+    if (assetBindings.length !== 1 || assetBindings[0]?.name !== "ASSETS") {
+      throw new Error("远端 Worker 必须且只能保留 ASSETS binding；已停止部署");
+    }
+  }
   const secretNames = new Set(
     bindings
       .filter((binding) => /^(?:secret|secret_text)$/iu.test(binding?.type ?? ""))
@@ -631,7 +783,7 @@ function remoteResourceFingerprint(payload, local) {
   if (new Set(runtimeVariables.map((entry) => entry.binding)).size !== runtimeVariables.length) {
     throw new Error("远端 Worker 含重复的运行变量 binding；已停止部署");
   }
-  return {
+  const core = {
     schemaVersion: 1,
     workerName: local.workerName,
     configuredWorkersDevEnabled: local.configuredWorkersDevEnabled,
@@ -642,15 +794,16 @@ function remoteResourceFingerprint(payload, local) {
     secretBindings: [...secretNames].sort(),
     requiredSecretBindings: [...local.requiredSecretBindings],
   };
+  return completeBridgeInventory ? { core, allBindings } : core;
 }
 
 function verifyLiveResourceFingerprint(expected, actual, versionId, { compareConfiguredVariables = true } = {}) {
   const mismatches = [];
   if (actual.d1.id !== expected.d1.id) {
-    mismatches.push(`DB: 远端 ${actual.d1.id}，配置 ${expected.d1.id}`);
+    mismatches.push("DB 固定资源 ID 不一致");
   }
   if (actual.kv.id !== expected.kv.id) {
-    mismatches.push(`MEDIA_KV: 远端 ${actual.kv.id}，配置 ${expected.kv.id}`);
+    mismatches.push("MEDIA_KV 固定资源 ID 不一致");
   }
   if (actual.configuredWorkersDevEnabled !== expected.configuredWorkersDevEnabled) {
     mismatches.push("本地 workers_dev 配置值不一致");
@@ -844,13 +997,36 @@ function validateBridgePendingMigrations(pendingMigrations) {
   return pendingMigrations;
 }
 
-function normalizedFingerprintJson(fingerprint, label) {
-  return JSON.stringify(normalizeFingerprint(fingerprint, label));
+function normalizeBridgeFingerprint(value, label) {
+  assertExactKeys(value, ["core", "allBindings"], label);
+  if (!Array.isArray(value.allBindings)) throw new Error(`${label}.allBindings 必须是数组`);
+  const allBindings = value.allBindings.map((entry, index) => {
+    assertExactKeys(entry, ["binding", "type", "sha256"], `${label}.allBindings[${index}]`);
+    if (!BRIDGE_SUPPORTED_REMOTE_BINDING_TYPES.includes(entry.type)) {
+      throw new Error(`${label}.allBindings[${index}].type 非法`);
+    }
+    if (typeof entry.sha256 !== "string" || !/^[a-f0-9]{64}$/u.test(entry.sha256)) {
+      throw new Error(`${label}.allBindings[${index}].sha256 非法`);
+    }
+    return {
+      binding: nonEmptyString(entry.binding, `${label}.allBindings[${index}].binding`),
+      type: entry.type,
+      sha256: entry.sha256,
+    };
+  }).sort((left, right) => `${left.binding}\0${left.type}`.localeCompare(`${right.binding}\0${right.type}`));
+  if (new Set(allBindings.map(({ binding }) => binding)).size !== allBindings.length) {
+    throw new Error(`${label} 含重复 binding 名称`);
+  }
+  return { core: normalizeFingerprint(value.core, `${label}.core`), allBindings };
+}
+
+function normalizedBridgeFingerprintJson(fingerprint, label) {
+  return JSON.stringify(normalizeBridgeFingerprint(fingerprint, label));
 }
 
 function assertBridgeFingerprintUnchanged(expected, actual, stage) {
-  if (normalizedFingerprintJson(expected, `${stage}基线`) !== normalizedFingerprintJson(actual, `${stage}当前状态`)) {
-    throw bridgeFailed(`${stage} Worker 资源发生变化；DB、MEDIA_KV、R2、远程 vars 或 Secret binding 名称未保持一致`);
+  if (normalizedBridgeFingerprintJson(expected, `${stage}基线`) !== normalizedBridgeFingerprintJson(actual, `${stage}当前状态`)) {
+    throw bridgeFailed(`${stage} Worker 资源发生变化；全部远端 bindings 未保持一致`);
   }
 }
 
@@ -876,14 +1052,14 @@ function readBridgeExistingState({ commonArgs, local, stage, expectedFingerprint
     let remote;
     try {
       const payload = parseCommandJson(`${stage}读取 Worker version`, view.stdout);
-      remote = remoteResourceFingerprint(payload, local);
-      verifyLiveResourceFingerprint(local, remote, versionId, { compareConfiguredVariables: false });
+      remote = remoteResourceFingerprint(payload, local, { completeBridgeInventory: true });
+      verifyLiveResourceFingerprint(local, remote.core, versionId, { compareConfiguredVariables: false });
     } catch (error) {
       throw stage === "升级前"
         ? bridgeBlocked(`${stage}资源身份不符合升级条件：${error.message}`)
         : bridgeFailed(`${stage}资源身份核验失败：${error.message}`);
     }
-    if (fingerprint && normalizedFingerprintJson(fingerprint, `${stage} active version`) !== normalizedFingerprintJson(remote, `${stage} active version`)) {
+    if (fingerprint && normalizedBridgeFingerprintJson(fingerprint, `${stage} active version`) !== normalizedBridgeFingerprintJson(remote, `${stage} active version`)) {
       throw stage === "升级前"
         ? bridgeBlocked(`${stage}多个 active Worker versions 的资源身份不一致`)
         : bridgeFailed(`${stage}多个 active Worker versions 的资源身份不一致`);
@@ -892,7 +1068,7 @@ function readBridgeExistingState({ commonArgs, local, stage, expectedFingerprint
   }
   if (!fingerprint) throw bridgeFailed(`${stage}没有可核验的 active Worker version`);
   if (expectedFingerprint) assertBridgeFingerprintUnchanged(expectedFingerprint, fingerprint, stage);
-  return { fingerprint: normalizeFingerprint(fingerprint, `${stage}资源指纹`), versionIds: deployment.versionIds };
+  return { fingerprint: normalizeBridgeFingerprint(fingerprint, `${stage}资源指纹`), versionIds: deployment.versionIds };
 }
 
 async function withVarsFreeDeployConfig(configPath, config, callback) {
@@ -1073,17 +1249,18 @@ async function runWorkersBuildsUpgrade({ options, configPath, config, manifest }
   });
   await verifyBridgeContract({ bridge, manifest, config, configPath });
   try {
+    assertBridgeLocalBindingConfiguration(config);
     local = localResourceFingerprint(config, manifest, workerName);
     assertExistingUpgradeResourceIds(local);
   } catch (error) {
     throw bridgeBlocked(`现有站点固定资源配置不符合升级条件：${error.message}`);
   }
 
-  const commonArgs = ["--config", configPath, "--name", local.workerName];
+  const commonArgs = ["--config", configPath, "--name", local.workerName, ...BRIDGE_NO_PROVISION_ARGS];
   const before = readBridgeExistingState({ commonArgs, local, stage: "升级前" });
-  bridgeCheck("现有 Worker、固定 DB/MEDIA_KV、可选 R2、远程 vars 与 Secret binding 名称已核对");
+  bridgeCheck("现有 Worker 与全部远端 bindings 已核对；未知资源类型会失败关闭");
 
-  const firstList = runWrangler(["d1", "migrations", "list", "DB", "--remote", "--config", configPath]);
+  const firstList = runWrangler(["d1", "migrations", "list", "DB", "--remote", "--config", configPath, ...BRIDGE_NO_PROVISION_ARGS]);
   if (firstList.status !== 0) {
     throw bridgeFailed(`读取完整 pending Migration 集合失败：${redactSensitiveOutput(`${firstList.stderr}\n${firstList.stdout}`).trim()}`);
   }
@@ -1093,12 +1270,12 @@ async function runWorkersBuildsUpgrade({ options, configPath, config, manifest }
   bridgeCheck(`pending Migration 已确定：${pendingMigrations.length === 0 ? "无" : pendingMigrations.join(", ")}`);
 
   if (pendingMigrations.length > 0) {
-    const apply = runWrangler(["d1", "migrations", "apply", "DB", "--remote", "--config", configPath]);
+    const apply = runWrangler(["d1", "migrations", "apply", "DB", "--remote", "--config", configPath, ...BRIDGE_NO_PROVISION_ARGS]);
     if (apply.status !== 0) {
       throw bridgeFailed(`D1 Migration 执行失败；不会部署 Worker：${redactSensitiveOutput(`${apply.stderr}\n${apply.stdout}`).trim()}`);
     }
-    printCommandOutput(apply);
-    const secondList = runWrangler(["d1", "migrations", "list", "DB", "--remote", "--config", configPath]);
+    bridgeCheck("D1 Migration apply 命令成功；Wrangler 原始输出未回显，以避免资源标识进入日志");
+    const secondList = runWrangler(["d1", "migrations", "list", "DB", "--remote", "--config", configPath, ...BRIDGE_NO_PROVISION_ARGS]);
     if (secondList.status !== 0) {
       throw bridgeFailed(`D1 Migration 后复查 pending 集合失败；不会部署 Worker：${redactSensitiveOutput(`${secondList.stderr}\n${secondList.stdout}`).trim()}`);
     }
@@ -1127,11 +1304,12 @@ async function runWorkersBuildsUpgrade({ options, configPath, config, manifest }
       "--name", local.workerName,
       "--keep-vars",
       "--strict",
+      ...BRIDGE_SAFE_DEPLOY_ARGS,
     ]);
     if (deploy.status !== 0) {
       throw bridgeFailed(`Worker 部署失败：${redactSensitiveOutput(`${deploy.stderr}\n${deploy.stdout}`).trim()}`);
     }
-    printCommandOutput(deploy);
+    bridgeCheck("Worker deploy 命令成功；Wrangler 原始输出未回显，等待新版本与完整 binding 复核");
   });
 
   await waitForBridgePostDeployState({

@@ -49,3 +49,5 @@ Observed result: passed. The command trace contains one migration apply, two mig
 ## Conclusion
 
 The bridge accepts the real fixed-resource `0000`–`0005` legacy repository structure after its product payload is updated to the frozen v1.3.0 source. This evidence proves structural compatibility only; it does not claim a live production migration or deployment.
+
+The audit-remediated bridge also requires the legacy site to expose only the modeled `ASSETS`, `DB`, `MEDIA_KV`, optional `BUCKET`, vars, and Secret bindings. Wrangler automatic provisioning, draft auto-create, and autoconfig are explicitly disabled. The compatibility harness records no resource identifier and never echoes raw Wrangler apply/deploy output.

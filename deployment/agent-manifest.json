@@ -64,14 +64,14 @@
     "platformIdentity": "validated WRANGLER_CI_OVERRIDE_NAME supplied by Cloudflare Workers Builds",
     "authentication": "reuse only the Cloudflare Workers Builds credentials already attached to that Worker; never request credentials in chat",
     "transaction": [
-      "verify frozen v1.3.0 product payload, build output, fixed local ids and every active-version resource fingerprint",
+      "verify frozen v1.3.0 product payload, build output, fixed local ids and every active-version complete binding fingerprint",
       "list the complete pending D1 migration set",
       "allow only the ordered suffix 0006_auth_v2.sql and 0007_legacy_media_and_access_state.sql",
       "apply pending migrations and stop on every error including permission errors",
       "list again and require no pending migration",
       "recheck the same existing Worker fingerprint",
-      "deploy with a temporary vars-free config, --keep-vars and --strict",
-      "observe a new active Worker version and strictly match the pre-deploy resource fingerprint"
+      "deploy with a temporary vars-free config, --keep-vars, --strict, --experimental-provision=false, --experimental-auto-create=false and --autoconfig=false",
+      "observe a new active Worker version and strictly match the complete pre-deploy binding fingerprint"
     ],
     "preserve": [
       "same Worker and workers.dev configuration",
@@ -79,8 +79,16 @@
       "same MEDIA_KV id and all media",
       "same optional R2 bindings and objects",
       "all remote vars by binding, type and value SHA-256",
-      "all Secret binding names; Secret values are never read"
+      "all Secret binding names; Secret values are never read",
+      "the complete supported remote binding inventory by binding, type and SHA-256"
     ],
+    "wranglerSafety": {
+      "automaticResourceProvisioning": false,
+      "automaticDraftResourceCreation": false,
+      "autoconfig": false,
+      "rawSuccessfulCommandOutput": false,
+      "resourceIdentifiersInLogs": false
+    },
     "removeSourceVarsBeforeDeploy": true,
     "provisionResources": false,
     "permissionFallback": false,

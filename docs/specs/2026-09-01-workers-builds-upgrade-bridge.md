@@ -17,8 +17,8 @@ Provide a fail-closed upgrade path for an already deployed student portfolio whe
 - The target must already exist as the Worker connected to the current Cloudflare Workers Builds project.
 - The build token selected by Workers Builds must grant Account `Workers Scripts:Edit` and Account `D1:Edit`. Cloudflare's automatically created Workers Builds token does not currently include `D1:Edit`, so the owner must add that permission to the selected token in Cloudflare before the upgrade trigger. The token value stays inside Cloudflare and is never copied into chat or the repository.
 - `WRANGLER_CI_OVERRIDE_NAME` must be present and valid; it is the only effective Worker name for every remote operation.
-- The retained site configuration must contain exactly one `DB` D1 binding with a non-empty `database_id` and exactly one `MEDIA_KV` binding with a non-empty `id`.
-- Every active Worker version must expose the same `DB`, `MEDIA_KV`, optional R2 bindings, remote runtime variables, and Secret binding names.
+- The retained site configuration must contain exactly one `DB` D1 binding with a non-empty `database_id`, exactly one `MEDIA_KV` binding with a non-empty `id`, exactly one `ASSETS` binding, and at most one existing `BUCKET` R2 binding.
+- The bridge accepts no other local resource-binding field. Every active Worker version must expose only the modeled binding types and must have the same complete binding inventory and per-binding digest.
 - The live `DB` and `MEDIA_KV` IDs must exactly match the retained site configuration.
 - A missing Worker, missing fixed resource ID, mismatched live binding, inconsistent active version, or unprovable remote state is a blocking result. The bridge never creates or adopts a Worker, D1 database, KV namespace, or R2 bucket.
 
@@ -31,8 +31,8 @@ Provide a fail-closed upgrade path for an already deployed student portfolio whe
 5. Apply pending migrations once. Any non-zero result blocks the run and deployment; there is no runtime-bootstrap or deploy-before-migration fallback.
 6. List migrations again and require an empty pending set. A partial application or ambiguous result blocks deployment.
 7. Re-read and strictly compare the existing Worker fingerprint immediately before deployment.
-8. Create an ephemeral Wrangler configuration beside the retained config, remove the complete `vars` object, set `keep_vars: true`, preserve the existing fixed bindings, and deploy with `--keep-vars --strict` to the same effective Worker name. Always remove the ephemeral file.
-9. Re-read all active versions after deployment and require the same DB, KV, optional R2, remote runtime-variable fingerprints, and Secret binding names as the pre-deploy fingerprint before reporting success.
+8. Create an ephemeral Wrangler configuration beside the retained config, remove the complete `vars` object, set `keep_vars: true`, preserve the existing fixed bindings, and deploy to the same effective Worker name with `--keep-vars --strict --experimental-provision=false --experimental-auto-create=false --autoconfig=false`. Always remove the ephemeral file.
+9. Re-read all active versions after deployment and require the same complete binding inventory and per-binding digest as the pre-deploy fingerprint before reporting success.
 
 ## Migration compatibility
 
@@ -49,6 +49,7 @@ Provide a fail-closed upgrade path for an already deployed student portfolio whe
 - A missing `D1:Edit` permission is reported as a failed migration gate and cannot reach Worker deployment or success output.
 - Raw remote variable values are used only in memory to compute SHA-256 fingerprints and are never printed or persisted.
 - Secret values are never read. Only Secret binding names are compared.
+- D1/KV/R2/other resource identifiers are never interpolated into bridge errors. Successful Wrangler apply/deploy output is not echoed; failure output is redacted before logging.
 - Logs use explicit `[BRIDGE][CHECK]`, `[BRIDGE][BLOCKED]`, `[BRIDGE][FAILED]`, and `[BRIDGE][SUCCESS]` outcomes. Success is emitted only after post-deploy verification.
 
 ## Parallel student repositories

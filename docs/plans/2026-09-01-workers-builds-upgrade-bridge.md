@@ -421,6 +421,15 @@ git diff --check
 
 Expected: all tests/build/Lint/TypeScript/syntax/audit/dry-run/whitespace gates pass; `npm run db:generate` creates no Drizzle change; no command targets a remote production resource.
 
+## Candidate audit remediation
+
+- [x] Pin the machine contract to `automaticResourceProvisioning=false`, `automaticDraftResourceCreation=false`, and `autoconfig=false`.
+- [x] Pass the explicit negative Wrangler flags on every bridge read/migration call and on deploy; retain `--keep-vars --strict`.
+- [x] Reject unmodeled local binding fields before every remote call.
+- [x] Inventory every active-version binding, reject unsupported types, and compare the complete hashed inventory before migration, before deploy, and after deploy.
+- [x] Remove raw DB/KV identifiers from mismatch errors, redact structured resource identifiers on failures, and suppress successful Wrangler apply/deploy output.
+- [x] Add negative tests for contract drift, unmodeled local resources, unsupported live bindings, ASSETS drift, provisioning flags, and resource-ID log leakage.
+
 - [ ] **Step 5: Verify frozen boundaries and create the Candidate commit**
 
 ```bash

@@ -51,6 +51,23 @@
     "kv": "MEDIA_KV",
     "fixedIdsRequired": true
   },
+  "wranglerSafety": {
+    "automaticResourceProvisioning": false,
+    "automaticDraftResourceCreation": false,
+    "autoconfig": false,
+    "supportedRemoteBindingTypes": [
+      "assets",
+      "d1",
+      "d1_database",
+      "json",
+      "kv",
+      "kv_namespace",
+      "plain_text",
+      "r2_bucket",
+      "secret",
+      "secret_text"
+    ]
+  },
   "requiredBuildTokenPermissions": [
     {
       "scope": "Account",
