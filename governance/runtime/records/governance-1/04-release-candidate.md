@@ -1,57 +1,47 @@
-# 治理固化与自动交接 Release Candidate
+# 治理固化与自动交接 Release Candidate（当前审计对象）
 
 - 任务：四角色治理固化与自动交接
 - 分支：`governance/four-role-auto-handoff`
-- Candidate SHA：`2d6c573297832d4ef941dda7071c8014409a570d`
-- 基线：`main@3989cd31258565548517290c76c6a2ad140d2059`
+- PR：`#13`
+- Candidate SHA：`e24d78fd76cfbca9ebd957d16c406ffbc1c09e1b`
+- Tree SHA：`a54f47d5f5b5b54e18454d5faa7a4fc3a403228d`
+- 基线：`main@d81785dd51bb0c9be339449566a15d3b3971e02a`
 - 生成角色编号：`3`
 - 生成角色名称：`超级工作`
-- 生成日期：`2026-08-31`
+- Candidate 时间（UTC）：`2026-08-31T15:12:11Z`
 
 ## 主要改动
 
-- 固化四个永久角色及其职责、读取顺序、允许转换与禁止操作。
-- 固化方案审计和候选版本审计两个独立门禁。
-- 新增机器可读的角色合同、状态 Schema、状态校验器与恢复路由。
-- 新增六类交接模板、动态状态示例、两阶段原子写入协议和一句话恢复流程。
-- 新增防漂移测试与根级治理入口导航。
+- 新增受保护 PR 两阶段治理 writer、机器合同、角色文档、实施计划与防漂移测试。
+- 四角色名称、能力、可读阶段与转换使用严格允许列表。
+- 引入 Schema v2、bootstrap 约束、Candidate/PR/tree/base 冻结和记录摘要设计。
+- Ruleset 目标为 `governance-state`，要求 PR、严格状态检查和禁止绕过。
 
-## 数据库与迁移
+## 验证结果（角色 3 声明）
 
-- 数据库结构：无变化。
-- 迁移文件：无变化。
-- `npm run db:generate`：`No schema changes, nothing to migrate`。
-
-## 验证结果
-
-- 治理合同测试：11/11 通过。
-- 全量测试：205/205 通过。
-- 生产构建：通过。
+- 完整测试：217/217 通过。
+- 治理专项：19/19 通过。
+- 构建：通过。
 - ESLint：通过。
 - TypeScript `--noEmit`：通过。
-- 依赖审计：0 个 high/critical 生产依赖漏洞。
-- Shell/MJS 语法检查：通过。
-- Cloudflare Wrangler dry-run：通过；仅预演，无部署。
-- `git diff --check`：通过。
-- 端到端/浏览器测试：治理变更未修改运行时代码或 UI，未单独重跑产品浏览器套件；现有发布门禁定义未改。
+- 生产依赖审计：0 个 high/critical 漏洞。
+- Migration 漂移：无。
+- YAML、Shell、MJS 语法：通过。
+- Wrangler dry-run：通过并明确退出。
+- GitHub CI：通过。
+- 浏览器/E2E：未单独重跑；本 Candidate 不修改产品代码、UI 或运行时。
 
 ## 冻结检查
 
 - 产品版本：保持 `1.3.0`。
-- 正式标签：未创建、未移动、未删除。
-- 产品代码：无变化。
-- 数据库与迁移：无变化。
-- Cloudflare 配置与资源：无变化。
+- Migration：无变化。
+- Release Tag：未创建、未移动、未删除。
+- Worker、D1、MEDIA_KV、Secrets：未修改。
 - 生产环境：没有发生修改。
+- PR #13：保持开放，未合并。
 
-## 已知问题与规划偏差
+## 当前审计状态
 
-- 已知问题：静态治理合同在候选审计并合并前尚未进入 `main`，这是候选阶段的预期状态。
-- 规划偏差：无。
-- Bootstrap 声明：首次治理 Candidate 依据仓库所有者提供的最终执行任务书直接实现；未虚构角色 2 的方案审计记录，`planAudit` 保持为空。本 Candidate 现移交角色 2 做候选版本审计。
+角色 2 已完成对本 Candidate 的候选版本审计，结论为“不通过”，要求角色 3 修复后生成新的 Candidate SHA 与 Tree 再审。正式审计记录见 `05-rc-audit.md`。
 
-## 下一步
-
-请进入 `2 = 超级审计`，读取 `governance-state` 的 `current.json` 与本记录，审计固定 Candidate SHA；审计前不得合并或部署。
-
-状态：治理固化与自动交接 Release Candidate 已准备完成，等待超级审计进行候选版本审计。
+状态：`IMPLEMENTATION_REQUIRED`
