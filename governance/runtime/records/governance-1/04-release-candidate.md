@@ -1,20 +1,20 @@
 # Release Candidate 交接记录
 
-记录 ID：GOV-RC-20260901-RISK-ACCEPTANCE-002
+记录 ID：GOV-RC-20260901-RISK-SCOPE-003
 
 生成角色编号：3
 
 生成角色名称：超级工作
 
-生成时间（UTC）：2026-09-01T08:25:33Z
+生成时间（UTC）：2026-09-01T10:08:24Z
 
 治理版本：governance-1
 
 产品版本：1.3.0
 
-Candidate SHA：`d3581477f52b46d73b57e688734d1bf375406542`
+Candidate SHA：`3190664b4c72bade0796c9dcec2c2cae2967186e`
 
-Tree SHA：`7153a9b462ca394a45b5680760b107b44e815df7`
+Tree SHA：`e230815c08af9051526eadacf6c985084b1722da`
 
 分支：`governance/four-role-auto-handoff`
 
@@ -24,23 +24,28 @@ PR：`#13`
 
 ## Trust-root 前置状态
 
-- PR #19 已以 merge commit `1513f2b80d522ce300965b9e4bcaaae47dd91980` 进入 `main`。
-- Ruleset `21936381` 为 active，bypass 为空，严格要求 `governance-state-write`，`integration_id=15368`。
-- revision 3 → 4 的受保护迁移运行 `33483583215` 成功；PR #20 以 head `844e1d95cdd006e01110485ed0d83f82b38d93ce`、独立 Gate Check `99778581052` 和 merge commit `e9dc4328d6b607e077a18b00d27b58b7c4708a5e` 完成。
-- 当前受保护状态 tip 为 `e9dc4328d6b607e077a18b00d27b58b7c4708a5e`，schema 2、revision 4、`IMPLEMENTING`。上一轮 Candidate 只按历史 commit/Tree 对象核验，不取得审计或发布资格。
+- 角色 2 的正式审计 `AUD-20260901-GOV-RISK-RC-001` 已将准确旧 Candidate `d3581477f52b46d73b57e688734d1bf375406542` / Tree `7153a9b462ca394a45b5680760b107b44e815df7` 判定为不通过。
+- 审计失败已通过受保护 writer 记录到 schema 2、revision 6、`IMPLEMENTATION_REQUIRED`，角色 3 再通过 workflow run `33493044380`、job `99808767561` 和 PR #25 合法进入 revision 7、`IMPLEMENTING`。
+- 当前受保护状态 tip 为 `34ac574ffe2ea7f87e9f5a7627eb848112d3f758`；Candidate 身份在本次最终写入前仍绑定上一轮失败对象，未提前获得审计或发布资格。
+- Ruleset `21936381` 保持 active、bypass 为空，required check 为 `governance-state-write`，`integration_id=15368`。
 
 ## 完成内容
 
-- 固定 `Blocking Risk`、`Accepted / Contained Risk`、`Monitored Technical Debt`、`Low / Won't Fix Now` 四类风险。
-- 固定 Medium / Low 可接受范围、六种隔离机制、九个不可豁免边界和 Known Issue 必填字段。
-- 风险数量、字段、枚举、隔离与后续版本均由 builder 和独立 Gate 失败关闭校验。
-- 正式审计结论仍只有“通过/不通过”；目标状态及 Candidate SHA / Tree / PR 的绑定语义不变。
-- 自动测试覆盖合法 Low/Medium、Blocking、全部九个不可豁免边界、不通过、有条件通过、错误 SHA/Tree/PR、CAS 与受保护状态。
-- 将上述治理增强与已进入 `main` 的 transition-aware trust-root 语义合并；`IMPLEMENTING → RC_AUDIT_PENDING` 继续执行完整 live Candidate gate。
+- 风险解析器现在扫描整份正式审计记录，不再只统计“风险处置”局部区块。
+- `风险项数量` 必须等于整份记录中全部 Known Issue 的数量；任何 Known Issue 或风险字段位于唯一“风险处置”区块之外都会失败关闭。
+- 全记录检测覆盖 `风险项数量`、Known Issue 标题及九个正式风险字段，并能识别引用、列表、标题和 Markdown 强调包装后的字段。
+- Builder 端到端反向测试逐项覆盖所有外置风险字段和第二个外置风险块。
+- 独立 Gate 端到端反向测试覆盖外置 Critical / Blocking / 不可豁免风险，以及包装后的外置 `Severity：Critical`。
+- 未改变正式审计状态机、风险分类语义、Candidate 身份绑定、CAS、trusted writer、Ruleset 或 required check。
 
 ## 改动范围
 
-相对当前 `main` 共 11 个治理路径：治理合同、治理验证器、治理测试、角色/交接文档及本项设计/计划。没有产品代码、数据库、Migration、Worker 配置或产品部署工作流改动。
+本轮相对被拒绝 Candidate 仅修改 2 个治理路径：
+
+- `scripts/governance-state.mjs`
+- `tests/governance-contract.test.mjs`
+
+相对准确 Base 仍为原治理 Candidate 的 11 个治理路径。没有产品代码、数据库、Migration、Worker 配置或产品部署工作流改动。
 
 新增 Migration：无
 
@@ -48,25 +53,26 @@ PR：`#13`
 
 ## 验证
 
-- Complete Verification run：`33486499638`，`success`。
-- full-verify job：`99787691989`，全部步骤成功。
-- 准确 Head 的 Linux CI 已通过依赖安装、生产依赖审计、Shell/MJS 语法、Migration 一致性、完整测试与生产构建、Wrangler dry-run、ESLint 和 TypeScript。
-- 本地治理专项：27 通过、0 失败、3 个 Bash 集成按 Windows 环境设计跳过；准确 Head 的 Linux CI 已执行并闭合这些步骤。
-- 本地生产依赖审计：0 个漏洞；本地构建、Wrangler dry-run、ESLint、TypeScript、治理 Schema、Migration 一致性和 `git diff --check` 均通过。
-- 浏览器/E2E 未单独重跑；本 Candidate 不修改产品代码、UI 或运行时。
+- Complete Verification run：`33495709461`，`success`。
+- full-verify job：`99817285213`，`success`；准确 Head 的全部步骤均成功。
+- Linux CI 已完成依赖安装、生产依赖审计、Shell/MJS 语法、Migration 一致性、完整测试与单次生产构建、Wrangler dry-run、ESLint 和 TypeScript。
+- 修复前，新增 Builder 与独立 Gate 对抗测试均稳定失败；修复后聚焦反向测试 2/2 通过。
+- 本地治理测试：30 项，27 通过、0 失败、3 项 Linux Bash 集成按 Windows 环境设计跳过；准确 Head 的 Linux CI 已执行并闭合这些集成。
+- 本地 `npm ci`、生产依赖审计、治理 Schema、Migration 一致性、MJS/Shell 语法、生产构建、Wrangler dry-run、ESLint、TypeScript 和 `git diff --check` 均通过。
+- Windows 本地整套 `npm test` 中，Cloudflare 部署脚本的 Linux 无扩展名假 `npx` 因 Windows PATH 分隔规则无法被子进程发现；这是本机仿真限制，不是 Candidate 代码失败，准确 Head Linux 全量 CI 已全部通过。
+- 浏览器/E2E 未单独重跑；本轮不修改产品代码、UI 或运行时。
 
 ## Cloudflare 只读证据边界
 
-- PR #19 合并时 GitHub 记录了 Cloudflare Check `99777324402` 为 `failure`，Build ID `3cd02535-3f66-4a0a-ac33-24706333d108`；该记录证明 Build 被触发并失败，但现有 GitHub 输出不足以证明具体失败阶段。
-- 截至 `2026-09-01T08:25:33Z`，当前 Candidate Head 的 GitHub Check 只有成功的 `full-verify`，未观察到新的 Cloudflare Check；Cloudflare bot 的 PR 评论也未更新。此项归类为“GitHub 侧未观察到 Build”，不等同于已确认零 Worker Version 或零 preview。
-- 当前会话无法实时读回 Cloudflare Dashboard 的活动版本、Worker Versions、preview aliases 和 Builds，Wrangler 也未认证；这些远端项目保持未验证。
-- 仅执行了本地 `wrangler deploy --dry-run`。未调用生产部署，未修改 Worker、D1、MEDIA_KV 或 Secrets。
+- 当前准确 Head 的 GitHub Check 只有成功的 `full-verify`，未观察到 Cloudflare Check 或 Build 触发记录。
+- 这一 GitHub 侧观察不等同于已确认零 Worker Version、零 preview 或零活动版本变化；当前会话未实时读回 Cloudflare Dashboard，这些远端项保持未验证。
+- 仅执行本地 `wrangler deploy --dry-run`。未部署生产，未修改 Worker、D1、MEDIA_KV 或 Secrets。
 
 ## 风险与偏差
 
 Candidate 代码 Known Issue：无。
 
-未验证项仅为上述 Cloudflare 远端活动版本、Worker Versions、preview aliases 和 Builds 的实时读回。没有身份偏差、代码范围偏差或治理状态绕过。
+未验证项仅为上述 Cloudflare 远端活动版本、Worker Versions、preview aliases 和 Builds 的实时读回。没有 Candidate 身份偏差、代码范围偏差或治理状态绕过。
 
 规划偏差：无
 
