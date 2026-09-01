@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import test from "node:test";
 
 assert.equal(
@@ -14,6 +15,12 @@ test("ships a machine-readable agent deployment contract", async () => {
     await readFile("deployment/agent-manifest.json", "utf8"),
   );
   assert.equal(manifest.schemaVersion, 3);
+  assert.deepEqual(manifest.requiredSecrets, [
+    "INITIAL_ADMIN_CODE",
+    "NETLIFY_AUTH_TOKEN",
+    "NETLIFY_DRAFT_BUILD_HOOK",
+    "STATIC_EXPORT_SIGNING_KEY",
+  ]);
   assert.equal(manifest.project.target, "cloudflare-workers");
   assert.equal(manifest.project.defaultHostname, "workers.dev");
   assert.equal(manifest.project.initialContent, "empty");
@@ -69,10 +76,65 @@ test("keeps package, lockfile and template release versions synchronized", async
     readFile("deployment/template-version.json", "utf8").then(JSON.parse),
   ]);
 
-  assert.equal(packageJson.version, "1.3.0");
+  assert.equal(packageJson.version, "1.3.1-b");
   assert.equal(packageLock.version, packageJson.version);
   assert.equal(packageLock.packages[""].version, packageJson.version);
   assert.equal(templateVersion.version, packageJson.version);
+});
+
+test("keeps the D1 migration files and machine manifest in one fail-closed contract", async () => {
+  const [manifest, migrationEntries, agents, readme, upgradePrompt] = await Promise.all([
+    readFile("deployment/agent-manifest.json", "utf8").then(JSON.parse),
+    readdir("drizzle", { withFileTypes: true }),
+    readFile("AGENTS.md", "utf8"),
+    readFile("README.md", "utf8"),
+    readFile("deployment/upgrade-prompt.json", "utf8").then(JSON.parse),
+  ]);
+  const migrationFiles = migrationEntries
+    .filter((entry) => entry.isFile() && /^\d{4}_[a-z0-9_]+\.sql$/u.test(entry.name))
+    .map((entry) => entry.name)
+    .sort();
+  const declaredMigrations = manifest.databaseMigrations;
+  const policy = manifest.databaseMigrationPolicy;
+
+  assert.deepEqual(declaredMigrations, migrationFiles);
+  assert.deepEqual(policy.runtimeSafeBootstrapMigrations, [
+    "0006_auth_v2.sql",
+    "0007_legacy_media_and_access_state.sql",
+  ]);
+  assert.deepEqual(policy.normalApplyRequiredMigrations, [
+    "0008_static_site_publish.sql",
+  ]);
+  assert.match(policy.runtimeFallbackDdlCapability, /CREATE TABLE IF NOT EXISTS/u);
+  assert.match(policy.runtimeFallbackDdlCapability, /CREATE INDEX IF NOT EXISTS/u);
+  assert.match(policy.runtimeFallbackDdlCapability, /ALTER TABLE.*unsupported/u);
+  assert.match(policy.permissionFallback, /no normal-apply-required migration is pending/u);
+
+  for (const migrationName of policy.runtimeSafeBootstrapMigrations) {
+    assert.ok(declaredMigrations.includes(migrationName));
+    assert.ok(!policy.normalApplyRequiredMigrations.includes(migrationName));
+  }
+  for (const migrationName of policy.normalApplyRequiredMigrations) {
+    assert.ok(declaredMigrations.includes(migrationName));
+    assert.ok(!policy.runtimeSafeBootstrapMigrations.includes(migrationName));
+  }
+
+  for (const [migrationName, expectedSha256] of Object.entries(policy.migrationSha256)) {
+    assert.ok(declaredMigrations.includes(migrationName), `${migrationName} must be declared`);
+    const source = (await readFile(`drizzle/${migrationName}`, "utf8")).replaceAll("\r\n", "\n");
+    const actualSha256 = createHash("sha256").update(source, "utf8").digest("hex");
+    assert.equal(actualSha256, expectedSha256, `${migrationName} digest must match`);
+  }
+
+  const migration0008 = await readFile("drizzle/0008_static_site_publish.sql", "utf8");
+  assert.match(migration0008, /^ALTER TABLE\b/mu);
+  assert.match(migration0008, /^CREATE TABLE(?!\s+IF\s+NOT\s+EXISTS)\b/mu);
+  assert.match(agents, /0008_static_site_publish\.sql.*normal D1 migration apply/su);
+  assert.match(agents, /never eligible.*\/admin.*runtime fallback/su);
+  for (const instructions of [readme, upgradePrompt.prompt]) {
+    assert.match(instructions, /0008_static_site_publish\.sql.*常规 D1 migration apply/su);
+    assert.match(instructions, /不得进入.*\/admin.*运行时 fallback/su);
+  }
 });
 
 test("publishes the current chunked media and playback API contract", async () => {
@@ -190,6 +252,8 @@ test("tags only an explicitly verified release candidate from the protected main
   assert.match(tagJob, /node <<'NODE'/u);
   assert.match(tagJob, /createHash\("sha256"\)/u);
   assert.match(tagJob, /promptSha256 === promptDigest/u);
+  assert.match(tagJob, /Object\.entries\(migrationDigests\)/u);
+  assert.match(tagJob, /show\(`drizzle\/\$\{migrationName\}`\)/u);
   assert.match(tagJob, /git tag -a "\$release_tag" "\$candidate_sha"/u);
   assert.match(tagJob, /git ls-remote origin refs\/heads\/main/u);
   assert.match(tagJob, /refs\/tags\/\$release_tag\^\{\}/u);

@@ -36,7 +36,8 @@ async function runResolver(t, overrides = {}) {
   await writeFile(log, "");
 
   const fakeGh = join(bin, "gh");
-  await writeFile(fakeGh, `#!/usr/bin/env sh
+  const shellShebang = (process.env.RELEASE_TEST_SH ?? "/usr/bin/env sh").replaceAll("\\", "/");
+  await writeFile(fakeGh, `#!${shellShebang}
 set -eu
 printf '%s\\n' "$*" >> "$FAKE_GH_LOG"
 case "$*" in
@@ -55,7 +56,8 @@ exit 64
   await chmod(fakeGh, 0o755);
 
   const fakeJq = join(bin, "jq");
-  await writeFile(fakeJq, `#!/usr/bin/env node
+  const fakeJqProgram = join(bin, "fake-jq.cjs");
+  await writeFile(fakeJqProgram, `
 const fs = require("node:fs");
 const document = JSON.parse(fs.readFileSync(0, "utf8"));
 const query = process.argv.at(-1);
@@ -65,6 +67,9 @@ const value = query
   .reduce((current, key) => current?.[key], document);
 if (value === undefined || value === null) process.exit(1);
 process.stdout.write(String(value) + "\\n");
+`);
+  await writeFile(fakeJq, `#!${shellShebang}
+exec "${process.execPath.replaceAll("\\", "/")}" "${fakeJqProgram.replaceAll("\\", "/")}" "$@"
 `);
   await chmod(fakeJq, 0o755);
 

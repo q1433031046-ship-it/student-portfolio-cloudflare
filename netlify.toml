@@ -1,0 +1,13 @@
+[build]
+  command = "npm run build:netlify-static"
+  publish = "netlify-dist"
+
+[build.environment]
+  NODE_VERSION = "22.13.0"
+  NETLIFY_USE_YARN = "false"
+
+[context.production]
+  command = "printf 'Production builds are disabled; publish the verified draft deploy instead.\\n' && exit 1"
+
+[context."static-build/v1.3.1-b"]
+  command = "npm run build:netlify-static"

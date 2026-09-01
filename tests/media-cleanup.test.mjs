@@ -245,11 +245,12 @@ test("more than one thousand older referenced rows cannot starve a later KV orph
   delete env.MEDIA_KV;
 });
 
-test("publish passes its committed revision into best-effort cleanup", async () => {
+test("publish freezes a static candidate and never cleans media before production readback", async () => {
   const source = await readFile(new URL("../app/api/admin/portfolio/publish/route.ts", import.meta.url), "utf8");
-  assert.match(source, /cleanupUnreferencedMedia\(published\.draft, published\.revision\)/u);
-  assert.match(source, /try\s*\{[\s\S]*cleanupUnreferencedMedia[\s\S]*\}\s*catch/u);
-  assert.doesNotMatch(source, /unreferenced media cleanup failed|portfolio publish failed/u);
+  assert.match(source, /freezeAndTriggerStaticPublish/u);
+  assert.doesNotMatch(source, /cleanupUnreferencedMedia|publishPortfolio/u);
+  const cleanup = await readFile(new URL("../app/api/_lib/media-cleanup.ts", import.meta.url), "utf8");
+  assert.match(cleanup, /protectMediaKeysForCleanup/u);
 });
 
 function cleanupD1(rows) {
@@ -266,6 +267,9 @@ function cleanupD1(rows) {
           throw new Error(`Unexpected first query: ${sql}`);
         },
         async all() {
+          if (sql.includes("static_publish_job_media")) {
+            return { results: (rows.protectedStaticKeys ?? []).map((object_key) => ({ object_key })) };
+          }
           if (sql.includes("FROM portfolio_media")) {
             rows.media.forEach((row) => { row.status ??= "uploaded"; });
             const referenced = sql.includes("json_each(?)") ? new Set(JSON.parse(bindings[0])) : null;
