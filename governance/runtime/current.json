@@ -3,9 +3,9 @@
   "project": "student-portfolio-cloudflare",
   "repository": "q1433031046-ship-it/student-portfolio-cloudflare",
   "activeVersion": "governance-1",
-  "stage": "IMPLEMENTING",
+  "stage": "RC_AUDIT_PENDING",
   "taskLevel": "L2",
-  "revision": 7,
+  "revision": 8,
   "lastUpdatedBy": {
     "roleNumber": 3,
     "roleName": "超级工作"
@@ -14,24 +14,24 @@
     "plan": "governance/runtime/records/governance-1/01-plan.md",
     "planAudit": null,
     "releaseCandidate": "governance/runtime/records/governance-1/04-release-candidate.md",
-    "rcAudit": "governance/runtime/records/governance-1/05-rc-audit.md",
+    "rcAudit": null,
     "releaseReceipt": null,
     "blocked": null
   },
   "recordDigests": {
     "plan": "1f0070475b50117879b47402e7dd0ab8779b1db99877ecf29c8e0102d07296f2",
     "planAudit": null,
-    "releaseCandidate": "69a306fe95b4926ca38e9d47413de95ec3fe2eeedb9f5450d514b4ce16c6bef8",
-    "rcAudit": "3da2be51fe95571545a870b9e290fb6a2bba7ecc2d629bc073a500c11eec6917",
+    "releaseCandidate": "7d7a359332c09bb5a3439d61f6fbf8f2ccf57372fdd3b6a8a46500195891ec9b",
+    "rcAudit": null,
     "releaseReceipt": null,
     "blocked": null
   },
-  "candidateSha": "d3581477f52b46d73b57e688734d1bf375406542",
+  "candidateSha": "3190664b4c72bade0796c9dcec2c2cae2967186e",
   "candidateContext": {
     "branch": "governance/four-role-auto-handoff",
     "pullRequest": 13,
     "baseSha": "1513f2b80d522ce300965b9e4bcaaae47dd91980",
-    "treeSha": "7153a9b462ca394a45b5680760b107b44e815df7"
+    "treeSha": "e230815c08af9051526eadacf6c985084b1722da"
   },
   "releaseTag": null,
   "block": null,
