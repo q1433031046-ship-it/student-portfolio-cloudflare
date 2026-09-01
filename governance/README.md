@@ -36,7 +36,7 @@
 
 /governance-transition <expected-tip> <expected-revision> <role-number> <target-stage>
 
-评论编排器只负责生成提案。提案 PR 建立后，Writer 用本来就需要的 `contents: write` 发出固定 `repository_dispatch` 事件，请求同一默认分支工作流独立复核；自然发生的 `pull_request_target` 只作为同一 Gate 的补充入口。独立 Gate 从 `main` 运行验证代码，不检出或执行提案树中的脚本；它重新读取原始评论，确认评论作者是仓库所有者且命令、所在 PR 与授权信封完全一致，再检查 previous tip/revision、角色转换、字段差异、记录存在性与摘要、泄密扫描以及 Candidate 远端身份。Gate 通过 Checks API 创建并完成绑定准确提案 head SHA 的 `governance-state-write` Check。记录先通过第一个受保护 PR 合并，随后 current 与版本快照通过第二个受保护 PR 合并。只有 GitHub Actions App id `15368` 生成的该 Check 可以满足门禁；Writer 没有 `checks: write`，只能请求 Gate 并等待结果，不能生成授权结果。受保护合并以准确 head SHA 实现 compare-and-swap（CAS），任一竞争都会停止并要求重新读取。
+评论编排器只负责生成提案。提案 PR 建立后，Writer 用本来就需要的 `contents: write` 发出固定 `repository_dispatch` 事件，请求同一默认分支工作流独立复核；自然发生的 `pull_request_target` 只作为同一 Gate 的补充入口。独立 Gate 从 `main` 运行验证代码，不检出或执行提案树中的脚本；它重新读取原始评论，确认评论作者是仓库所有者且命令、所在 PR 与授权信封完全一致，再检查 previous tip/revision、角色转换、字段差异、记录存在性与摘要、泄密扫描以及 Candidate 远端身份。审计提案必须按 `auditPolicy` 将结论绑定到唯一目标状态；RC 审计还必须逐字段匹配 current 中的 Candidate SHA、Tree SHA 和 PR。Gate 通过 Checks API 创建并完成绑定准确提案 head SHA 的 `governance-state-write` Check。记录先通过第一个受保护 PR 合并，随后 current 与版本快照通过第二个受保护 PR 合并。只有 GitHub Actions App id `15368` 生成的该 Check 可以满足门禁；Writer 没有 `checks: write`，只能请求 Gate 并等待结果，不能生成授权结果。受保护合并以准确 head SHA 实现 compare-and-swap（CAS），任一竞争都会停止并要求重新读取。
 
 以下四项是启用硬门，缺一项就必须保持 BLOCKED：
 

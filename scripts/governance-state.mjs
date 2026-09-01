@@ -213,6 +213,22 @@ const BOOTSTRAP_POLICY = Object.freeze({
   },
 });
 
+const AUDIT_POLICY = Object.freeze({
+  acceptedConclusions: ["通过", "不通过"],
+  conclusionTargets: {
+    PLAN_AUDIT_PENDING: {
+      "通过": "IMPLEMENTATION_APPROVED",
+      "不通过": "PLANNING_REQUIRED",
+    },
+    RC_AUDIT_PENDING: {
+      "通过": "RELEASE_APPROVED",
+      "不通过": "IMPLEMENTATION_REQUIRED",
+    },
+  },
+  rcAuditIdentityFields: ["candidateSha", "candidateTreeSha", "candidatePullRequest"],
+  approvedCandidateShaRequiredOnPass: true,
+});
+
 const RECORD_REQUIREMENTS = Object.freeze({
   IDLE: [],
   PLANNING: [],
@@ -389,7 +405,7 @@ export function validateStateSchema(input) {
 export function validateGovernanceContract(input) {
   const contract = clone(input);
   exact(Object.keys(contract).toSorted(), [
-    "bootstrapPolicy", "productionBranch", "project", "repository", "requiredWorkflowStages",
+    "auditPolicy", "bootstrapPolicy", "productionBranch", "project", "repository", "requiredWorkflowStages",
     "roles", "runtime", "schemaVersion",
   ].toSorted(), "role-contract 顶层字段");
   invariant(contract.schemaVersion === 2, "role-contract schemaVersion 必须为 2");
@@ -398,6 +414,7 @@ export function validateGovernanceContract(input) {
   invariant(contract.productionBranch === "main", "生产分支必须保持 main");
   exact(contract.runtime, CANONICAL_RUNTIME, "动态写入合同");
   exact(contract.bootstrapPolicy, BOOTSTRAP_POLICY, "bootstrap 策略");
+  exact(contract.auditPolicy, AUDIT_POLICY, "审计结论与 Candidate 绑定策略");
   exact(contract.requiredWorkflowStages, GOVERNANCE_STAGES, "治理阶段");
   exact(contract.roles, CANONICAL_ROLES, "四角色权限、读取阶段与转换");
   return contract;
@@ -638,14 +655,110 @@ function transitionRecordKey(previousStage, nextStage) {
   return null;
 }
 
-function requirePrRecord(body, key, candidateSha) {
+function canonicalRecordBody(body) {
   invariant(typeof body === "string" && body.trim().length >= 40, "该转换需要非空 PR 交接记录");
   scanGovernanceText(body, "PR 交接记录");
-  if (key === "releaseCandidate") {
-    invariant(body.includes(candidateSha), "Candidate 交接记录必须包含准确 PR head SHA");
-  }
-  if (key === "planAudit" || key === "rcAudit") invariant(/审计编号/u.test(body), "审计记录必须包含审计编号");
   return body.endsWith("\n") ? body : body + "\n";
+}
+
+function markdownAtom(value) {
+  return value.trim().replace(/^[`*_]+/u, "").replace(/[`*_。.]+$/u, "");
+}
+
+function auditFieldValues(body, labels) {
+  const values = [];
+  for (const line of body.split(/\r?\n/u)) {
+    const plain = line.trim().replace(/^[-+*]\s+/u, "").replaceAll("**", "");
+    for (const label of labels) {
+      if (plain.startsWith(label + "：") || plain.startsWith(label + ":")) {
+        values.push(plain.slice(label.length + 1).trim());
+      }
+    }
+  }
+  return values;
+}
+
+function requireAuditField(body, labels, description) {
+  const values = auditFieldValues(body, labels);
+  invariant(values.length === 1 && values[0].length > 0, "审计记录必须准确包含一个" + description);
+  return values[0];
+}
+
+function auditConclusion(body) {
+  const inline = auditFieldValues(body, ["最终结论"]);
+  const heading = [];
+  const lines = body.split(/\r?\n/u);
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!/^\s*#{1,6}\s*最终结论\s*$/u.test(lines[index])) continue;
+    const next = lines.slice(index + 1).find((line) => line.trim().length > 0);
+    if (next) heading.push(next.trim());
+  }
+  invariant(inline.length + heading.length === 1, "审计记录必须准确包含一个最终结论");
+  if (inline.length === 1) {
+    const conclusion = markdownAtom(inline[0]);
+    invariant(["通过", "不通过", "有条件通过"].includes(conclusion), "审计记录最终结论格式无效");
+    return conclusion;
+  }
+  const narrative = heading[0].replace(/^[`*_]+/u, "");
+  const match = /^(有条件通过|不通过|通过)(?=$|[。.;；，,\s`*_])/u.exec(narrative);
+  invariant(match, "审计记录最终结论格式无效");
+  return match[1];
+}
+
+function exactAuditSha(body, label, expected) {
+  const actual = markdownAtom(requireAuditField(body, [label], label));
+  invariant(SHA40.test(actual) && actual === expected, label + "必须与当前 Candidate 准确匹配");
+}
+
+function requireAuditRecord(body, { auditPolicy, fromStage, kind, targetStage, candidateIdentity = null }) {
+  const record = canonicalRecordBody(body);
+  const auditId = markdownAtom(requireAuditField(record, ["审计编号"], "审计编号"));
+  invariant(auditId.length > 0 && !/\s/u.test(auditId), "审计编号格式无效");
+  const auditType = markdownAtom(requireAuditField(record, ["审计类型"], "审计类型"));
+  invariant(auditType === (kind === "rcAudit" ? "候选版本审计" : "方案审计"), "审计类型与当前审计阶段不匹配");
+  const conclusion = auditConclusion(record);
+  invariant(auditPolicy.acceptedConclusions.includes(conclusion), "该审计结论不能进入正式治理状态");
+  const target = markdownAtom(requireAuditField(record, ["目标状态"], "目标状态"));
+  invariant(target === targetStage, "审计记录目标状态与请求目标状态不匹配");
+  const expectedTarget = auditPolicy.conclusionTargets[fromStage]?.[conclusion];
+  invariant(expectedTarget !== undefined && targetStage === expectedTarget, "审计结论与目标状态不匹配");
+
+  if (kind === "rcAudit") {
+    exact(auditPolicy.rcAuditIdentityFields, ["candidateSha", "candidateTreeSha", "candidatePullRequest"], "RC 审计 Candidate 绑定字段");
+    invariant(auditPolicy.approvedCandidateShaRequiredOnPass === true, "RC 审计通过必须重复绑定批准 Candidate SHA");
+    invariant(candidateIdentity && SHA40.test(candidateIdentity.sha) && SHA40.test(candidateIdentity.treeSha), "当前 RC 审计缺少 Candidate 身份");
+    invariant(Number.isInteger(candidateIdentity.pullRequest) && candidateIdentity.pullRequest > 0, "当前 RC 审计缺少 Candidate PR 身份");
+    exactAuditSha(record, "审计对象 Candidate SHA", candidateIdentity.sha);
+    exactAuditSha(record, "审计对象 Tree SHA", candidateIdentity.treeSha);
+    const pullRequest = markdownAtom(requireAuditField(record, ["审计对象 PR"], "审计对象 PR"));
+    invariant(pullRequest === "#" + candidateIdentity.pullRequest, "审计对象 PR 必须与当前 Candidate 准确匹配");
+    const approved = markdownAtom(requireAuditField(record, ["批准 Candidate SHA", "批准 Candidate SHA（候选审计适用）"], "批准 Candidate SHA"));
+    if (conclusion === "通过") {
+      invariant(approved === candidateIdentity.sha, "通过结论必须批准当前准确 Candidate SHA");
+    } else {
+      invariant(/^不适用(?:（[^）]*）)?$/u.test(approved), "不通过结论不得批准 Candidate SHA");
+    }
+  }
+  return record;
+}
+
+function requireCurrentCandidateSource(previous, pullRequest, treeSha) {
+  const identity = previous.candidateContext;
+  invariant(previous.candidateSha && identity, "RC 审计缺少当前 Candidate 身份");
+  invariant(pullRequest.number === identity.pullRequest, "RC 审计来源 PR 不是当前 Candidate PR");
+  invariant(pullRequest.head?.sha === previous.candidateSha, "RC 审计来源 PR head 不是当前 Candidate SHA");
+  invariant(pullRequest.head?.ref === identity.branch, "RC 审计来源分支不是当前 Candidate 分支");
+  invariant(pullRequest.base?.sha === identity.baseSha, "RC 审计来源 PR 基线不是当前 Candidate 基线");
+  invariant(treeSha === identity.treeSha, "RC 审计来源 Tree 不是当前 Candidate Tree");
+  return { sha: previous.candidateSha, treeSha: identity.treeSha, pullRequest: identity.pullRequest };
+}
+
+function requirePrRecord(body, key, candidateSha) {
+  const record = canonicalRecordBody(body);
+  if (key === "releaseCandidate") {
+    invariant(record.includes(candidateSha), "Candidate 交接记录必须包含准确 PR head SHA");
+  }
+  return record;
 }
 
 export function buildGovernanceTransition(previousInput, request, contractInput) {
@@ -667,7 +780,20 @@ export function buildGovernanceTransition(previousInput, request, contractInput)
   const key = transitionRecordKey(previous.stage, targetStage);
   let record = null;
   if (key) {
-    record = requirePrRecord(pr.body, key, pr.head.sha);
+    if (key === "planAudit") {
+      record = requireAuditRecord(pr.body, { auditPolicy: contract.auditPolicy, fromStage: previous.stage, kind: key, targetStage });
+    } else if (key === "rcAudit") {
+      const candidateIdentity = requireCurrentCandidateSource(previous, pr, request.treeSha);
+      record = requireAuditRecord(pr.body, {
+        auditPolicy: contract.auditPolicy,
+        fromStage: previous.stage,
+        kind: key,
+        targetStage,
+        candidateIdentity,
+      });
+    } else {
+      record = requirePrRecord(pr.body, key, pr.head.sha);
+    }
     next.records[key] = pointerFor(next.activeVersion, key);
     next.recordDigests[key] = digest(record);
   }
@@ -745,11 +871,17 @@ export function migrateFailedBootstrapAudit(previousInput, request, contractInpu
   scanGovernanceText(plan, "失败审计恢复规划记录");
   const candidate = requirePrRecord(request.releaseCandidateRecord, "releaseCandidate", recovery.candidateSha);
   invariant(candidate.includes(recovery.candidateTreeSha), "失败审计 Candidate 记录必须包含准确 Tree SHA");
-  const audit = requirePrRecord(request.rcAuditRecord, "rcAudit", recovery.candidateSha);
-  invariant(audit.includes(recovery.candidateTreeSha), "失败审计记录必须包含准确 Tree SHA");
-  invariant(/最终结论\s*[:：]\s*`?不通过`?/u.test(audit), "失败审计记录必须包含不通过结论");
-  invariant(!/最终结论\s*[:：]\s*`?(?:通过|有条件通过)`?/u.test(audit), "失败审计记录不得包含通过结论");
-  invariant(audit.includes(recovery.targetStage), "失败审计记录必须指定 IMPLEMENTATION_REQUIRED");
+  const audit = requireAuditRecord(request.rcAuditRecord, {
+    auditPolicy: contract.auditPolicy,
+    fromStage: "RC_AUDIT_PENDING",
+    kind: "rcAudit",
+    targetStage: recovery.targetStage,
+    candidateIdentity: {
+      sha: recovery.candidateSha,
+      treeSha: recovery.candidateTreeSha,
+      pullRequest: recovery.candidatePullRequest,
+    },
+  });
 
   const state = {
     schemaVersion: recovery.resultSchemaVersion,

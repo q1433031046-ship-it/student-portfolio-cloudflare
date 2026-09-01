@@ -116,6 +116,45 @@ function bootstrapState(overrides = {}) {
   });
 }
 
+function makeRcAuditRecord({
+  auditId = "AUD-TEST-GOV-RC-001",
+  candidateSha,
+  candidateTreeSha,
+  candidatePullRequest,
+  conclusion,
+  targetStage,
+  format = "inline",
+}) {
+  const approvedCandidate = conclusion === "通过"
+    ? "`" + candidateSha + "`"
+    : format === "heading" ? "不适用（本轮不通过）" : "不适用";
+  const conclusionLines = format === "heading"
+    ? ["## 最终结论", "", "**" + conclusion + "。** 审计结论与目标状态必须保持绑定。"]
+    : ["最终结论：" + conclusion];
+  return [
+    "审计编号：" + auditId,
+    "审计类型：候选版本审计",
+    "审计对象 Candidate SHA：`" + candidateSha + "`",
+    "审计对象 Tree SHA：`" + candidateTreeSha + "`",
+    "审计对象 PR：`#" + candidatePullRequest + "`",
+    ...conclusionLines,
+    "批准 Candidate SHA：" + approvedCandidate,
+    "目标状态：`" + targetStage + "`",
+    "下一角色：" + (targetStage === "RELEASE_APPROVED" ? "4 / 超级发布" : "3 / 超级工作"),
+    "",
+  ].join("\n");
+}
+
+function makePlanAuditRecord({ conclusion, targetStage }) {
+  return [
+    "审计编号：AUD-TEST-GOV-PLAN-001",
+    "审计类型：方案审计",
+    "最终结论：" + conclusion,
+    "目标状态：`" + targetStage + "`",
+    "",
+  ].join("\n");
+}
+
 test("enforces the complete frozen role matrix as an exact allowlist", async () => {
   const original = validateGovernanceContract(await readJson(contractPath));
   assert.deepEqual(Object.fromEntries(original.roles.map((item) => [item.roleNumber, item.roleName])), ROLE_NAMES);
@@ -150,6 +189,12 @@ test("enforces the complete frozen role matrix as an exact allowlist", async () 
 test("keeps the two audit gates and every recovery transition explicit", async () => {
   const contract = await readJson(contractPath);
   assert.deepEqual(contract.requiredWorkflowStages, GOVERNANCE_STAGES);
+  assert.deepEqual(contract.auditPolicy.acceptedConclusions, ["通过", "不通过"]);
+  assert.deepEqual(contract.auditPolicy.conclusionTargets, {
+    PLAN_AUDIT_PENDING: { "通过": "IMPLEMENTATION_APPROVED", "不通过": "PLANNING_REQUIRED" },
+    RC_AUDIT_PENDING: { "通过": "RELEASE_APPROVED", "不通过": "IMPLEMENTATION_REQUIRED" },
+  });
+  assert.deepEqual(contract.auditPolicy.rcAuditIdentityFields, ["candidateSha", "candidateTreeSha", "candidatePullRequest"]);
   assertTransition(contract, 2, "PLAN_AUDIT_PENDING", "IMPLEMENTATION_APPROVED");
   assertTransition(contract, 3, "IMPLEMENTING", "RC_AUDIT_PENDING");
   assertTransition(contract, 2, "RC_AUDIT_PENDING", "RELEASE_APPROVED");
@@ -157,6 +202,9 @@ test("keeps the two audit gates and every recovery transition explicit", async (
   assertTransition(contract, 2, "BLOCKED", "RC_AUDIT_PENDING");
   assert.throws(() => assertTransition(contract, 1, "IDLE", "RELEASE_APPROVED"), GovernanceValidationError);
   assert.throws(() => assertTransition(contract, 3, "RC_AUDIT_PENDING", "RELEASE_APPROVED"), GovernanceValidationError);
+  const mutated = structuredClone(contract);
+  mutated.auditPolicy.conclusionTargets.RC_AUDIT_PENDING["有条件通过"] = "RELEASE_APPROVED";
+  assert.throws(() => validateGovernanceContract(mutated), /完全一致/u);
 });
 
 test("executes the Draft 2020-12 schema and keeps schema-expressible failures equivalent", async () => {
@@ -407,6 +455,105 @@ test("builds a Candidate transition only from an immutable same-repository PR", 
   }, contract), /禁止来自 fork/u);
 });
 
+test("binds every formal plan-audit conclusion to its exact target state", async () => {
+  const contract = await readJson(contractPath);
+  const previous = stateAt("PLAN_AUDIT_PENDING", {
+    revision: 50,
+    candidateSha: null,
+    candidateContext: null,
+    records: { planAudit: null, releaseCandidate: null, rcAudit: null, releaseReceipt: null },
+    recordDigests: { planAudit: null, releaseCandidate: null, rcAudit: null, releaseReceipt: null },
+  });
+  const build = (conclusion, targetStage, recordedTarget = targetStage) => buildGovernanceTransition(previous, {
+    roleNumber: 2,
+    targetStage,
+    pullRequest: {
+      number: 19,
+      state: "open",
+      draft: false,
+      body: makePlanAuditRecord({ conclusion, targetStage: recordedTarget }),
+      head: { sha: "d".repeat(40), ref: "planning/v1.3.1", repo: { full_name: previous.repository } },
+      base: { sha: "b".repeat(40), ref: "main", repo: { full_name: previous.repository } },
+    },
+    treeSha: "e".repeat(40),
+  }, contract);
+
+  assert.equal(build("通过", "IMPLEMENTATION_APPROVED").state.stage, "IMPLEMENTATION_APPROVED");
+  assert.equal(build("不通过", "PLANNING_REQUIRED").state.stage, "PLANNING_REQUIRED");
+  assert.throws(() => build("不通过", "IMPLEMENTATION_APPROVED"), GovernanceValidationError);
+  assert.throws(() => build("有条件通过", "IMPLEMENTATION_APPROVED"), GovernanceValidationError);
+  assert.throws(() => build("通过", "IMPLEMENTATION_APPROVED", "PLANNING_REQUIRED"), GovernanceValidationError);
+});
+
+test("binds an RC audit conclusion and target to the current Candidate SHA, Tree and PR", async () => {
+  const contract = await readJson(contractPath);
+  const candidateSha = "a".repeat(40);
+  const candidateTreeSha = "c".repeat(40);
+  const candidatePullRequest = 20;
+  const previous = stateAt("RC_AUDIT_PENDING", {
+    revision: 51,
+    candidateSha,
+    candidateContext: {
+      branch: "release/v1.3.1",
+      pullRequest: candidatePullRequest,
+      baseSha: "b".repeat(40),
+      treeSha: candidateTreeSha,
+    },
+  });
+  const makePr = (body, overrides = {}) => ({
+    number: overrides.number ?? candidatePullRequest,
+    state: "open",
+    draft: false,
+    body,
+    head: {
+      sha: overrides.headSha ?? candidateSha,
+      ref: overrides.headRef ?? previous.candidateContext.branch,
+      repo: { full_name: previous.repository },
+    },
+    base: {
+      sha: overrides.baseSha ?? previous.candidateContext.baseSha,
+      ref: "main",
+      repo: { full_name: previous.repository },
+    },
+  });
+  const build = (conclusion, targetStage, recordOverrides = {}, prOverrides = {}) => buildGovernanceTransition(previous, {
+    roleNumber: 2,
+    targetStage,
+    pullRequest: makePr(makeRcAuditRecord({
+      candidateSha: recordOverrides.candidateSha ?? candidateSha,
+      candidateTreeSha: recordOverrides.candidateTreeSha ?? candidateTreeSha,
+      candidatePullRequest: recordOverrides.candidatePullRequest ?? candidatePullRequest,
+      conclusion,
+      targetStage: recordOverrides.targetStage ?? targetStage,
+    }), prOverrides),
+    treeSha: prOverrides.treeSha ?? candidateTreeSha,
+  }, contract);
+
+  const approved = build("通过", "RELEASE_APPROVED");
+  assert.equal(approved.state.stage, "RELEASE_APPROVED");
+  assert.equal(approved.state.candidateSha, candidateSha);
+  assert.equal(approved.recordKey, "rcAudit");
+
+  const rejected = build("不通过", "IMPLEMENTATION_REQUIRED");
+  assert.equal(rejected.state.stage, "IMPLEMENTATION_REQUIRED");
+  assert.equal(rejected.state.candidateContext.treeSha, candidateTreeSha);
+
+  const rejectedInputs = [
+    () => build("不通过", "RELEASE_APPROVED"),
+    () => build("有条件通过", "RELEASE_APPROVED"),
+    () => build("通过", "RELEASE_APPROVED", { candidateSha: "d".repeat(40) }),
+    () => build("通过", "RELEASE_APPROVED", { candidateTreeSha: "e".repeat(40) }),
+    () => build("通过", "RELEASE_APPROVED", { candidatePullRequest: 21 }),
+    () => build("通过", "RELEASE_APPROVED", { targetStage: "IMPLEMENTATION_REQUIRED" }),
+    () => build("通过", "RELEASE_APPROVED", {}, { headSha: "d".repeat(40) }),
+    () => build("通过", "RELEASE_APPROVED", {}, { treeSha: "e".repeat(40) }),
+    () => build("通过", "RELEASE_APPROVED", {}, { number: 21 }),
+  ];
+  for (const rejectedInput of rejectedInputs) {
+    assert.throws(rejectedInput, GovernanceValidationError);
+  }
+});
+
 test("migrates the fixed failed bootstrap audit to implementation required exactly once", async () => {
   const contract = await readJson(contractPath);
   const repository = "q1433031046-ship-it/student-portfolio-cloudflare";
@@ -477,15 +624,15 @@ test("migrates the fixed failed bootstrap audit to implementation required exact
       "生产环境修改：没有",
       "",
     ].join("\n"),
-    rcAuditRecord: [
-      "审计编号：AUD-20260831-GOV-RC-001",
-      "审计对象 Candidate SHA：`" + candidateSha + "`",
-      "Tree SHA：`" + candidateTreeSha + "`",
-      "最终结论：不通过",
-      "目标状态：`IMPLEMENTATION_REQUIRED`",
-      "下一角色：3 / 超级工作",
-      "",
-    ].join("\n"),
+    rcAuditRecord: makeRcAuditRecord({
+      auditId: "AUD-20260831-GOV-RC-001",
+      candidateSha,
+      candidateTreeSha,
+      candidatePullRequest: 13,
+      conclusion: "不通过",
+      targetStage: "IMPLEMENTATION_REQUIRED",
+      format: "heading",
+    }),
   };
 
   const result = migrateFailedBootstrapAudit(legacy, request, contract);
@@ -516,6 +663,11 @@ test("migrates the fixed failed bootstrap audit to implementation required exact
     (input) => { input.candidatePullRequest.head.sha = "f".repeat(40); },
     (input) => { input.recoveryPullRequest.head.sha = "f".repeat(40); },
     (input) => { input.rcAuditRecord = input.rcAuditRecord.replace("不通过", "通过"); },
+    (input) => { input.rcAuditRecord = input.rcAuditRecord.replace("不通过", "有条件通过"); },
+    (input) => { input.rcAuditRecord = input.rcAuditRecord.replace(candidateSha, "f".repeat(40)); },
+    (input) => { input.rcAuditRecord = input.rcAuditRecord.replace(candidateTreeSha, "f".repeat(40)); },
+    (input) => { input.rcAuditRecord = input.rcAuditRecord.replace("`#13`", "`#12`"); },
+    (input) => { input.rcAuditRecord = input.rcAuditRecord.replace("IMPLEMENTATION_REQUIRED", "RELEASE_APPROVED"); },
   ];
   for (const mutate of mutations) {
     const changed = structuredClone(request);
@@ -551,15 +703,15 @@ test("verifies an untrusted protected proposal independently", async (t) => {
     "生产环境修改：没有",
     "",
   ].join("\n");
-  const rcAuditRecord = [
-    "审计编号：AUD-20260831-GOV-RC-001",
-    "审计对象 Candidate SHA：`" + candidateSha + "`",
-    "Tree SHA：`" + candidateTreeSha + "`",
-    "最终结论：不通过",
-    "目标状态：`IMPLEMENTATION_REQUIRED`",
-    "下一角色：3 / 超级工作",
-    "",
-  ].join("\n");
+  const rcAuditRecord = makeRcAuditRecord({
+    auditId: "AUD-20260831-GOV-RC-001",
+    candidateSha,
+    candidateTreeSha,
+    candidatePullRequest: 13,
+    conclusion: "不通过",
+    targetStage: "IMPLEMENTATION_REQUIRED",
+    format: "heading",
+  });
   const legacy = {
     schemaVersion: 1,
     project: "student-portfolio-cloudflare",
@@ -797,7 +949,108 @@ test("reconstructs normal record and pointer proposals from the owner-authorized
   });
 });
 
+test("independent Gate rejects failed, conditional and wrong-Candidate RC approval proposals", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "governance-rc-audit-gate-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const baseRoot = join(root, "base");
+  const contract = await readJson(contractPath);
+  const stateTip = "9".repeat(40);
+  const candidateSha = "a".repeat(40);
+  const candidateTreeSha = "c".repeat(40);
+  const candidatePullRequest = 20;
+  const previous = stateAt("RC_AUDIT_PENDING", {
+    revision: 52,
+    candidateSha,
+    candidateContext: {
+      branch: "release/v1.3.1",
+      pullRequest: candidatePullRequest,
+      baseSha: "b".repeat(40),
+      treeSha: candidateTreeSha,
+    },
+  });
+  const currentPath = contract.runtime.currentPath;
+  const recordPath = previous.records.rcAudit;
+  const baseFiles = { [currentPath]: JSON.stringify(previous, null, 2) + "\n" };
+  await writeTree(baseRoot, baseFiles);
+
+  const source = {
+    kind: "governance-transition",
+    authorizationComment: 3001,
+    stateTip,
+    pullRequest: candidatePullRequest,
+    headSha: candidateSha,
+    treeSha: candidateTreeSha,
+    roleNumber: 2,
+    targetStage: "RELEASE_APPROVED",
+  };
+  const verifyRecord = async (name, body, prOverrides = {}) => {
+    const proposalRoot = join(root, name);
+    await writeTree(proposalRoot, { ...baseFiles, [recordPath]: body });
+    const sourcePr = {
+      number: prOverrides.number ?? candidatePullRequest,
+      state: "open",
+      draft: false,
+      body,
+      head: {
+        sha: prOverrides.headSha ?? candidateSha,
+        ref: previous.candidateContext.branch,
+        repo: { full_name: previous.repository },
+      },
+      base: {
+        sha: previous.candidateContext.baseSha,
+        ref: "main",
+        repo: { full_name: previous.repository },
+      },
+      treeSha: prOverrides.treeSha ?? candidateTreeSha,
+      stateTip,
+    };
+    const envelope = buildProposalEnvelope({
+      phase: "transition-record",
+      expectedTip: stateTip,
+      expectedRevision: previous.revision,
+      source,
+      paths: [recordPath],
+      contentDigests: { [recordPath]: digest(body) },
+    });
+    return verifyProtectedProposal({
+      baseRoot,
+      proposalRoot,
+      proposalBaseSha: stateTip,
+      envelope,
+      candidatePullRequest: sourcePr,
+      recoveryPullRequest: {},
+      contract,
+    });
+  };
+  const validRecord = makeRcAuditRecord({
+    candidateSha,
+    candidateTreeSha,
+    candidatePullRequest,
+    conclusion: "通过",
+    targetStage: "RELEASE_APPROVED",
+  });
+  await verifyRecord("valid", validRecord);
+
+  const rejectedRecords = [
+    ["failed", makeRcAuditRecord({ candidateSha, candidateTreeSha, candidatePullRequest, conclusion: "不通过", targetStage: "RELEASE_APPROVED" })],
+    ["conditional", makeRcAuditRecord({ candidateSha, candidateTreeSha, candidatePullRequest, conclusion: "有条件通过", targetStage: "RELEASE_APPROVED" })],
+    ["wrong-sha", makeRcAuditRecord({ candidateSha: "d".repeat(40), candidateTreeSha, candidatePullRequest, conclusion: "通过", targetStage: "RELEASE_APPROVED" })],
+    ["wrong-tree", makeRcAuditRecord({ candidateSha, candidateTreeSha: "e".repeat(40), candidatePullRequest, conclusion: "通过", targetStage: "RELEASE_APPROVED" })],
+    ["wrong-pr", makeRcAuditRecord({ candidateSha, candidateTreeSha, candidatePullRequest: 21, conclusion: "通过", targetStage: "RELEASE_APPROVED" })],
+  ];
+  for (const [name, body] of rejectedRecords) {
+    await assert.rejects(() => verifyRecord(name, body), GovernanceValidationError);
+  }
+  await assert.rejects(() => verifyRecord("wrong-source-head", validRecord, { headSha: "d".repeat(40) }), GovernanceValidationError);
+  await assert.rejects(() => verifyRecord("wrong-source-tree", validRecord, { treeSha: "e".repeat(40) }), GovernanceValidationError);
+  await assert.rejects(() => verifyRecord("wrong-source-pr", validRecord, { number: 21 }), GovernanceValidationError);
+});
+
 function assertProtectedWriterSurface(workflow, writer, contract) {
+  const checkoutPin = "d23441a48e516b6c34aea4fa41551a30e30af803";
+  const checkoutUses = workflow.match(/uses: actions\/checkout@[^\s]+/gu) ?? [];
+  assert.equal(checkoutUses.length, 3);
+  assert.ok(checkoutUses.every((entry) => entry === "uses: actions/checkout@" + checkoutPin));
   assert.match(workflow, /issue_comment:\s*\n\s*types: \[created\]/u);
   assert.match(workflow, /pull_request_target:/u);
   assert.match(workflow, /repository_dispatch:\s*\n\s*types: \[governance-proposal\]/u);
@@ -889,6 +1142,7 @@ test("detects protected writer drift before Candidate creation", async () => {
     [workflow + "\npermissions:\n  statuses: write\n", writer, contract],
     [workflow.replace("checks: write", "checks: read"), writer, contract],
     [workflow, writer.replace('event_type:"governance-proposal"', 'event_type:"other"'), contract],
+    [workflow.replaceAll("actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803", "actions/checkout@v6"), writer, contract],
   ];
   for (const mutation of mutations) {
     assert.throws(() => assertProtectedWriterSurface(...mutation), assert.AssertionError);

@@ -31,6 +31,21 @@
     "recordFirstThenPointer": true,
     "compareAndSwapRequired": true
   },
+  "auditPolicy": {
+    "acceptedConclusions": ["通过", "不通过"],
+    "conclusionTargets": {
+      "PLAN_AUDIT_PENDING": {
+        "通过": "IMPLEMENTATION_APPROVED",
+        "不通过": "PLANNING_REQUIRED"
+      },
+      "RC_AUDIT_PENDING": {
+        "通过": "RELEASE_APPROVED",
+        "不通过": "IMPLEMENTATION_REQUIRED"
+      }
+    },
+    "rcAuditIdentityFields": ["candidateSha", "candidateTreeSha", "candidatePullRequest"],
+    "approvedCandidateShaRequiredOnPass": true
+  },
   "bootstrapPolicy": {
     "activeVersion": "governance-1",
     "candidateBranch": "governance/four-role-auto-handoff",

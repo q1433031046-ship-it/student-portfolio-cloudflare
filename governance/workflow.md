@@ -49,7 +49,7 @@
 2. 评论编排器从 `main` 读取可信代码，只生成 record 或 pointer 提案；PR 正文、分支和文件始终按未信任输入处理。
 3. 提案 PR 建立后，Writer 用本来就需要的 `contents: write` 发出固定 `repository_dispatch` 事件，并把准确 PR 编号交给独立 Gate；它没有 `checks: write`。同一 Gate 也接受自然发生的 `pull_request_target` 事件作为补充入口。
 4. Gate 先从 GitHub 读取开放、同仓库、bot 创建的准确 PR head，并通过 Checks API 在该 head SHA 上创建进行中的 `governance-state-write` Check；第二次读取 PR 时必须仍为同一 head，避免检查与验证对象发生竞态。
-5. Gate 重新读取授权评论，核对所有者、命令全文和来源 PR；它只执行 `main` 的验证器，不执行提案树代码，并重建 Draft 2020-12 Schema、角色允许列表、字段差异、完整审计链、固定记录路径、摘要、无秘密检查和 Candidate 身份的唯一预期结果，再比较完整路径集与逐字节内容。
+5. Gate 重新读取授权评论，核对所有者、命令全文和来源 PR；它只执行 `main` 的验证器，不执行提案树代码，并重建 Draft 2020-12 Schema、角色允许列表、字段差异、完整审计链、固定记录路径、摘要、无秘密检查和 Candidate 身份的唯一预期结果。正式审计还必须按机器合同绑定结论与目标状态；候选审计逐字段匹配 current 中的 Candidate SHA、Tree SHA 和 PR。Gate 最后比较完整路径集与逐字节内容。
 6. Gate 无论成功或失败都完成同一 Check；只有成功结论且名称、head SHA、App id `15368`、App slug、完成状态全部匹配时才可继续。Writer 只能轮询，不能创建或完成该 Check。
 7. Writer 再次读取 PR head 与目标 tip，使用准确 head SHA 和 `merge` 方法合并，并验证返回 tip 是以旧 tip 和提案 head 为双亲的合并提交，以此完成 compare-and-swap（CAS）。
 8. 记录阶段完成后，从其准确合并 tip 创建 current 与版本快照提案；Gate 验证记录已经逐字节入库后才允许第二阶段。

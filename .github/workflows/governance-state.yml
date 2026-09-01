@@ -72,7 +72,7 @@ jobs:
           ' "$check" >/dev/null
 
       - name: Checkout only trusted default-branch verification code
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: main
           path: trusted
@@ -263,7 +263,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Checkout only trusted default-branch orchestration code
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: main
           persist-credentials: false
@@ -489,7 +489,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Checkout trusted failed-audit recovery code
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: main
           persist-credentials: false
