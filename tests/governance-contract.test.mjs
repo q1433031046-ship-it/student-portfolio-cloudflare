@@ -14,6 +14,7 @@ import {
   buildProposalEnvelope,
   buildGovernanceTransition,
   migrateFailedBootstrapAudit,
+  remoteCandidateVerificationMode,
   recoverRole,
   scanGovernanceText,
   validateGovernanceContract,
@@ -23,6 +24,7 @@ import {
   verifyProtectedProposal,
   verifyRecordFiles,
   verifyRemoteCandidate,
+  verifyRemoteCandidateTransition,
 } from "../scripts/governance-state.mjs";
 
 const readText = (path) => readFile(path, "utf8");
@@ -530,6 +532,190 @@ test("verifies Candidate commit, tree, branch, PR and ancestry against GitHub", 
     return { ok: true, status: 200, json: async () => ({ commit: { sha: "f".repeat(40) } }) };
   };
   await assert.rejects(() => verifyRemoteCandidate(state, { token: "fictional", fetchImpl: movedBranch }), /分支 tip 已变化/u);
+});
+
+test("transition-aware remote Candidate verification treats a rejected Candidate as historical only after entering implementation", async () => {
+  const contract = await readJson(contractPath);
+  const previous = bootstrapState();
+  const movedSourcePr = {
+    number: 13,
+    state: "open",
+    draft: false,
+    body: "Implementation entry only\n",
+    head: {
+      sha: "d".repeat(40),
+      ref: previous.candidateContext.branch,
+      repo: { full_name: previous.repository },
+    },
+    base: {
+      sha: "f".repeat(40),
+      ref: "main",
+      repo: { full_name: previous.repository },
+    },
+  };
+  const next = buildGovernanceTransition(previous, {
+    roleNumber: 3,
+    targetStage: "IMPLEMENTING",
+    pullRequest: movedSourcePr,
+    treeSha: "e".repeat(40),
+  }, contract).state;
+
+  assert.equal(remoteCandidateVerificationMode(previous, next, contract), "historical-object");
+  const calls = [];
+  const objectOnlyFetch = async (url) => {
+    calls.push(url);
+    assert.match(url, /\/git\/commits\//u);
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        sha: previous.candidateSha,
+        tree: { sha: previous.candidateContext.treeSha },
+      }),
+    };
+  };
+  const evidence = await verifyRemoteCandidateTransition(previous, next, {
+    contract,
+    token: "fictional",
+    fetchImpl: objectOnlyFetch,
+  });
+  assert.equal(evidence.mode, "historical-object");
+  assert.equal(evidence.candidateSha, previous.candidateSha);
+  assert.equal(evidence.treeSha, previous.candidateContext.treeSha);
+  assert.equal(calls.length, 1);
+
+  const implementation = stateAt("IMPLEMENTING", {
+    revision: 20,
+    lastUpdatedBy: { roleNumber: 3, roleName: "超级工作" },
+  });
+  const blocked = buildGovernanceTransition(implementation, {
+    roleNumber: 3,
+    targetStage: "BLOCKED",
+    pullRequest: {
+      ...movedSourcePr,
+      body: "阻断编号：TEST-IMPLEMENTATION-BLOCK\n原因：实现分支已经移动，必须允许角色 3 失败关闭并保留历史 Candidate 证据。\n",
+    },
+    treeSha: "e".repeat(40),
+  }, contract).state;
+  assert.equal(blocked.block.sourceStage, "IMPLEMENTING");
+  assert.equal(remoteCandidateVerificationMode(implementation, blocked, contract), "historical-object");
+
+  const wrongTree = async () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({ sha: previous.candidateSha, tree: { sha: "0".repeat(40) } }),
+  });
+  await assert.rejects(() => verifyRemoteCandidateTransition(previous, next, {
+    contract,
+    token: "fictional",
+    fetchImpl: wrongTree,
+  }), /Candidate tree 不匹配/u);
+});
+
+test("transition-aware remote Candidate verification keeps the complete live gate for a new RC", async () => {
+  const contract = await readJson(contractPath);
+  const previous = bootstrapState({
+    stage: "IMPLEMENTING",
+    revision: 4,
+    lastUpdatedBy: { roleNumber: 3, roleName: "超级工作" },
+  });
+  const candidateSha = "d".repeat(40);
+  const candidateTreeSha = "e".repeat(40);
+  const candidateBaseSha = "f".repeat(40);
+  const pr = {
+    number: 13,
+    state: "open",
+    draft: false,
+    body: "Candidate SHA：`" + candidateSha + "`\n测试：全部通过\n生产环境修改：没有\n",
+    head: {
+      sha: candidateSha,
+      ref: previous.candidateContext.branch,
+      repo: { full_name: previous.repository },
+    },
+    base: {
+      sha: candidateBaseSha,
+      ref: "main",
+      repo: { full_name: previous.repository },
+    },
+  };
+  const next = buildGovernanceTransition(previous, {
+    roleNumber: 3,
+    targetStage: "RC_AUDIT_PENDING",
+    pullRequest: pr,
+    treeSha: candidateTreeSha,
+  }, contract).state;
+
+  assert.equal(remoteCandidateVerificationMode(previous, next, contract), "live");
+  const calls = [];
+  const liveFetch = async (url) => {
+    calls.push(url);
+    let body;
+    if (url.includes("/git/commits/")) body = { sha: candidateSha, tree: { sha: candidateTreeSha } };
+    else if (url.includes("/branches/")) body = { commit: { sha: candidateSha } };
+    else if (url.includes("/pulls/")) body = {
+      state: "open",
+      draft: false,
+      head: { sha: candidateSha, ref: pr.head.ref, repo: { full_name: previous.repository } },
+      base: { sha: candidateBaseSha, ref: "main", repo: { full_name: previous.repository } },
+    };
+    else body = { status: "ahead" };
+    return { ok: true, status: 200, json: async () => body };
+  };
+  const evidence = await verifyRemoteCandidateTransition(previous, next, {
+    contract,
+    token: "fictional",
+    fetchImpl: liveFetch,
+  });
+  assert.equal(evidence.mode, "live");
+  assert.equal(evidence.candidateSha, candidateSha);
+  assert.equal(evidence.treeSha, candidateTreeSha);
+  assert.equal(calls.length, 4);
+
+  const liveFetchWith = (mode) => async (url) => {
+    if (mode === "moved-branch" && url.includes("/branches/")) {
+      return { ok: true, status: 200, json: async () => ({ commit: { sha: "0".repeat(40) } }) };
+    }
+    if (mode === "wrong-pr-head" && url.includes("/pulls/")) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          state: "open",
+          draft: false,
+          head: { sha: "0".repeat(40), ref: pr.head.ref, repo: { full_name: previous.repository } },
+          base: { sha: candidateBaseSha, ref: "main", repo: { full_name: previous.repository } },
+        }),
+      };
+    }
+    if (mode === "wrong-pr-base" && url.includes("/pulls/")) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          state: "open",
+          draft: false,
+          head: { sha: candidateSha, ref: pr.head.ref, repo: { full_name: previous.repository } },
+          base: { sha: "0".repeat(40), ref: "main", repo: { full_name: previous.repository } },
+        }),
+      };
+    }
+    if (mode === "diverged" && url.includes("/compare/")) {
+      return { ok: true, status: 200, json: async () => ({ status: "diverged" }) };
+    }
+    return liveFetch(url);
+  };
+  for (const [mode, message] of [
+    ["moved-branch", /Candidate 分支 tip 已变化/u],
+    ["wrong-pr-head", /Candidate PR head SHA 不匹配/u],
+    ["wrong-pr-base", /Candidate PR 基线不匹配/u],
+    ["diverged", /Candidate 不是冻结基线的后代/u],
+  ]) {
+    await assert.rejects(() => verifyRemoteCandidateTransition(previous, next, {
+      contract,
+      token: "fictional",
+      fetchImpl: liveFetchWith(mode),
+    }), message);
+  }
 });
 
 test("builds a Candidate transition only from an immutable same-repository PR", async () => {
@@ -1356,6 +1542,11 @@ function assertProtectedWriterSurface(workflow, writer, contract) {
   assert.match(workflow, /Write the immutable record through a protected pull request[\s\S]*Write current and version snapshot through a protected pull request/u);
   assert.match(workflow, /pull-requests: write/u);
   assert.match(workflow, /governance-protected-write\.sh/u);
+  assert.equal((workflow.match(/verify-remote-transition "\$next"/gu) ?? []).length, 1);
+  assert.match(workflow, /verify-remote-transition "\$next"[\s\S]*--previous "\$PREVIOUS_PATH"/u);
+  assert.equal((workflow.match(/verify-remote "\$next"/gu) ?? []).length, 1);
+  assert.match(workflow, /Build the exact failed-audit migration[\s\S]*verify-remote "\$next"/u);
+  assert.doesNotMatch(workflow, /candidateSha \/\/ empty[\s\S]{0,200}verify-remote "\$next"/u);
   assert.match(writer, /governance-state-write/u);
   assert.match(writer, /repos\/\$REPOSITORY\/dispatches/u);
   assert.match(writer, /\{event_type:"governance-proposal",client_payload:\{proposal_pr:\$proposal_pr\}\}/u);
@@ -1426,6 +1617,7 @@ test("detects protected writer drift before Candidate creation", async () => {
     [workflow.replace("checks: write", "checks: read"), writer, contract],
     [workflow, writer.replace('event_type:"governance-proposal"', 'event_type:"other"'), contract],
     [workflow.replaceAll("actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803", "actions/checkout@v6"), writer, contract],
+    [workflow.replace("verify-remote-transition", "verify-remote"), writer, contract],
   ];
   for (const mutation of mutations) {
     assert.throws(() => assertProtectedWriterSurface(...mutation), assert.AssertionError);
@@ -1835,6 +2027,8 @@ test("documents protected writes, bootstrap retirement and no-preview activation
   assert.match(readme, /trust-root.*main/su);
   assert.match(readme, /Schema 2.*revision 3.*IMPLEMENTATION_REQUIRED/su);
   assert.match(readme + workflow + agents, /15368/u);
+  assert.match(workflow, /IMPLEMENTING.*历史证据.*commit.*Tree.*分支 tip.*RC_AUDIT_PENDING.*完整远端核验/su);
+  assert.match(workflow, /IMPLEMENTING.*BLOCKED.*失败关闭.*不能授予任何审计或发布资格/su);
   assert.match(agents, /Four-role governance entry/u);
   for (const source of roles) {
     assert.match(source, /受保护/u);
