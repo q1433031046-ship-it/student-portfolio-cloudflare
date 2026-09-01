@@ -1,6 +1,6 @@
 {
   "name": "zkyl-student-showcase",
-  "version": "1.3.0",
+  "version": "1.3.1-b",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
@@ -10,6 +10,7 @@
     "dev": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vite",
     "build": "bash scripts/build-verified.sh",
     "build:pages-demo": "vite build cloudflare-demo --outDir ../cloudflare-pages-dist --emptyOutDir",
+    "build:netlify-static": "node scripts/build-netlify-static.mjs",
     "deploy": "bash scripts/deploy-cloudflare.sh --mode new",
     "db:migrate:remote": "wrangler d1 migrations apply DB --remote --config wrangler.jsonc",
     "cloudflare:deploy": "npm run build && bash scripts/deploy-cloudflare.sh --mode upgrade --fingerprint .wrangler/upgrade-before-fingerprint.json",
@@ -34,6 +35,15 @@
       },
       "INITIAL_ADMIN_CODE": {
         "description": "首次进入后台使用的一次性部署口令，至少16位并包含英文字母和数字；初始化完成后改用管理员密码。"
+      },
+      "NETLIFY_AUTH_TOKEN": {
+        "description": "仅用于已绑定的唯一 Netlify Site；由发布角色通过隐藏渠道配置。"
+      },
+      "NETLIFY_DRAFT_BUILD_HOOK": {
+        "description": "只允许 static-build/v1.3.1-b draft Build 的 Hook；不得指向 production Build。"
+      },
+      "STATIC_EXPORT_SIGNING_KEY": {
+        "description": "签发有界静态导出租约；不得写入仓库、日志或静态制品。"
       }
     }
   },

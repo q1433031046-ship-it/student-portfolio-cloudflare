@@ -14,6 +14,12 @@ test("ships a machine-readable agent deployment contract", async () => {
     await readFile("deployment/agent-manifest.json", "utf8"),
   );
   assert.equal(manifest.schemaVersion, 3);
+  assert.deepEqual(manifest.requiredSecrets, [
+    "INITIAL_ADMIN_CODE",
+    "NETLIFY_AUTH_TOKEN",
+    "NETLIFY_DRAFT_BUILD_HOOK",
+    "STATIC_EXPORT_SIGNING_KEY",
+  ]);
   assert.equal(manifest.project.target, "cloudflare-workers");
   assert.equal(manifest.project.defaultHostname, "workers.dev");
   assert.equal(manifest.project.initialContent, "empty");
@@ -69,7 +75,7 @@ test("keeps package, lockfile and template release versions synchronized", async
     readFile("deployment/template-version.json", "utf8").then(JSON.parse),
   ]);
 
-  assert.equal(packageJson.version, "1.3.0");
+  assert.equal(packageJson.version, "1.3.1-b");
   assert.equal(packageLock.version, packageJson.version);
   assert.equal(packageLock.packages[""].version, packageJson.version);
   assert.equal(templateVersion.version, packageJson.version);
@@ -190,6 +196,8 @@ test("tags only an explicitly verified release candidate from the protected main
   assert.match(tagJob, /node <<'NODE'/u);
   assert.match(tagJob, /createHash\("sha256"\)/u);
   assert.match(tagJob, /promptSha256 === promptDigest/u);
+  assert.match(tagJob, /Object\.entries\(migrationDigests\)/u);
+  assert.match(tagJob, /show\(`drizzle\/\$\{migrationName\}`\)/u);
   assert.match(tagJob, /git tag -a "\$release_tag" "\$candidate_sha"/u);
   assert.match(tagJob, /git ls-remote origin refs\/heads\/main/u);
   assert.match(tagJob, /refs\/tags\/\$release_tag\^\{\}/u);

@@ -3,22 +3,23 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-test("version metadata publishes the authenticated v1.3.0 upgrade contract", async () => {
-  const [manifest, promptManifest, agentManifest, migration0007] = await Promise.all([
+test("version metadata publishes the authenticated v1.3.1-b upgrade contract", async () => {
+  const [manifest, promptManifest, agentManifest, migration0007, migration0008] = await Promise.all([
     readFile("deployment/template-version.json", "utf8").then(JSON.parse),
     readFile("deployment/upgrade-prompt.json", "utf8").then(JSON.parse),
     readFile("deployment/agent-manifest.json", "utf8").then(JSON.parse),
     readFile("drizzle/0007_legacy_media_and_access_state.sql", "utf8"),
+    readFile("drizzle/0008_static_site_publish.sql", "utf8"),
   ]);
 
-  assert.equal(manifest.version, "1.3.0");
-  assert.equal(manifest.releaseTag, "v1.3.0");
+  assert.equal(manifest.version, "1.3.1-b");
+  assert.equal(manifest.releaseTag, "v1.3.1-b");
   assert.equal(manifest.importance, "important");
   assert.equal(manifest.upgradePromptManifest, "deployment/upgrade-prompt.json");
-  assert.match(manifest.releaseNotes.join("\n"), /320 px/u);
-  assert.match(manifest.releaseNotes.join("\n"), /Playwright/u);
-  assert.match(manifest.releaseNotes.join("\n"), /schema.*5/u);
-  assert.match(manifest.releaseNotes.join("\n"), /恢复码.*会话/u);
+  assert.match(manifest.releaseNotes.join("\n"), /固定静态/u);
+  assert.match(manifest.releaseNotes.join("\n"), /draft Deploy/u);
+  assert.match(manifest.releaseNotes.join("\n"), /migration 0008/u);
+  assert.match(manifest.releaseNotes.join("\n"), /ACCESS_FEATURE_PAUSED/u);
   assert.equal(manifest.portfolioDocumentSchemaVersion, 5);
   assert.equal(promptManifest.schemaVersion, 1);
   assert.equal(promptManifest.program, manifest.program);
@@ -37,12 +38,14 @@ test("version metadata publishes the authenticated v1.3.0 upgrade contract", asy
   assert.deepEqual(agentManifest.databaseMigrationPolicy.runtimeSafeBootstrapMigrations, [
     "0006_auth_v2.sql",
     "0007_legacy_media_and_access_state.sql",
+    "0008_static_site_publish.sql",
   ]);
   assert.equal(agentManifest.databaseMigrationPolicy.runtimeBootstrapRoute, "/admin");
   assert.equal(
     agentManifest.databaseMigrationPolicy.migrationSha256["0007_legacy_media_and_access_state.sql"],
-    createHash("sha256").update(migration0007, "utf8").digest("hex"),
+    createHash("sha256").update(migration0007.replaceAll("\r\n", "\n"), "utf8").digest("hex"),
   );
+  assert.equal(agentManifest.databaseMigrationPolicy.migrationSha256["0008_static_site_publish.sql"], createHash("sha256").update(migration0008, "utf8").digest("hex"));
   assert.match(agentManifest.resourceFingerprint.automaticFields.join("\n"), /configuredWorkersDevEnabled/);
   assert.match(agentManifest.resourceFingerprint.remoteWorkersDevState, /manual/u);
   assert.equal(agentManifest.authentication.passwordFailureScope, "same-cloudflare-client-network-bucket");
@@ -56,7 +59,7 @@ test("version metadata publishes the authenticated v1.3.0 upgrade contract", asy
     "MEDIA_KV.id",
     "matching live DB and MEDIA_KV bindings",
   ]);
-  assert.equal(agentManifest.existingInstallUpgradeEligibility.r2OnlyV1_0, "unsupported-fail-closed-in-v1.3.0");
+  assert.equal(agentManifest.existingInstallUpgradeEligibility.r2OnlyV1_0, "unsupported-fail-closed-in-v1.3.1-b");
   assert.equal(agentManifest.existingInstallUpgradeEligibility.provisionMissingResources, false);
   assert.equal(agentManifest.existingInstallUpgradeEligibility.remoteMutationBeforeEligibility, false);
   assert.equal(agentManifest.newDeploymentProvisioning.templateContainsResourceIds, false);
@@ -104,7 +107,8 @@ test("version endpoint reads future metadata from main but accepts prompts only 
   assert.match(route, /upgradePromptCheckSucceeded/);
   assert.match(route, /latestUpgradePromptManifestUrl/);
   assert.match(route, /updateAvailable/);
-  assert.match(route, /compareVersions/);
+  assert.match(route, /compareSemanticVersion/);
+  assert.match(route, /shared\/semantic-version\.mjs/u);
 });
 
 test("all admin upgrade entry points copy the synchronized prompt", async () => {
@@ -127,13 +131,13 @@ test("all admin upgrade entry points copy the synchronized prompt", async () => 
 
   assert.match(content, /deployment\/upgrade-prompt\.json/);
   assert.match(content, /UPGRADE_PROMPT_SYNC_EVENT/);
-  assert.match(content, /compareVersions\(promptVersion, activeUpgradePromptVersion\) < 0/);
+  assert.match(content, /compareSemanticVersion\(promptVersion, activeUpgradePromptVersion\) < 0/);
   assert.match(guide, /addEventListener\(UPGRADE_PROMPT_SYNC_EVENT/);
   assert.match(guide, /<pre>\{upgradePrompt\}<\/pre>/);
 
   for (const phrase of [
-    "目标版本固定为 v1.3.0",
-    "发布标签 v1.3.0",
+    "目标版本固定为 v1.3.1-b",
+    "发布标签 v1.3.1-b",
     "SHA-256",
     "npm run cloudflare:fingerprint -- --output",
     "npm run cloudflare:deploy",
@@ -175,10 +179,11 @@ test("all admin upgrade entry points copy the synchronized prompt", async () => 
     "同一 Cloudflare 客户网络",
     "错误恢复码不会触发密码登录锁定",
     "调整裁切",
-    "生成二维码密钥",
-    "保存并发布",
-    "发布当前草稿",
-    "网站尚未发布",
+    "0008_static_site_publish.sql",
+    "保存草稿不得触发 Netlify",
+    "重试原发布任务",
+    "旧限制访问卡片必须保持不可写",
+    "固定 URL、二维码和 Worker 根路径跳转",
     "移除成稿视频",
     "仅能在生产站人工验收",
   ]) {
@@ -186,7 +191,9 @@ test("all admin upgrade entry points copy the synchronized prompt", async () => 
     assert.match(readme, new RegExp(phrase));
   }
 
-  assert.ok(promptManifest.prompt.includes("{hostname}-v1.3.0-系统恢复码-{YYYYMMDDTHHMMSSZ}.txt"));
+  assert.ok(promptManifest.prompt.includes("{hostname}-v1.3.1-b-系统恢复码-{YYYYMMDDTHHMMSSZ}.txt"));
+  assert.match(promptManifest.prompt, /唯一 draft Deploy/u);
+  assert.match(promptManifest.prompt, /原稳定版本 1\.3\.1 仍处于搁置状态/u);
   assert.doesNotMatch(promptManifest.prompt, /<升级前指纹文件>|<upgrade-before-fingerprint-file>/u);
   assert.match(promptManifest.prompt, /远端 workers\.dev 开关.*人工基线/su);
   assert.match(promptManifest.prompt, /upgrade-predeploy-fingerprint\.json.*upgrade-before-fingerprint\.json/su);

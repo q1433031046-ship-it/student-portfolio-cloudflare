@@ -17,3 +17,14 @@ test("generated Worker config keeps independent auto-provisioned storage binding
   assert.deepEqual(config.r2_buckets ?? [], []);
   assert.equal(new Set(config.compatibility_flags ?? []).size, (config.compatibility_flags ?? []).length);
 });
+
+test("Worker root redirects only from a committed static pointer and keeps admin/API paths local", async () => {
+  const source = await readFile("cloudflare/worker-entry.js", "utf8");
+  assert.match(source, /requestUrl\.pathname === "\/" && !requestUrl\.search/u);
+  assert.match(source, /request\.method === "GET" \|\| request\.method === "HEAD"/u);
+  assert.match(source, /current_deploy_id.*current_public_revision/u);
+  assert.match(source, /Number\(binding\.current_public_revision\) > 0/u);
+  assert.match(source, /target\.hostname\.endsWith\("\.netlify\.app"\)/u);
+  assert.match(source, /Response\.redirect\(target\.toString\(\), 302\)/u);
+  assert.doesNotMatch(source, /requestUrl\.searchParams\.get/u);
+});

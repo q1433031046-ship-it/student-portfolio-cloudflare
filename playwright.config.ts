@@ -15,7 +15,7 @@ export default defineConfig({
     timezoneId: "Asia/Shanghai",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
-    video: "retain-on-failure",
+    video: process.env.PLAYWRIGHT_DISABLE_VIDEO ? "off" : "retain-on-failure",
   },
   webServer: {
     command: "npm run dev -- --host 127.0.0.1 --port 4173",
@@ -29,7 +29,8 @@ export default defineConfig({
     {
       name: "mobile-chromium",
       testIgnore: /codec\.spec\.ts/u,
-      use: { browserName: "chromium", viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true },
+      use: { browserName: "chromium", channel: process.env.PLAYWRIGHT_USE_SYSTEM_CHROME ? "chrome" : undefined,
+        viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true },
     },
     {
       name: "codec-chrome",
