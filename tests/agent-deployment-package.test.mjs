@@ -3,6 +3,12 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
+assert.equal(
+  existsSync("tests/semantic-version.test.mjs"),
+  true,
+  "the focused semantic-version test file must exist before the broader gate runs",
+);
+
 test("ships a machine-readable agent deployment contract", async () => {
   const manifest = JSON.parse(
     await readFile("deployment/agent-manifest.json", "utf8"),
@@ -124,7 +130,10 @@ test("runs the complete production-safe gate for every main pull request", async
 });
 
 test("tags only an explicitly verified release candidate from the protected main workflow", async () => {
-  const workflow = await readFile(".github/workflows/release-verify.yml", "utf8");
+  const workflow = (await readFile(
+    ".github/workflows/release-verify.yml",
+    "utf8",
+  )).replace(/\r\n/gu, "\n");
   const [verificationJobs, tagJob = ""] = workflow.split(/\n  tag-release:\n/u);
 
   assert.match(workflow, /push:\s*\n\s*branches: \[main\]/u);
@@ -202,7 +211,8 @@ test("lets only the repository owner invoke the unchanged release gate from a re
   assert.match(commandWorkflow, /issue_comment:\s*\n\s*types: \[created\]/u);
   assert.match(commandWorkflow, /github\.actor == github\.repository_owner/u);
   assert.match(commandWorkflow, /Only the repository owner can request a release/u);
-  assert.match(commandWorkflow, /\/verify-and-tag\\ v/u);
+  assert.match(commandWorkflow, /command_prefix="\/verify-and-tag "/u);
+  assert.match(commandWorkflow, /node shared\/semantic-version\.mjs parse/u);
   assert.match(commandWorkflow, /pulls\/\$\{PR_NUMBER\}/u);
   assert.match(commandWorkflow, /git\/ref\/heads\/main/u);
   assert.match(commandWorkflow, /base_ref.*main/su);

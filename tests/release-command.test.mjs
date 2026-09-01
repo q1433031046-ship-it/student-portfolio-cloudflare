@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { chmod, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { promisify } from "node:util";
 import { execFile } from "node:child_process";
 import test from "node:test";
@@ -36,21 +36,37 @@ async function runResolver(t, overrides = {}) {
   await writeFile(log, "");
 
   const fakeGh = join(bin, "gh");
-  await writeFile(fakeGh, `#!/usr/bin/env bash
-set -euo pipefail
+  await writeFile(fakeGh, `#!/usr/bin/env sh
+set -eu
 printf '%s\\n' "$*" >> "$FAKE_GH_LOG"
-if [[ "$*" == *"/pulls/"* ]]; then
-  printf '%s\\n' "$FAKE_PR_JSON"
-  exit 0
-fi
-if [[ "$*" == *"/git/ref/heads/main"* ]]; then
-  printf '%s\\n' "$FAKE_MAIN_SHA"
-  exit 0
-fi
+case "$*" in
+  *"/pulls/"*)
+    printf '%s\\n' "$FAKE_PR_JSON"
+    exit 0
+    ;;
+  *"/git/ref/heads/main"*)
+    printf '%s\\n' "$FAKE_MAIN_SHA"
+    exit 0
+    ;;
+esac
 printf 'unexpected gh call: %s\\n' "$*" >&2
 exit 64
 `);
   await chmod(fakeGh, 0o755);
+
+  const fakeJq = join(bin, "jq");
+  await writeFile(fakeJq, `#!/usr/bin/env node
+const fs = require("node:fs");
+const document = JSON.parse(fs.readFileSync(0, "utf8"));
+const query = process.argv.at(-1);
+const value = query
+  .replace(/^\\./u, "")
+  .split(".")
+  .reduce((current, key) => current?.[key], document);
+if (value === undefined || value === null) process.exit(1);
+process.stdout.write(String(value) + "\\n");
+`);
+  await chmod(fakeJq, 0o755);
 
   const repository = "owner/student-portfolio-cloudflare";
   const candidateSha = "a".repeat(40);
@@ -66,7 +82,7 @@ exit 64
   const shell = extractResolverShell(workflow);
   const env = {
     ...process.env,
-    PATH: `${bin}:${process.env.PATH}`,
+    PATH: `${bin}${delimiter}${process.env.PATH}`,
     COMMENT_ACTOR: "owner",
     COMMENT_BODY: "/verify-and-tag v1.3.1",
     PR_NUMBER: "12",
@@ -81,7 +97,7 @@ exit 64
   };
 
   try {
-    const result = await execFileAsync("bash", ["--noprofile", "--norc", "-e", "-o", "pipefail", "-c", shell], {
+    const result = await execFileAsync(process.env.RELEASE_TEST_BASH ?? "bash", ["--noprofile", "--norc", "-e", "-o", "pipefail", "-c", shell], {
       cwd: process.cwd(),
       env,
     });
@@ -140,8 +156,11 @@ test("a non-owner or malformed command fails before reading pull-request data", 
   assert.equal(malformed.log, "");
 
   for (const command of [
+    "/verify-and-tag v1.3.1-B",
     "/verify-and-tag v1.3.1-",
+    "/verify-and-tag v1.03.1-b",
     "/verify-and-tag v1.3.1_b",
+    "/verify-and-tag v1.3.1/b",
     "/verify-and-tag v1.3.1-b+build.1",
   ]) {
     const invalidPrerelease = await runResolver(t, { env: { COMMENT_BODY: command } });
@@ -186,21 +205,17 @@ test("forks, wrong branches and draft release pull requests fail closed", async 
   assert.match(draft.stderr, /review-ready/u);
 });
 
-test("both protected release validators accept stable and prerelease versions only", async () => {
-  const workflow = await readFile(".github/workflows/release-verify.yml", "utf8");
-  const validators = [...workflow.matchAll(
-    /if \[\[ ! "\$confirm_version" =~ ([^\s]+) \]\]; then/gu,
-  )].map((match) => match[1]);
+test("all protected release stages use the shared controlled parser", async () => {
+  const [commandWorkflow, releaseWorkflow] = await Promise.all([
+    readFile(".github/workflows/release-command.yml", "utf8"),
+    readFile(".github/workflows/release-verify.yml", "utf8"),
+  ]);
 
-  assert.equal(validators.length, 2, "both release verification stages must validate the version");
-  for (const validator of validators) {
-    const versionPattern = new RegExp(validator, "u");
-    for (const version of ["1.3.0", "1.3.1-b", "1.3.1-rc.1"]) {
-      assert.match(version, versionPattern);
-    }
-
-    for (const version of ["1.3", "1.3.1-", "1.3.1_b", "1.3.1-b+build.1"]) {
-      assert.doesNotMatch(version, versionPattern);
-    }
-  }
+  assert.match(commandWorkflow, /node shared\/semantic-version\.mjs parse/u);
+  assert.match(releaseWorkflow, /\$\{GITHUB_WORKFLOW_SHA\}:shared\/semantic-version\.mjs/u);
+  assert.match(releaseWorkflow, /parser_path="\$RUNNER_TEMP\/semantic-version\.mjs"/u);
+  assert.match(releaseWorkflow, /node "\$parser_path" parse/u);
+  assert.match(releaseWorkflow, /node shared\/semantic-version\.mjs parse/u);
+  assert.doesNotMatch(commandWorkflow, /COMMENT_BODY" =~/u);
+  assert.doesNotMatch(releaseWorkflow, /confirm_version" =~/u);
 });
