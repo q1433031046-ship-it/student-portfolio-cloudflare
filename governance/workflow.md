@@ -13,7 +13,7 @@
 | ROLLED_BACK | 3 | releaseReceipt 与完整审计链 |
 | BLOCKED | block.ownerRoleNumber | 来源阶段证据 + blocked |
 
-首次 governance-1 bootstrap 可缺少不存在的 planAudit，但必须绑定固定分支、基线和远端 Candidate；该例外不能用于其他版本。
+固定失败审计恢复完成后，governance-1 可凭不可变完成回执保留历史上不存在的 planAudit；回执绑定旧状态 tip/revision、PR #13 commit/tree 和 PR #14 head。该例外不能用于其他版本，也不能再次执行迁移。
 
 ## 标准转换
 
@@ -25,6 +25,21 @@
 6. ROLLED_BACK → IMPLEMENTATION_REQUIRED 只能由角色 3 接手。
 
 同阶段 revision 更新一律禁止。每条转换都有独立字段允许列表；进入 RELEASE_APPROVED 后，activeVersion、candidateSha、Candidate 上下文、releaseCandidate 和 rcAudit 全部冻结。
+
+## 审计风险处置
+
+方案审计和 Candidate 审计不要求清零所有已知缺陷，但角色 2 必须证明剩余风险可信、隔离且可恢复。每项风险只能采用以下分类之一：
+
+- `Blocking Risk`：本轮必须修复，只能与正式“不通过”结论共存。
+- `Accepted / Contained Risk`：Medium / Low 风险已经隔离，可接受。
+- `Monitored Technical Debt`：Medium / Low 风险受控并延期到明确版本。
+- `Low / Won't Fix Now`：Low 风险当前明确接受。
+
+审计记录先填写 `风险项数量`，再逐项填写 `Known Issue`、`风险分类`、`Issue`、`Severity`、`Impact / Blast Radius`、`Containment`、`Stop / Escalation Condition`、`Planned Follow-up Version`、`Non-Waivable Boundary`。Containment 只接受 `isolation`、`fail-closed`、`feature-disabled`、`manual-recovery`、`known-issue`、`follow-up-version`，并必须带具体措施；后续版本只能使用 `vX.Y.Z` 或 `governance-N`。
+
+不可豁免边界固定为：`governance-state-authorization`、`ruleset-required-check-integrity`、`candidate-identity-binding`、`cas-revision-stale-write-protection`、`failed-audit-forward-progress`、`trusted-writer-boundary`、`write-outcome-integrity`、`release-candidate-eligibility`、`production-data-security-irreversibility`。它们覆盖治理状态越权、Ruleset / required check 绕过或伪造、Candidate 身份不唯一、CAS 陈旧覆盖、失败审计非法前进、trusted writer 失效、写入失败却报告成功、错误 Candidate 获得资格，以及生产/数据/安全/不可逆治理错误。任何一项即使被写成 Accepted 也由 builder 和独立 Gate 失败关闭。
+
+风险接受不创建第三种审计结论，也不生成模糊审计终局。正式审计结论仍然只有“通过”和“不通过”，并继续按现有合同映射到唯一目标状态；已隔离的 Low 风险本身不得阻断其他方面合法的 Candidate。
 
 ## BLOCKED 恢复
 
@@ -45,20 +60,23 @@
 
 ## 受保护的两阶段 PR 协议
 
-1. 所有者在同仓库开放 PR 上提交精确 governance-transition 指令，携带刚读取的 tip、revision、角色和目标阶段。
-2. 默认分支上的可信工作流解析指令；PR 内容始终按未信任输入处理。
-3. 工作流读取 governance-state 并严格比对 expected tip/revision。
-4. 运行 Draft 2020-12 Schema、角色允许列表、转换字段差异、完整审计链、固定记录路径、摘要和无秘密/泄密检查。
-5. 对 Candidate 回读 GitHub commit、tree、branch、PR、base 与 ancestry。
-6. 从准确 previous tip 创建记录提交和短期提案分支，打开第一个目标为 governance-state 的 PR；写入固定 `governance-state-write` 状态，重读目标 tip 后才允许受保护合并，以此执行 compare-and-swap（CAS）。
-7. 从第一个 PR 的准确合并 tip 创建 current 与版本快照提交，再以相同状态门禁和最新分支要求合并第二个 PR。
-8. 任一步 tip 竞争、状态门禁或验证失败立即停止；已合并记录不改变 current，后续恢复从仓库事实继续。
+1. 所有者在同仓库开放 PR 上提交精确 governance-transition 指令，携带刚读取的 tip、revision、角色和目标阶段；授权信封绑定这条评论的 GitHub ID。
+2. 评论编排器从 `main` 读取可信代码，只生成 record 或 pointer 提案；PR 正文、分支和文件始终按未信任输入处理。
+3. 提案 PR 建立后，Writer 用本来就需要的 `contents: write` 发出固定 `repository_dispatch` 事件，并把准确 PR 编号交给独立 Gate；它没有 `checks: write`。同一 Gate 也接受自然发生的 `pull_request_target` 事件作为补充入口。
+4. Gate 先从 GitHub 读取开放、同仓库、bot 创建的准确 PR head，并通过 Checks API 在该 head SHA 上创建进行中的 `governance-state-write` Check；第二次读取 PR 时必须仍为同一 head，避免检查与验证对象发生竞态。
+5. Gate 重新读取授权评论，核对所有者、命令全文和来源 PR；它只执行 `main` 的验证器，不执行提案树代码，并重建 Draft 2020-12 Schema、角色允许列表、字段差异、完整审计链、固定记录路径、摘要、无秘密检查和 Candidate 身份的唯一预期结果。正式审计还必须按机器合同绑定结论与目标状态；候选审计逐字段匹配 current 中的 Candidate SHA、Tree SHA 和 PR。Gate 最后比较完整路径集与逐字节内容。
+6. Gate 无论成功或失败都完成同一 Check；只有成功结论且名称、head SHA、App id `15368`、App slug、完成状态全部匹配时才可继续。Writer 只能轮询，不能创建或完成该 Check。
+7. Writer 再次读取 PR head 与目标 tip，使用准确 head SHA 和 `merge` 方法合并，并验证返回 tip 是以旧 tip 和提案 head 为双亲的合并提交，以此完成 compare-and-swap（CAS）。
+8. 记录阶段完成后，从其准确合并 tip 创建 current 与版本快照提案；Gate 验证记录已经逐字节入库后才允许第二阶段。
+9. 任一步评论、身份、tip、Check、路径或字节验证失败立即停止；已合并记录不改变 current，后续恢复从仓库事实继续。
 
 普通用户、管理员和插件不得直接更新 governance-state。规则集绕过名单为空，并要求 PR、固定状态、目标分支最新、禁止删除和禁止强制推送。
 
 ## Cloudflare 隔离
 
-治理写入启用前必须关闭 governance-state 的 Workers Builds，或用分支/Build watch paths 排除治理运行时路径。即使远端分支构建被误开，`scripts/build-verified.sh` 也必须根据 Cloudflare 官方 `WORKERS_CI` 与 `WORKERS_CI_BRANCH` 在任何构建、`wrangler versions upload` 和 Worker Version 创建之前失败关闭。必须以一次真实治理分支提交证明 Cloudflare 检查停在该门禁，没有 Worker Version 或预览别名；仅仅“不切生产流量”不算关闭此项。
+治理写入启用前必须关闭非生产治理分支的 Workers Builds，或用分支/Build watch paths 排除治理运行时路径。即使远端构建被误开，`scripts/build-verified.sh` 也必须根据 Cloudflare 官方 `WORKERS_CI`、`WORKERS_CI_BRANCH` 和提交身份，对 `governance-state`、`governance/*`、`governance-write/*`，以及 `main` 上修改 trust-root workflow 且完整路径允许列表验证通过的双亲合并，在任何构建和 Worker Version 创建之前以状态 78 失败关闭。此判断不依赖 GitHub 的 merge title 设置；`Governance trust root:` 标记是额外信号。形状、父提交或路径无法证明，或混入产品路径时，必须失败关闭并报告 trust-root path mismatch。
+
+验收必须分别保存 trust-root 合并与两次真实治理写入前后的 Workers Builds、Worker Versions、deployments、active version、preview aliases、GitHub Cloudflare Check 和部署评论快照。通过条件是零新增 Worker Version、零预览、生产活动版本不变且治理工作流没有 Wrangler；“没有 Build 记录”和“有一条在构建前失败关闭的 Build 记录”必须分别陈述。
 
 治理工作流不得包含 Wrangler、Cloudflare 部署、标签创建或生产资源权限。
 

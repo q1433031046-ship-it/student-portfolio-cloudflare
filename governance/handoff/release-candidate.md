@@ -38,6 +38,8 @@ Candidate SHA：
 
 已知问题：
 
+风险披露：角色 3 必须逐项披露 Known Issue、Severity、Impact / Blast Radius、现有 Containment、Stop / Escalation Condition 和建议的 Planned Follow-up Version。角色 3 不得自行接受风险或把问题标为 Accepted；是否接受及正式风险分类只能由独立角色 2 决定。
+
 规划偏差：
 
 生产环境修改：没有

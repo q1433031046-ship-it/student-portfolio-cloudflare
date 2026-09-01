@@ -17,6 +17,8 @@
 - `PLAN_AUDIT_PENDING`：方案审计；读取 plan。
 - `RC_AUDIT_PENDING`：候选版本审计；读取 releaseCandidate、candidateSha，以及 records 中存在的 plan 和 planAudit。
 
+治理合同尚未进入 `main` 且 bootstrap 因可信写入根缺失而中断时，角色 2 先审计独立的 trust-root PR。该中间审计必须确认：Gate 来自 `main`；特权工作流中的第三方 Action 固定到完整 commit SHA；Writer 只用既有 `contents: write` 发出固定 `repository_dispatch` 请求，没有 `checks: write`；Gate 重新读取所有者评论、不执行提案代码，并通过 Checks API 把 `governance-state-write` 绑定到验证过的同一 head SHA；检查来源只接受 GitHub Actions App id `15368`；两阶段 CAS 与 Cloudflare 构建前关闭测试完整。中间审计通过只授权合入 trust root，不批准 PR #13、不中转角色 4，也不执行生产发布。
+
 仓库中已有交接记录时，不要求用户搬运已有交接文件或重新上传同一份材料。缺少记录时，指出上一角色尚未完成入库，并让对应角色补齐；不得让用户代为搬运长文。
 
 ## 允许转换
@@ -31,7 +33,21 @@
 
 方案审计至少核对目标/非目标、数据与资源安全、迁移、回滚、异常恢复、测试和验收。候选审计必须锁定完整 Candidate SHA，核对它来自正确分支、实现没有扩大冻结范围、测试证据真实、版本/Migration/Tag/生产状态符合计划。
 
-正式结论使用 `governance/handoff/audit-report.md`，并通过受保护的 `governance-state.yml` 写入入口提交。入口强制核对 previous tip/revision、完整记录链、字段差异和 Candidate 远端身份，先以状态门禁 PR 写审计记录，再从准确合并 tip 以第二个状态门禁 PR 更新 current 和版本快照。结论为通过时：
+正式结论使用 `governance/handoff/audit-report.md`，并通过受保护的 `governance-state.yml` 写入入口提交。入口强制核对所有者授权评论、previous tip/revision、完整记录链、字段差异和 Candidate 远端身份，先以独立 Check 门禁 PR 写审计记录，再从准确合并 tip 以第二个门禁 PR 更新 current 和版本快照。方案审计“通过/不通过”分别且只能对应 `IMPLEMENTATION_APPROVED` / `PLANNING_REQUIRED`；候选版本审计“通过/不通过”分别且只能对应 `RELEASE_APPROVED` / `IMPLEMENTATION_REQUIRED`。其他非终局意见不能进入正式审计状态。
+
+候选版本审计记录必须以独立字段准确写入并匹配 current 中的 Candidate SHA、Tree SHA 和 PR；审计命令所在开放 PR 的 head、tree、分支和基线也必须仍是该 Candidate。结论为通过时，批准 Candidate SHA 必须再次等于同一 SHA；结论不通过时不得填写获批 SHA。
+
+## 风险接受职责
+
+角色 2 可以接受已被可靠隔离的剩余风险，但不能以“零已知缺陷”为审计目标，也不能替不可豁免问题开例外。每项风险必须归类为 `Blocking Risk`、`Accepted / Contained Risk`、`Monitored Technical Debt` 或 `Low / Won't Fix Now`。只有 Medium / Low 可以进入前两种非阻断接受分类，`Low / Won't Fix Now` 只能是 Low；Critical、High 或 `Blocking Risk` 不得出现在“通过”结论中。
+
+每个风险项必须在 `风险项数量` 下用固定字段记录：`Known Issue`、`风险分类`、`Issue`、`Severity`、`Impact / Blast Radius`、`Containment`、`Stop / Escalation Condition`、`Planned Follow-up Version`、`Non-Waivable Boundary`。Containment 必须选择 `isolation`、`fail-closed`、`feature-disabled`、`manual-recovery`、`known-issue` 或 `follow-up-version`，并写明实际隔离措施；角色 2 必须验证影响范围、恢复路径与升级阈值，而不是只接受角色 3 的自述。
+
+不可豁免边界是 `governance-state-authorization`、`ruleset-required-check-integrity`、`candidate-identity-binding`、`cas-revision-stale-write-protection`、`failed-audit-forward-progress`、`trusted-writer-boundary`、`write-outcome-integrity`、`release-candidate-eligibility`、`production-data-security-irreversibility`。它们分别保护治理状态授权、Ruleset / required check 完整性、Candidate 唯一身份、CAS/revision、失败审计回退、trusted writer、写入结果真实性、发布资格和生产/数据/安全/不可逆治理结果。任何一项都不能以 Accepted、Contained、Technical Debt 或 Won't Fix 方式豁免。
+
+风险接受不改变正式审计状态机。最终结论仍然只有“通过”或“不通过”；已接受的低风险不生成第三种审计结论、不生成模糊终局，也不削弱结论、目标状态和准确 Candidate 的绑定。
+
+结论为通过时：
 
 只有交接记录、current 和版本快照均写入成功，才能向用户宣布审计阶段完成。
 

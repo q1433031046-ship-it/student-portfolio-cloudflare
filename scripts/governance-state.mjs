@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
-import { readFile, writeFile } from "node:fs/promises";
+import { lstat, readFile, readdir, writeFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import Ajv2020 from "ajv/dist/2020.js";
@@ -167,9 +167,18 @@ const CANONICAL_RUNTIME = Object.freeze({
   productionDeploymentTriggeredByStateBranch: false,
   writeWorkflow: ".github/workflows/governance-state.yml",
   writeCommand: "/governance-transition <expected-tip> <expected-revision> <role-number> <target-stage>",
-  bootstrapWriteCommand: "/governance-bootstrap <expected-tip> <expected-revision> <candidate-pr-number>",
+  bootstrapRecoveryCommand: "/governance-bootstrap-recover <expected-tip> 2 13 14 <candidate-sha> <tree-sha> <recovery-head-sha>",
   writeTransport: "protected-pull-request",
   requiredStatusContext: "governance-state-write",
+  requiredStatusAppId: 15368,
+  statusProducer: "default-branch-repository-dispatch-proposal-gate",
+  requiredCheckTransport: "checks-api-head-sha",
+  writerRequestsIndependentGate: true,
+  authorizationSource: "repository-owner-issue-comment",
+  authorizationRevalidatedByGate: true,
+  writerMayCreateStatus: false,
+  writerMayCreateCheckRun: false,
+  proposalVerifierExecutesHeadCode: false,
   pullRequestRequired: true,
   strictUpToDateRequired: true,
   directPushAllowed: false,
@@ -185,6 +194,90 @@ const BOOTSTRAP_POLICY = Object.freeze({
   baseSha: "d81785dd51bb0c9be339449566a15d3b3971e02a",
   planAuditMayBeNull: true,
   disableAfterContractOnMain: true,
+  failedAuditRecovery: {
+    legacyTip: "3e7867d3cdba75045f6dc8aa0448ccaac3547b68",
+    legacyRevision: 2,
+    legacyCandidateSha: "7caf24d4c52f1502d43cbf668329701986669a6e",
+    candidatePullRequest: 13,
+    candidateSha: "e24d78fd76cfbca9ebd957d16c406ffbc1c09e1b",
+    candidateTreeSha: "a54f47d5f5b5b54e18454d5faa7a4fc3a403228d",
+    recoveryPullRequest: 14,
+    recoveryBranch: "recovery/governance-rc-audit-r1",
+    recoveryHeadSha: "9451ef05fbe289aaade134bb60fb1a57e5eb15a6",
+    auditConclusion: "failed",
+    targetStage: "IMPLEMENTATION_REQUIRED",
+    resultSchemaVersion: 2,
+    resultRevision: 3,
+    singleUse: true,
+    retainCompletedReceipt: true,
+  },
+});
+
+const AUDIT_POLICY = Object.freeze({
+  acceptedConclusions: ["通过", "不通过"],
+  conclusionTargets: {
+    PLAN_AUDIT_PENDING: {
+      "通过": "IMPLEMENTATION_APPROVED",
+      "不通过": "PLANNING_REQUIRED",
+    },
+    RC_AUDIT_PENDING: {
+      "通过": "RELEASE_APPROVED",
+      "不通过": "IMPLEMENTATION_REQUIRED",
+    },
+  },
+  rcAuditIdentityFields: ["candidateSha", "candidateTreeSha", "candidatePullRequest"],
+  approvedCandidateShaRequiredOnPass: true,
+  riskAcceptancePolicy: {
+    classifications: [
+      "Blocking Risk",
+      "Accepted / Contained Risk",
+      "Monitored Technical Debt",
+      "Low / Won't Fix Now",
+    ],
+    passEligibleClassifications: [
+      "Accepted / Contained Risk",
+      "Monitored Technical Debt",
+      "Low / Won't Fix Now",
+    ],
+    severities: ["Critical", "High", "Medium", "Low"],
+    acceptedSeverities: ["Medium", "Low"],
+    lowWontFixSeverities: ["Low"],
+    containmentMechanisms: [
+      "isolation",
+      "fail-closed",
+      "feature-disabled",
+      "manual-recovery",
+      "known-issue",
+      "follow-up-version",
+    ],
+    requiredRiskFields: [
+      "knownIssueId",
+      "classification",
+      "issue",
+      "severity",
+      "impactBlastRadius",
+      "containment",
+      "stopEscalationCondition",
+      "plannedFollowUpVersion",
+      "nonWaivableBoundary",
+    ],
+    followUpVersionPatterns: [
+      "^v[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "^governance-[1-9][0-9]*$",
+    ],
+    noBoundaryValue: "none",
+    nonWaivableBoundaries: [
+      { id: "governance-state-authorization", description: "governance-state 可越权修改" },
+      { id: "ruleset-required-check-integrity", description: "Ruleset 或 required check 可绕过、伪造或由错误集成满足" },
+      { id: "candidate-identity-binding", description: "Candidate SHA、Tree、PR 或审计目标无法唯一绑定" },
+      { id: "cas-revision-stale-write-protection", description: "CAS 或 revision 无法阻止陈旧覆盖" },
+      { id: "failed-audit-forward-progress", description: "审计失败后仍可非法前进" },
+      { id: "trusted-writer-boundary", description: "trusted writer 或独立 Gate 的信任边界失效" },
+      { id: "write-outcome-integrity", description: "写入失败、未合并或未读回却报告成功" },
+      { id: "release-candidate-eligibility", description: "错误 Candidate 获得发布资格" },
+      { id: "production-data-security-irreversibility", description: "可能造成生产、数据、安全或不可逆治理错误" },
+    ],
+  },
 });
 
 const RECORD_REQUIREMENTS = Object.freeze({
@@ -331,8 +424,11 @@ function exact(actual, expected, label) {
 function assertNoForbiddenRuntimeKeys(value, path = "$") {
   if (!value || typeof value !== "object") return;
   for (const [key, child] of Object.entries(value)) {
-    invariant(!FORBIDDEN_RUNTIME_KEY.test(key), "治理状态含禁止字段：" + path + "." + key);
-    assertNoForbiddenRuntimeKeys(child, path + "." + key);
+    const childPath = path + "." + key;
+    const isFixedRecoveryIdentity = childPath === "$.bootstrap.recoveryPullRequest"
+      || childPath === "$.bootstrap.recoveryHeadSha";
+    invariant(isFixedRecoveryIdentity || !FORBIDDEN_RUNTIME_KEY.test(key), "治理状态含禁止字段：" + childPath);
+    assertNoForbiddenRuntimeKeys(child, childPath);
   }
 }
 
@@ -360,7 +456,7 @@ export function validateStateSchema(input) {
 export function validateGovernanceContract(input) {
   const contract = clone(input);
   exact(Object.keys(contract).toSorted(), [
-    "bootstrapPolicy", "productionBranch", "project", "repository", "requiredWorkflowStages",
+    "auditPolicy", "bootstrapPolicy", "productionBranch", "project", "repository", "requiredWorkflowStages",
     "roles", "runtime", "schemaVersion",
   ].toSorted(), "role-contract 顶层字段");
   invariant(contract.schemaVersion === 2, "role-contract schemaVersion 必须为 2");
@@ -369,6 +465,7 @@ export function validateGovernanceContract(input) {
   invariant(contract.productionBranch === "main", "生产分支必须保持 main");
   exact(contract.runtime, CANONICAL_RUNTIME, "动态写入合同");
   exact(contract.bootstrapPolicy, BOOTSTRAP_POLICY, "bootstrap 策略");
+  exact(contract.auditPolicy, AUDIT_POLICY, "审计结论与 Candidate 绑定策略");
   exact(contract.requiredWorkflowStages, GOVERNANCE_STAGES, "治理阶段");
   exact(contract.roles, CANONICAL_ROLES, "四角色权限、读取阶段与转换");
   return contract;
@@ -386,12 +483,37 @@ function isBootstrap(state, contract) {
   if (state.bootstrap === null) return false;
   const policy = contract?.bootstrapPolicy ?? BOOTSTRAP_POLICY;
   invariant(state.activeVersion === policy.activeVersion, "bootstrap 只能用于固定治理版本");
-  invariant(state.stage === "RC_AUDIT_PENDING" || state.stage === "RELEASE_APPROVED", "bootstrap 只能处于治理候选审计阶段");
-  invariant(state.bootstrap.candidateSha === state.candidateSha, "bootstrap candidateSha 必须与状态一致");
-  invariant(state.bootstrap.candidateBranch === policy.candidateBranch, "bootstrap 候选分支不匹配");
-  invariant(state.bootstrap.baseSha === policy.baseSha, "bootstrap 基线不匹配");
-  invariant(state.candidateContext?.branch === policy.candidateBranch, "bootstrap Candidate 上下文分支不匹配");
-  invariant(state.candidateContext?.baseSha === policy.baseSha, "bootstrap Candidate 上下文基线不匹配");
+  const recovery = policy.failedAuditRecovery;
+  invariant(recovery?.singleUse === true && recovery.retainCompletedReceipt === true, "失败审计恢复策略未冻结为一次性回执");
+  exact(state.bootstrap, {
+    mode: "legacy-failed-audit-recovery",
+    completed: true,
+    sourceSchemaVersion: 1,
+    sourceRevision: recovery.legacyRevision,
+    sourceTip: recovery.legacyTip,
+    legacyCandidateSha: recovery.legacyCandidateSha,
+    candidateSha: recovery.candidateSha,
+    candidateBranch: policy.candidateBranch,
+    candidateTreeSha: recovery.candidateTreeSha,
+    candidatePullRequest: recovery.candidatePullRequest,
+    recoveryPullRequest: recovery.recoveryPullRequest,
+    recoveryHeadSha: recovery.recoveryHeadSha,
+    baseSha: policy.baseSha,
+    targetStage: recovery.targetStage,
+    auditConclusion: recovery.auditConclusion,
+  }, "失败审计恢复回执");
+  invariant([
+    "IMPLEMENTATION_REQUIRED", "IMPLEMENTING", "RC_AUDIT_PENDING", "RELEASE_APPROVED",
+    "PRODUCTION_PREFLIGHT", "RELEASING", "PRODUCTION_VERIFIED", "BLOCKED", "ROLLED_BACK",
+  ].includes(state.stage), "失败审计恢复回执只能保留在恢复后的治理阶段");
+  if (state.stage === recovery.targetStage && state.candidateSha === recovery.candidateSha) {
+    exact(state.candidateContext, {
+      branch: policy.candidateBranch,
+      pullRequest: recovery.candidatePullRequest,
+      baseSha: policy.baseSha,
+      treeSha: recovery.candidateTreeSha,
+    }, "失败审计恢复 Candidate 上下文");
+  }
   return true;
 }
 
@@ -518,7 +640,8 @@ export async function verifyRecordFiles(stateInput, root) {
   for (const key of RECORD_KEYS) {
     if (state.records[key] === null) continue;
     const absolute = resolve(root, state.records[key]);
-    invariant(absolute.startsWith(resolve(root) + "/"), "记录路径越出验证根目录");
+    const relativePath = relative(resolve(root), absolute);
+    invariant(relativePath && !relativePath.startsWith("..") && !isAbsolute(relativePath), "记录路径越出验证根目录");
     let content;
     try {
       content = await readFile(absolute, "utf8");
@@ -583,14 +706,230 @@ function transitionRecordKey(previousStage, nextStage) {
   return null;
 }
 
-function requirePrRecord(body, key, candidateSha) {
+function canonicalRecordBody(body) {
   invariant(typeof body === "string" && body.trim().length >= 40, "该转换需要非空 PR 交接记录");
   scanGovernanceText(body, "PR 交接记录");
-  if (key === "releaseCandidate") {
-    invariant(body.includes(candidateSha), "Candidate 交接记录必须包含准确 PR head SHA");
-  }
-  if (key === "planAudit" || key === "rcAudit") invariant(/审计编号/u.test(body), "审计记录必须包含审计编号");
   return body.endsWith("\n") ? body : body + "\n";
+}
+
+function markdownAtom(value) {
+  return value.trim().replace(/^[`*_]+/u, "").replace(/[`*_。.]+$/u, "");
+}
+
+function auditFieldValues(body, labels) {
+  const values = [];
+  for (const line of body.split(/\r?\n/u)) {
+    const plain = line.trim().replace(/^[-+*]\s+/u, "").replaceAll("**", "");
+    for (const label of labels) {
+      if (plain.startsWith(label + "：") || plain.startsWith(label + ":")) {
+        values.push(plain.slice(label.length + 1).trim());
+      }
+    }
+  }
+  return values;
+}
+
+function requireAuditField(body, labels, description) {
+  const values = auditFieldValues(body, labels);
+  invariant(values.length === 1 && values[0].length > 0, "审计记录必须准确包含一个" + description);
+  return values[0];
+}
+
+function auditConclusion(body) {
+  const inline = auditFieldValues(body, ["最终结论"]);
+  const heading = [];
+  const lines = body.split(/\r?\n/u);
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!/^\s*#{1,6}\s*最终结论\s*$/u.test(lines[index])) continue;
+    const next = lines.slice(index + 1).find((line) => line.trim().length > 0);
+    if (next) heading.push(next.trim());
+  }
+  invariant(inline.length + heading.length === 1, "审计记录必须准确包含一个最终结论");
+  if (inline.length === 1) {
+    const conclusion = markdownAtom(inline[0]);
+    invariant(["通过", "不通过", "有条件通过"].includes(conclusion), "审计记录最终结论格式无效");
+    return conclusion;
+  }
+  const narrative = heading[0].replace(/^[`*_]+/u, "");
+  const match = /^(有条件通过|不通过|通过)(?=$|[。.;；，,\s`*_])/u.exec(narrative);
+  invariant(match, "审计记录最终结论格式无效");
+  return match[1];
+}
+
+const RISK_FIELD_LABELS = Object.freeze({
+  knownIssueId: "Known Issue",
+  classification: "风险分类",
+  issue: "Issue",
+  severity: "Severity",
+  impactBlastRadius: "Impact / Blast Radius",
+  containment: "Containment",
+  stopEscalationCondition: "Stop / Escalation Condition",
+  plannedFollowUpVersion: "Planned Follow-up Version",
+  nonWaivableBoundary: "Non-Waivable Boundary",
+});
+
+function meaningfulRiskValue(value, description) {
+  invariant(
+    value.length > 0 && !/^(?:TBD|TODO|unknown|待定|未知|无|N\/A|不适用|<[^>]+>)$/iu.test(value),
+    description + "不得为空或使用占位值",
+  );
+  return value;
+}
+
+function auditRiskBlocks(body) {
+  const lines = body.split(/\r?\n/u);
+  const headings = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    if (/^\s*##\s+风险处置\s*$/u.test(lines[index])) headings.push(index);
+  }
+  invariant(headings.length === 1, "审计记录必须准确包含一个风险处置区块");
+
+  const start = headings[0] + 1;
+  let end = lines.length;
+  for (let index = start; index < lines.length; index += 1) {
+    const plain = lines[index].trim().replace(/^[-+*]\s+/u, "").replaceAll("**", "");
+    if (/^\s*#{1,2}\s+\S/u.test(lines[index]) || /^最终结论[：:]/u.test(plain)) {
+      end = index;
+      break;
+    }
+  }
+  const sectionLines = lines.slice(start, end);
+  const section = sectionLines.join("\n");
+  const countText = markdownAtom(requireAuditField(section, ["风险项数量"], "风险项数量"));
+  invariant(/^(?:0|[1-9][0-9]*)$/u.test(countText), "风险项数量必须是非负整数");
+  const count = Number.parseInt(countText, 10);
+
+  const starts = [];
+  for (let index = 0; index < sectionLines.length; index += 1) {
+    const match = /^\s*###\s+Known Issue[：:]\s*(\S.*?)\s*$/u.exec(sectionLines[index]);
+    if (match) starts.push({ index, knownIssueId: markdownAtom(match[1]) });
+  }
+  const preamble = sectionLines.slice(0, starts[0]?.index ?? sectionLines.length).filter((line) => line.trim().length > 0);
+  invariant(
+    preamble.length === 1 && /^(?:[-+*]\s+)?(?:\*\*)?风险项数量(?:\*\*)?[：:]/u.test(preamble[0].trim()),
+    "风险处置区块不得包含未声明字段或多行值",
+  );
+  const blocks = starts.map((item, index) => ({
+    knownIssueId: item.knownIssueId,
+    body: sectionLines.slice(item.index + 1, starts[index + 1]?.index ?? sectionLines.length).join("\n"),
+  }));
+  invariant(blocks.length === count, "风险项数量必须与 Known Issue 区块数量准确一致");
+  return blocks;
+}
+
+function requireRiskDisposition(body, policy, conclusion) {
+  invariant(policy && typeof policy === "object", "审计合同缺少风险接受策略");
+  exact(policy.requiredRiskFields, Object.keys(RISK_FIELD_LABELS), "风险记录必填字段");
+  const blocks = auditRiskBlocks(body);
+  const seenIssueIds = new Set();
+  const knownBoundaries = new Set(policy.nonWaivableBoundaries.map((boundary) => boundary.id));
+
+  for (const block of blocks) {
+    const values = { knownIssueId: meaningfulRiskValue(block.knownIssueId, "Known Issue ID") };
+    invariant(/^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$/u.test(values.knownIssueId), "Known Issue ID 格式无效");
+    invariant(!seenIssueIds.has(values.knownIssueId), "Known Issue ID 不得重复");
+    seenIssueIds.add(values.knownIssueId);
+
+    const fieldLines = block.body.split(/\r?\n/u).filter((line) => line.trim().length > 0);
+    invariant(
+      fieldLines.length === Object.keys(RISK_FIELD_LABELS).length - 1,
+      "风险项不得包含缺失字段、未知字段或多行值",
+    );
+
+    for (const [field, label] of Object.entries(RISK_FIELD_LABELS)) {
+      if (field === "knownIssueId") continue;
+      values[field] = meaningfulRiskValue(markdownAtom(requireAuditField(block.body, [label], label)), label);
+    }
+
+    invariant(policy.classifications.includes(values.classification), "风险分类不在治理合同允许范围内");
+    invariant(policy.severities.includes(values.severity), "风险 Severity 不在治理合同允许范围内");
+
+    const containment = /^([a-z-]+)\s*\|\s*(.+)$/u.exec(values.containment);
+    invariant(containment, "Containment 必须使用“机制 | 具体隔离说明”格式");
+    invariant(policy.containmentMechanisms.includes(containment[1]), "Containment 机制不在治理合同允许范围内");
+    meaningfulRiskValue(containment[2].trim(), "Containment 具体隔离说明");
+
+    invariant(
+      policy.followUpVersionPatterns.some((pattern) => new RegExp(pattern, "u").test(values.plannedFollowUpVersion)),
+      "Planned Follow-up Version 格式无效",
+    );
+
+    const passEligible = policy.passEligibleClassifications.includes(values.classification);
+    if (passEligible) {
+      invariant(policy.acceptedSeverities.includes(values.severity), "Accepted 风险仅允许 Medium 或 Low Severity");
+    }
+    if (values.classification === "Low / Won't Fix Now") {
+      invariant(policy.lowWontFixSeverities.includes(values.severity), "Low / Won't Fix Now 仅允许 Low Severity");
+    }
+
+    if (values.nonWaivableBoundary !== policy.noBoundaryValue) {
+      invariant(knownBoundaries.has(values.nonWaivableBoundary), "Non-Waivable Boundary 不是合同锁定边界");
+      invariant(!passEligible, "不可豁免治理边界不得标记为 Accepted、Contained、Technical Debt 或 Won't Fix");
+    }
+
+    if (conclusion === "通过") {
+      invariant(passEligible, "通过结论不得包含 Blocking Risk");
+      invariant(values.nonWaivableBoundary === policy.noBoundaryValue, "通过结论不得包含不可豁免治理边界");
+    }
+  }
+  return blocks;
+}
+
+function exactAuditSha(body, label, expected) {
+  const actual = markdownAtom(requireAuditField(body, [label], label));
+  invariant(SHA40.test(actual) && actual === expected, label + "必须与当前 Candidate 准确匹配");
+}
+
+function requireAuditRecord(body, { auditPolicy, fromStage, kind, targetStage, candidateIdentity = null }) {
+  const record = canonicalRecordBody(body);
+  const auditId = markdownAtom(requireAuditField(record, ["审计编号"], "审计编号"));
+  invariant(auditId.length > 0 && !/\s/u.test(auditId), "审计编号格式无效");
+  const auditType = markdownAtom(requireAuditField(record, ["审计类型"], "审计类型"));
+  invariant(auditType === (kind === "rcAudit" ? "候选版本审计" : "方案审计"), "审计类型与当前审计阶段不匹配");
+  const conclusion = auditConclusion(record);
+  invariant(auditPolicy.acceptedConclusions.includes(conclusion), "该审计结论不能进入正式治理状态");
+  const target = markdownAtom(requireAuditField(record, ["目标状态"], "目标状态"));
+  invariant(target === targetStage, "审计记录目标状态与请求目标状态不匹配");
+  const expectedTarget = auditPolicy.conclusionTargets[fromStage]?.[conclusion];
+  invariant(expectedTarget !== undefined && targetStage === expectedTarget, "审计结论与目标状态不匹配");
+  requireRiskDisposition(record, auditPolicy.riskAcceptancePolicy, conclusion);
+
+  if (kind === "rcAudit") {
+    exact(auditPolicy.rcAuditIdentityFields, ["candidateSha", "candidateTreeSha", "candidatePullRequest"], "RC 审计 Candidate 绑定字段");
+    invariant(auditPolicy.approvedCandidateShaRequiredOnPass === true, "RC 审计通过必须重复绑定批准 Candidate SHA");
+    invariant(candidateIdentity && SHA40.test(candidateIdentity.sha) && SHA40.test(candidateIdentity.treeSha), "当前 RC 审计缺少 Candidate 身份");
+    invariant(Number.isInteger(candidateIdentity.pullRequest) && candidateIdentity.pullRequest > 0, "当前 RC 审计缺少 Candidate PR 身份");
+    exactAuditSha(record, "审计对象 Candidate SHA", candidateIdentity.sha);
+    exactAuditSha(record, "审计对象 Tree SHA", candidateIdentity.treeSha);
+    const pullRequest = markdownAtom(requireAuditField(record, ["审计对象 PR"], "审计对象 PR"));
+    invariant(pullRequest === "#" + candidateIdentity.pullRequest, "审计对象 PR 必须与当前 Candidate 准确匹配");
+    const approved = markdownAtom(requireAuditField(record, ["批准 Candidate SHA", "批准 Candidate SHA（候选审计适用）"], "批准 Candidate SHA"));
+    if (conclusion === "通过") {
+      invariant(approved === candidateIdentity.sha, "通过结论必须批准当前准确 Candidate SHA");
+    } else {
+      invariant(/^不适用(?:（[^）]*）)?$/u.test(approved), "不通过结论不得批准 Candidate SHA");
+    }
+  }
+  return record;
+}
+
+function requireCurrentCandidateSource(previous, pullRequest, treeSha) {
+  const identity = previous.candidateContext;
+  invariant(previous.candidateSha && identity, "RC 审计缺少当前 Candidate 身份");
+  invariant(pullRequest.number === identity.pullRequest, "RC 审计来源 PR 不是当前 Candidate PR");
+  invariant(pullRequest.head?.sha === previous.candidateSha, "RC 审计来源 PR head 不是当前 Candidate SHA");
+  invariant(pullRequest.head?.ref === identity.branch, "RC 审计来源分支不是当前 Candidate 分支");
+  invariant(pullRequest.base?.sha === identity.baseSha, "RC 审计来源 PR 基线不是当前 Candidate 基线");
+  invariant(treeSha === identity.treeSha, "RC 审计来源 Tree 不是当前 Candidate Tree");
+  return { sha: previous.candidateSha, treeSha: identity.treeSha, pullRequest: identity.pullRequest };
+}
+
+function requirePrRecord(body, key, candidateSha) {
+  const record = canonicalRecordBody(body);
+  if (key === "releaseCandidate") {
+    invariant(record.includes(candidateSha), "Candidate 交接记录必须包含准确 PR head SHA");
+  }
+  return record;
 }
 
 export function buildGovernanceTransition(previousInput, request, contractInput) {
@@ -612,7 +951,20 @@ export function buildGovernanceTransition(previousInput, request, contractInput)
   const key = transitionRecordKey(previous.stage, targetStage);
   let record = null;
   if (key) {
-    record = requirePrRecord(pr.body, key, pr.head.sha);
+    if (key === "planAudit") {
+      record = requireAuditRecord(pr.body, { auditPolicy: contract.auditPolicy, fromStage: previous.stage, kind: key, targetStage });
+    } else if (key === "rcAudit") {
+      const candidateIdentity = requireCurrentCandidateSource(previous, pr, request.treeSha);
+      record = requireAuditRecord(pr.body, {
+        auditPolicy: contract.auditPolicy,
+        fromStage: previous.stage,
+        kind: key,
+        targetStage,
+        candidateIdentity,
+      });
+    } else {
+      record = requirePrRecord(pr.body, key, pr.head.sha);
+    }
     next.records[key] = pointerFor(next.activeVersion, key);
     next.recordDigests[key] = digest(record);
   }
@@ -627,11 +979,6 @@ export function buildGovernanceTransition(previousInput, request, contractInput)
     };
     next.records.rcAudit = null;
     next.recordDigests.rcAudit = null;
-    if (next.bootstrap) {
-      next.bootstrap.candidateSha = pr.head.sha;
-      next.bootstrap.candidateBranch = pr.head.ref;
-      next.bootstrap.baseSha = pr.base.sha;
-    }
   }
   if (targetStage === "BLOCKED") {
     next.block = { sourceStage: previous.stage, ownerRoleNumber: roleNumber };
@@ -655,47 +1002,72 @@ export function buildGovernanceTransition(previousInput, request, contractInput)
   return { state: next, recordKey: key, record };
 }
 
-export function migrateLegacyBootstrap(previousInput, request, contractInput) {
+export function migrateFailedBootstrapAudit(previousInput, request, contractInput) {
   const contract = validateGovernanceContract(contractInput);
+  const policy = contract.bootstrapPolicy;
+  const recovery = policy.failedAuditRecovery;
   const previous = clone(previousInput);
-  invariant(previous.schemaVersion === 1, "bootstrap 迁移只接受旧 Schema 1");
-  invariant(previous.project === PROJECT && previous.repository === REPOSITORY, "旧 bootstrap 项目身份不匹配");
-  invariant(previous.activeVersion === "governance-1" && previous.stage === "RC_AUDIT_PENDING", "旧 bootstrap 阶段不匹配");
-  invariant(previous.revision === 2, "旧 bootstrap revision 必须精确为 2");
-  invariant(previous.candidateSha === "7caf24d4c52f1502d43cbf668329701986669a6e", "旧 bootstrap Candidate 不匹配");
-  invariant(previous.bootstrap?.isBootstrapCandidate === true, "旧状态不是受审计的一次性 bootstrap");
+
+  invariant(recovery.singleUse === true && recovery.retainCompletedReceipt === true, "失败审计恢复必须是保留回执的一次性迁移");
+  invariant(previous.schemaVersion === 1, "失败审计恢复只接受旧 Schema 1");
+  invariant(previous.project === PROJECT && previous.repository === REPOSITORY, "旧失败审计状态项目身份不匹配");
+  invariant(previous.activeVersion === policy.activeVersion && previous.stage === "RC_AUDIT_PENDING", "旧失败审计状态阶段不匹配");
+  invariant(previous.taskLevel === "L2", "旧失败审计状态任务等级不匹配");
+  invariant(previous.revision === recovery.legacyRevision, "旧失败审计状态 revision 不匹配");
+  invariant(previous.lastUpdatedBy?.roleNumber === 3 && previous.lastUpdatedBy?.roleName === ROLE_NAMES[3], "旧失败审计状态最后写入角色不匹配");
+  invariant(previous.candidateSha === recovery.legacyCandidateSha, "旧失败审计状态 Candidate 不匹配");
+  invariant(previous.bootstrap?.isBootstrapCandidate === true, "旧状态不是受审计的 bootstrap Candidate");
+  invariant(previous.records?.plan === pointerFor(policy.activeVersion, "plan"), "旧失败审计状态规划记录指针不匹配");
+  invariant(previous.records?.planAudit === null && previous.records?.rcAudit === null, "旧失败审计状态不得伪造审计指针");
+  invariant(previous.records?.releaseCandidate === "governance/runtime/records/governance-1/04-release-candidate-r2.md", "旧失败审计状态 Candidate 记录指针不匹配");
+  invariant(previous.releaseTag === null, "旧失败审计状态不得含正式 Release Tag");
+  invariant(request.legacyTip === recovery.legacyTip, "旧失败审计状态 tip 不匹配");
 
   const candidatePr = request.candidatePullRequest;
-  const auditPr = request.auditPullRequest;
-  invariant(candidatePr?.number === 13 && candidatePr.state === "open" && candidatePr.draft === false, "bootstrap Candidate 必须来自开放的 PR #13");
-  invariant(candidatePr.head?.repo?.full_name === REPOSITORY && candidatePr.base?.repo?.full_name === REPOSITORY, "bootstrap Candidate 禁止来自 fork");
-  invariant(candidatePr.head?.ref === BOOTSTRAP_POLICY.candidateBranch && candidatePr.base?.ref === "main", "bootstrap Candidate 分支或基线分支不匹配");
-  invariant(candidatePr.base?.sha === BOOTSTRAP_POLICY.baseSha, "bootstrap Candidate 基线 SHA 不匹配");
-  invariant(SHA40.test(candidatePr.head?.sha) && SHA40.test(request.candidateTreeSha), "bootstrap Candidate 缺少 commit/tree 身份");
-  invariant(auditPr?.state === "open" && auditPr.draft === false, "bootstrap 审计记录必须来自开放且非 draft 的 PR");
-  invariant(auditPr.head?.repo?.full_name === REPOSITORY && auditPr.base?.repo?.full_name === REPOSITORY && auditPr.base?.ref === "main", "bootstrap 审计 PR 身份不匹配");
+  invariant(candidatePr?.number === recovery.candidatePullRequest && candidatePr.state === "open" && candidatePr.draft === false, "失败审计 Candidate 必须来自开放且非 draft 的固定 PR #13");
+  invariant(candidatePr.head?.repo?.full_name === REPOSITORY && candidatePr.base?.repo?.full_name === REPOSITORY, "失败审计 Candidate 禁止来自 fork");
+  invariant(candidatePr.head?.sha === recovery.candidateSha, "失败审计 Candidate SHA 不匹配");
+  invariant(candidatePr.head?.ref === policy.candidateBranch, "失败审计 Candidate 分支不匹配");
+  invariant(candidatePr.base?.ref === "main" && candidatePr.base?.sha === policy.baseSha, "失败审计 Candidate 基线不匹配");
+  invariant(request.candidateTreeSha === recovery.candidateTreeSha, "失败审计 Candidate Tree SHA 不匹配");
 
-  const plan = request.planRecord;
-  const candidate = requirePrRecord(candidatePr.body, "releaseCandidate", candidatePr.head.sha);
-  const audit = requirePrRecord(auditPr.body, "rcAudit", candidatePr.head.sha);
-  scanGovernanceText(plan, "bootstrap 规划记录");
-  invariant(/最终结论\s*[:：]\s*(?:通过|有条件通过)/u.test(audit), "bootstrap 审计记录没有通过结论");
-  invariant(!/最终结论\s*[:：]\s*不通过/u.test(audit), "bootstrap 审计结论不通过");
+  const recoveryPr = request.recoveryPullRequest;
+  invariant(recoveryPr?.number === recovery.recoveryPullRequest && recoveryPr.state === "open" && recoveryPr.draft === false, "失败审计恢复证据必须来自开放且非 draft 的固定 PR #14");
+  invariant(recoveryPr.head?.repo?.full_name === REPOSITORY && recoveryPr.base?.repo?.full_name === REPOSITORY, "失败审计恢复 PR 禁止来自 fork");
+  invariant(recoveryPr.head?.sha === recovery.recoveryHeadSha && recoveryPr.head?.ref === recovery.recoveryBranch, "失败审计恢复 PR head 身份不匹配");
+  invariant(recoveryPr.base?.ref === contract.runtime.stateBranch && recoveryPr.base?.sha === recovery.legacyTip, "失败审计恢复 PR 基线不是固定 governance-state tip");
+
+  invariant(typeof request.planRecord === "string" && request.planRecord.trim().length > 0, "失败审计恢复缺少规划记录");
+  const plan = request.planRecord.endsWith("\n") ? request.planRecord : request.planRecord + "\n";
+  scanGovernanceText(plan, "失败审计恢复规划记录");
+  const candidate = requirePrRecord(request.releaseCandidateRecord, "releaseCandidate", recovery.candidateSha);
+  invariant(candidate.includes(recovery.candidateTreeSha), "失败审计 Candidate 记录必须包含准确 Tree SHA");
+  const audit = requireAuditRecord(request.rcAuditRecord, {
+    auditPolicy: contract.auditPolicy,
+    fromStage: "RC_AUDIT_PENDING",
+    kind: "rcAudit",
+    targetStage: recovery.targetStage,
+    candidateIdentity: {
+      sha: recovery.candidateSha,
+      treeSha: recovery.candidateTreeSha,
+      pullRequest: recovery.candidatePullRequest,
+    },
+  });
 
   const state = {
-    schemaVersion: 2,
+    schemaVersion: recovery.resultSchemaVersion,
     project: PROJECT,
     repository: REPOSITORY,
-    activeVersion: "governance-1",
-    stage: "RELEASE_APPROVED",
+    activeVersion: policy.activeVersion,
+    stage: recovery.targetStage,
     taskLevel: "L2",
-    revision: 3,
+    revision: recovery.resultRevision,
     lastUpdatedBy: { roleNumber: 2, roleName: ROLE_NAMES[2] },
     records: {
-      plan: pointerFor("governance-1", "plan"),
+      plan: pointerFor(policy.activeVersion, "plan"),
       planAudit: null,
-      releaseCandidate: pointerFor("governance-1", "releaseCandidate"),
-      rcAudit: pointerFor("governance-1", "rcAudit"),
+      releaseCandidate: pointerFor(policy.activeVersion, "releaseCandidate"),
+      rcAudit: pointerFor(policy.activeVersion, "rcAudit"),
       releaseReceipt: null,
       blocked: null,
     },
@@ -707,24 +1079,254 @@ export function migrateLegacyBootstrap(previousInput, request, contractInput) {
       releaseReceipt: null,
       blocked: null,
     },
-    candidateSha: candidatePr.head.sha,
+    candidateSha: recovery.candidateSha,
     candidateContext: {
-      branch: candidatePr.head.ref,
-      pullRequest: candidatePr.number,
-      baseSha: candidatePr.base.sha,
-      treeSha: request.candidateTreeSha,
+      branch: policy.candidateBranch,
+      pullRequest: recovery.candidatePullRequest,
+      baseSha: policy.baseSha,
+      treeSha: recovery.candidateTreeSha,
     },
     releaseTag: null,
     block: null,
     bootstrap: {
-      isBootstrapCandidate: true,
-      candidateSha: candidatePr.head.sha,
-      candidateBranch: candidatePr.head.ref,
-      baseSha: candidatePr.base.sha,
+      mode: "legacy-failed-audit-recovery",
+      completed: true,
+      sourceSchemaVersion: 1,
+      sourceRevision: recovery.legacyRevision,
+      sourceTip: recovery.legacyTip,
+      legacyCandidateSha: recovery.legacyCandidateSha,
+      candidateSha: recovery.candidateSha,
+      candidateBranch: policy.candidateBranch,
+      candidateTreeSha: recovery.candidateTreeSha,
+      candidatePullRequest: recovery.candidatePullRequest,
+      recoveryPullRequest: recovery.recoveryPullRequest,
+      recoveryHeadSha: recovery.recoveryHeadSha,
+      baseSha: policy.baseSha,
+      targetStage: recovery.targetStage,
+      auditConclusion: recovery.auditConclusion,
     },
   };
   validateGovernanceState(state, { contract });
   return { state, records: { releaseCandidate: candidate, rcAudit: audit } };
+}
+
+const PROPOSAL_PHASES = Object.freeze([
+  "bootstrap-recovery-records",
+  "bootstrap-recovery-pointer",
+  "transition-record",
+  "transition-pointer",
+]);
+
+export function buildProposalEnvelope(input) {
+  const envelope = clone(input);
+  const requiredFields = ["contentDigests", "expectedRevision", "expectedTip", "paths", "phase", "source"];
+  const actualFields = Object.keys(envelope).toSorted();
+  const rawFields = requiredFields.toSorted();
+  const canonicalFields = [...requiredFields, "schemaVersion"].toSorted();
+  invariant(
+    JSON.stringify(actualFields) === JSON.stringify(rawFields)
+      || JSON.stringify(actualFields) === JSON.stringify(canonicalFields),
+    "治理提案授权信封字段必须与冻结允许列表完全一致",
+  );
+  invariant(envelope.schemaVersion === undefined || envelope.schemaVersion === 1, "治理提案授权信封 schemaVersion 必须为 1");
+  invariant(PROPOSAL_PHASES.includes(envelope.phase), "未知治理提案阶段");
+  invariant(SHA40.test(envelope.expectedTip), "治理提案 expectedTip 必须是完整 SHA");
+  invariant(Number.isInteger(envelope.expectedRevision) && envelope.expectedRevision >= 0, "治理提案 expectedRevision 必须是非负整数");
+  invariant(envelope.source && typeof envelope.source === "object" && !Array.isArray(envelope.source), "治理提案缺少不可变来源身份");
+  invariant(Array.isArray(envelope.paths) && envelope.paths.length > 0, "治理提案必须声明至少一个路径");
+  const paths = [...new Set(envelope.paths)].toSorted();
+  invariant(paths.length === envelope.paths.length, "治理提案路径不得重复");
+  for (const path of paths) {
+    invariant(typeof path === "string" && /^governance\/runtime\/[A-Za-z0-9._/-]+$/u.test(path), "治理提案只能修改 governance/runtime 下的固定路径");
+    invariant(!path.includes("..") && !path.endsWith("/"), "治理提案路径必须规范化");
+  }
+  invariant(envelope.contentDigests && typeof envelope.contentDigests === "object" && !Array.isArray(envelope.contentDigests), "治理提案缺少内容摘要");
+  exact(Object.keys(envelope.contentDigests).toSorted(), paths, "治理提案摘要路径");
+  const contentDigests = Object.fromEntries(paths.map((path) => {
+    const value = envelope.contentDigests[path];
+    invariant(SHA256.test(value), "治理提案内容摘要格式无效");
+    return [path, value];
+  }));
+  return {
+    schemaVersion: 1,
+    phase: envelope.phase,
+    expectedTip: envelope.expectedTip,
+    expectedRevision: envelope.expectedRevision,
+    source: normalized(envelope.source),
+    paths,
+    contentDigests,
+  };
+}
+
+async function readProposalTree(root) {
+  const files = new Map();
+  async function walk(relativeDirectory) {
+    const directory = relativeDirectory ? join(root, ...relativeDirectory.split("/")) : root;
+    const entries = await readdir(directory, { withFileTypes: true });
+    for (const entry of entries) {
+      const relativePath = relativeDirectory ? relativeDirectory + "/" + entry.name : entry.name;
+      const absolutePath = join(root, ...relativePath.split("/"));
+      const stat = await lstat(absolutePath);
+      invariant(!stat.isSymbolicLink(), "治理提案不得包含符号链接：" + relativePath);
+      if (stat.isDirectory()) {
+        await walk(relativePath);
+      } else {
+        invariant(stat.isFile(), "治理提案只允许普通文件：" + relativePath);
+        files.set(relativePath, await readFile(absolutePath));
+      }
+    }
+  }
+  await walk("");
+  return files;
+}
+
+function changedProposalPaths(baseFiles, proposalFiles) {
+  const allPaths = new Set([...baseFiles.keys(), ...proposalFiles.keys()]);
+  return [...allPaths].filter((path) => {
+    const before = baseFiles.get(path);
+    const after = proposalFiles.get(path);
+    return !before || !after || !before.equals(after);
+  }).toSorted();
+}
+
+async function verifyExpectedProposalFiles(baseRoot, proposalRoot, envelope, expectedFiles) {
+  const expectedPaths = [...expectedFiles.keys()].toSorted();
+  exact(envelope.paths, expectedPaths, "治理提案阶段路径");
+  const expectedDigests = Object.fromEntries(expectedPaths.map((path) => [path, digest(expectedFiles.get(path))]));
+  exact(envelope.contentDigests, expectedDigests, "治理提案授权摘要");
+  const [baseFiles, proposalFiles] = await Promise.all([
+    readProposalTree(baseRoot),
+    readProposalTree(proposalRoot),
+  ]);
+  exact(changedProposalPaths(baseFiles, proposalFiles), expectedPaths, "治理提案完整变更路径");
+  for (const [path, expectedBytes] of expectedFiles) {
+    const actualBytes = proposalFiles.get(path);
+    invariant(actualBytes?.equals(expectedBytes), "治理提案文件字节不匹配：" + path);
+  }
+  return expectedPaths;
+}
+
+export async function verifyProtectedProposal({
+  baseRoot,
+  proposalRoot,
+  proposalBaseSha,
+  envelope: envelopeInput,
+  candidatePullRequest,
+  recoveryPullRequest,
+  contract: contractInput,
+}) {
+  const contract = validateGovernanceContract(contractInput);
+  const envelope = buildProposalEnvelope(envelopeInput);
+  exact(envelopeInput, envelope, "治理提案授权信封规范形式");
+  invariant(proposalBaseSha === envelope.expectedTip, "治理提案父提交与 expectedTip 不匹配");
+
+  const currentPath = contract.runtime.currentPath;
+  const currentFile = join(baseRoot, ...currentPath.split("/"));
+  const previous = JSON.parse(await readFile(currentFile, "utf8"));
+  invariant(previous.revision === envelope.expectedRevision, "治理提案基线 revision 不匹配");
+
+  if (envelope.source.kind === "governance-transition") {
+    const sourcePr = candidatePullRequest;
+    exact(envelope.source, {
+      kind: "governance-transition",
+      authorizationComment: envelope.source.authorizationComment,
+      stateTip: envelope.source.stateTip,
+      pullRequest: sourcePr?.number,
+      headSha: sourcePr?.head?.sha,
+      treeSha: sourcePr?.treeSha,
+      roleNumber: envelope.source.roleNumber,
+      targetStage: envelope.source.targetStage,
+    }, "治理转换来源身份");
+    invariant(Number.isInteger(envelope.source.authorizationComment) && envelope.source.authorizationComment > 0, "治理转换缺少所有者授权评论身份");
+    invariant(SHA40.test(envelope.source.stateTip), "治理转换来源状态 tip 无效");
+    invariant(envelope.source.stateTip === sourcePr?.stateTip, "治理转换来源状态 tip 与可信输入不匹配");
+    invariant(Number.isInteger(envelope.source.roleNumber), "治理转换角色编号无效");
+    invariant(GOVERNANCE_STAGES.includes(envelope.source.targetStage), "治理转换目标阶段无效");
+    const transition = buildGovernanceTransition(previous, {
+      roleNumber: envelope.source.roleNumber,
+      targetStage: envelope.source.targetStage,
+      pullRequest: sourcePr,
+      treeSha: envelope.source.treeSha,
+    }, contract);
+    const versionPath = contract.runtime.versionStatePattern.replace("<activeVersion>", transition.state.activeVersion);
+    let expectedFiles;
+    if (envelope.phase === "transition-record") {
+      invariant(transition.recordKey && transition.record, "该治理转换没有独立记录阶段");
+      invariant(envelope.expectedTip === envelope.source.stateTip, "转换记录必须直接基于来源状态 tip");
+      expectedFiles = new Map([[transition.state.records[transition.recordKey], Buffer.from(transition.record, "utf8")]]);
+    } else {
+      invariant(envelope.phase === "transition-pointer", "普通治理转换只接受 record 或 pointer 阶段");
+      if (transition.recordKey) {
+        invariant(envelope.expectedTip !== envelope.source.stateTip, "转换指针不得先于不可变记录入库");
+        const recordPath = transition.state.records[transition.recordKey];
+        const actualRecord = await readFile(join(baseRoot, ...recordPath.split("/")), "utf8").catch(() => null);
+        invariant(actualRecord === transition.record, "转换指针基线缺少已验证的不可变记录");
+      } else {
+        invariant(envelope.expectedTip === envelope.source.stateTip, "无记录转换不得改变指针提案基线");
+      }
+      const stateBytes = Buffer.from(JSON.stringify(transition.state, null, 2) + "\n", "utf8");
+      expectedFiles = new Map([[currentPath, stateBytes], [versionPath, stateBytes]]);
+    }
+    const paths = await verifyExpectedProposalFiles(baseRoot, proposalRoot, envelope, expectedFiles);
+    return { phase: envelope.phase, paths };
+  }
+
+  const policy = contract.bootstrapPolicy;
+  const recovery = policy.failedAuditRecovery;
+  invariant(envelope.expectedRevision === recovery.legacyRevision, "失败审计恢复 revision 不匹配");
+  exact(envelope.source, {
+    kind: "bootstrap-failed-audit-recovery",
+    authorizationComment: envelope.source.authorizationComment,
+    legacyTip: recovery.legacyTip,
+    candidatePullRequest: recovery.candidatePullRequest,
+    candidateSha: recovery.candidateSha,
+    candidateTreeSha: recovery.candidateTreeSha,
+    recoveryPullRequest: recovery.recoveryPullRequest,
+    recoveryHeadSha: recovery.recoveryHeadSha,
+  }, "失败审计恢复来源身份");
+  invariant(Number.isInteger(envelope.source.authorizationComment) && envelope.source.authorizationComment > 0, "失败审计恢复缺少所有者授权评论身份");
+
+  const planPath = previous.records?.plan;
+  invariant(typeof planPath === "string", "失败审计恢复基线缺少规划记录");
+  const planRecord = await readFile(join(baseRoot, ...planPath.split("/")), "utf8");
+  const sourceRecords = recoveryPullRequest?.records;
+  invariant(typeof sourceRecords?.releaseCandidate === "string" && typeof sourceRecords?.rcAudit === "string", "固定恢复 PR 缺少不可变 Candidate 或审计记录");
+  const migration = migrateFailedBootstrapAudit(previous, {
+    legacyTip: recovery.legacyTip,
+    candidatePullRequest,
+    recoveryPullRequest,
+    candidateTreeSha: recovery.candidateTreeSha,
+    planRecord,
+    releaseCandidateRecord: sourceRecords.releaseCandidate,
+    rcAuditRecord: sourceRecords.rcAudit,
+  }, contract);
+
+  const recordPath = migration.state.records.releaseCandidate;
+  const auditPath = migration.state.records.rcAudit;
+  const versionPath = contract.runtime.versionStatePattern.replace("<activeVersion>", migration.state.activeVersion);
+  let expectedFiles;
+  if (envelope.phase === "bootstrap-recovery-records") {
+    invariant(envelope.expectedTip === recovery.legacyTip, "恢复记录提案必须直接基于固定旧状态 tip");
+    expectedFiles = new Map([
+      [recordPath, Buffer.from(migration.records.releaseCandidate, "utf8")],
+      [auditPath, Buffer.from(migration.records.rcAudit, "utf8")],
+    ]);
+  } else {
+    invariant(envelope.phase === "bootstrap-recovery-pointer", "失败审计恢复只接受 records 或 pointer 阶段");
+    invariant(envelope.expectedTip !== recovery.legacyTip, "恢复指针不得先于不可变记录入库");
+    for (const [path, expected] of [
+      [recordPath, migration.records.releaseCandidate],
+      [auditPath, migration.records.rcAudit],
+    ]) {
+      const actual = await readFile(join(baseRoot, ...path.split("/")), "utf8").catch(() => null);
+      invariant(actual === expected, "恢复指针基线缺少已验证的不可变记录：" + path);
+    }
+    const stateBytes = Buffer.from(JSON.stringify(migration.state, null, 2) + "\n", "utf8");
+    expectedFiles = new Map([[currentPath, stateBytes], [versionPath, stateBytes]]);
+  }
+
+  const paths = await verifyExpectedProposalFiles(baseRoot, proposalRoot, envelope, expectedFiles);
+  return { phase: envelope.phase, paths };
 }
 
 export function recoverRole(stateInput, roleNumber, contractInput) {
@@ -763,16 +1365,30 @@ function option(args, name) {
   return args[index + 1];
 }
 
+function assertKnownOptions(args, allowed) {
+  invariant(args.length % 2 === 0, "命令选项必须成对提供");
+  const seen = new Set();
+  for (let index = 0; index < args.length; index += 2) {
+    const name = args[index];
+    invariant(allowed.includes(name), "未知参数 " + name);
+    invariant(!seen.has(name), "参数不得重复 " + name);
+    invariant(args[index + 1] && !args[index + 1].startsWith("--"), "缺少参数 " + name);
+    seen.add(name);
+  }
+}
+
 async function main() {
   const [command, statePath, ...args] = process.argv.slice(2);
   const contractPath = args.includes("--contract") ? option(args, "--contract") : "governance/role-contract.json";
   const contract = validateGovernanceContract(await readJson(contractPath));
   if (command === "validate-static" && statePath) {
+    assertKnownOptions(args, ["--contract"]);
     const state = validateGovernanceState(await readJson(statePath), { contract });
     process.stdout.write("治理状态结构有效：" + state.activeVersion + " " + state.stage + " revision=" + state.revision + "\n");
     return;
   }
   if (command === "validate-transition" && statePath) {
+    assertKnownOptions(args, ["--contract", "--previous", "--records-root"]);
     const previousPath = option(args, "--previous");
     const root = option(args, "--records-root");
     const previous = await readJson(previousPath);
@@ -782,17 +1398,20 @@ async function main() {
     return;
   }
   if (command === "verify-remote" && statePath) {
+    assertKnownOptions(args, ["--contract"]);
     const evidence = await verifyRemoteCandidate(await readJson(statePath));
     process.stdout.write(JSON.stringify(evidence) + "\n");
     return;
   }
   if (command === "verify-records" && statePath) {
+    assertKnownOptions(args, ["--contract", "--records-root"]);
     const root = option(args, "--records-root");
     await verifyRecordFiles(await readJson(statePath), root);
     process.stdout.write("治理记录摘要与无秘密检查通过\n");
     return;
   }
   if (command === "resolve-placeholders" && statePath) {
+    assertKnownOptions(args, ["--contract", "--output", "--candidate-sha", "--tree-sha"]);
     const outputPath = option(args, "--output");
     const candidateSha = option(args, "--candidate-sha");
     const treeSha = option(args, "--tree-sha");
@@ -803,6 +1422,10 @@ async function main() {
     return;
   }
   if (command === "build-transition" && statePath) {
+    assertKnownOptions(args, [
+      "--contract", "--role", "--target", "--pr", "--tree-sha", "--output",
+      "--record-output", "--meta-output",
+    ]);
     const roleNumber = Number(option(args, "--role"));
     const targetStage = option(args, "--target");
     const prPath = option(args, "--pr");
@@ -821,27 +1444,53 @@ async function main() {
     await writeFile(metaOutput, JSON.stringify({ recordKey: result.recordKey, recordPath: result.recordKey ? result.state.records[result.recordKey] : null }) + "\n");
     return;
   }
-  if (command === "build-bootstrap" && statePath) {
+  if (command === "build-bootstrap-recovery" && statePath) {
+    assertKnownOptions(args, [
+      "--contract", "--legacy-tip", "--candidate-pr", "--recovery-pr", "--tree-sha",
+      "--plan-record", "--candidate-record", "--audit-record", "--output",
+      "--candidate-output", "--audit-output",
+    ]);
     const candidatePr = await readJson(option(args, "--candidate-pr"));
-    const auditPr = await readJson(option(args, "--audit-pr"));
-    const candidateTreeSha = option(args, "--tree-sha");
-    const planRecord = await readFile(option(args, "--plan-record"), "utf8");
-    const outputPath = option(args, "--output");
-    const candidateOutput = option(args, "--candidate-output");
-    const auditOutput = option(args, "--audit-output");
-    const result = migrateLegacyBootstrap(await readJson(statePath), {
+    const recoveryPr = await readJson(option(args, "--recovery-pr"));
+    const result = migrateFailedBootstrapAudit(await readJson(statePath), {
+      legacyTip: option(args, "--legacy-tip"),
       candidatePullRequest: candidatePr,
-      auditPullRequest: auditPr,
-      candidateTreeSha,
-      planRecord,
+      recoveryPullRequest: recoveryPr,
+      candidateTreeSha: option(args, "--tree-sha"),
+      planRecord: await readFile(option(args, "--plan-record"), "utf8"),
+      releaseCandidateRecord: await readFile(option(args, "--candidate-record"), "utf8"),
+      rcAuditRecord: await readFile(option(args, "--audit-record"), "utf8"),
     }, contract);
-    await writeFile(outputPath, JSON.stringify(result.state, null, 2) + "\n");
-    await writeFile(candidateOutput, result.records.releaseCandidate);
-    await writeFile(auditOutput, result.records.rcAudit);
+    await writeFile(option(args, "--output"), JSON.stringify(result.state, null, 2) + "\n");
+    await writeFile(option(args, "--candidate-output"), result.records.releaseCandidate);
+    await writeFile(option(args, "--audit-output"), result.records.rcAudit);
+    return;
+  }
+  if (command === "build-proposal-envelope" && statePath) {
+    assertKnownOptions(args, ["--contract", "--output"]);
+    const envelope = buildProposalEnvelope(await readJson(statePath));
+    await writeFile(option(args, "--output"), JSON.stringify(envelope) + "\n");
+    return;
+  }
+  if (command === "verify-protected-proposal" && statePath) {
+    assertKnownOptions(args, [
+      "--contract", "--base-root", "--proposal-root", "--proposal-base-sha",
+      "--candidate-pr", "--recovery-pr",
+    ]);
+    const result = await verifyProtectedProposal({
+      baseRoot: option(args, "--base-root"),
+      proposalRoot: option(args, "--proposal-root"),
+      proposalBaseSha: option(args, "--proposal-base-sha"),
+      envelope: await readJson(statePath),
+      candidatePullRequest: await readJson(option(args, "--candidate-pr")),
+      recoveryPullRequest: await readJson(option(args, "--recovery-pr")),
+      contract,
+    });
+    process.stdout.write(JSON.stringify(result) + "\n");
     return;
   }
   throw new GovernanceValidationError(
-    "用法：validate-static；validate-transition；verify-records；verify-remote；build-transition；build-bootstrap",
+    "用法：validate-static；validate-transition；verify-records；verify-remote；build-transition；build-bootstrap-recovery；build-proposal-envelope；verify-protected-proposal",
   );
 }
 

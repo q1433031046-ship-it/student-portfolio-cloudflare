@@ -12,6 +12,8 @@
 
 只有 `IMPLEMENTATION_APPROVED`、`IMPLEMENTATION_REQUIRED` 或明确由角色 3 接手的 `ROLLED_BACK` 才能开始正式实现。自动读取 plan、planAudit、适用的候选审计退回记录和回滚回执，核对冻结范围后才改代码。仓库中已有合法交接记录时，不要求用户搬运已有交接文件，也不要求用户重复上传规划 Word。
 
+若当前旧状态仍是 Schema 1 / revision 2，且角色 2 已判定 PR #13 不通过但恢复被 bootstrap trust root 阻断，角色 3 只实现独立 trust-root PR 并停在角色 2 中间审计。中间审计通过、trust root 合入 `main`、Ruleset 固定 App id `15368` 且一次性恢复真实完成后，必须重新读取 Schema 2 / revision 3 / `IMPLEMENTATION_REQUIRED`，再开始 Candidate 返工。不得把 PR #14 的提案内容提前当成生效状态。
+
 ## 允许转换与硬边界
 
 - `IMPLEMENTATION_APPROVED → IMPLEMENTING`。
@@ -26,9 +28,9 @@
 
 ## Candidate 生成
 
-完成后使用 `governance/handoff/release-candidate.md`，至少记录：版本、完整 Candidate SHA、分支、基准提交、主要改动、Migration/数据库变化、测试、构建、Lint、类型检查、E2E/浏览器结果、已知问题、规划偏差和“生产环境修改：没有”。
+完成后使用 `governance/handoff/release-candidate.md`，至少记录：版本、完整 Candidate SHA、分支、基准提交、主要改动、Migration/数据库变化、测试、构建、Lint、类型检查、E2E/浏览器结果、已知问题、规划偏差和“生产环境修改：没有”。角色 3 必须完整披露 Candidate 的 Known Issue、影响范围、现有隔离和升级条件；但不得代表角色 2 接受风险、不得把问题自行分类为 Accepted，也不得以 Known Issue 掩盖不可豁免边界。风险接受决定始终属于独立的角色 2。
 
-Candidate 只能通过受保护的 `governance-state.yml` 写入入口交接。入口从开放、非 draft、同仓库 PR 回读准确 commit、tree、分支 tip、PR head、main 基线和祖先关系，扫描记录泄密，先以状态门禁 PR 写固定 Candidate 记录，再从准确合并 tip 以第二个状态门禁 PR 更新 current、版本快照、candidateSha、Candidate 上下文与摘要。普通用户和插件不得直接更新状态分支。
+Candidate 只能通过受保护的 `governance-state.yml` 写入入口交接。入口重新读取所有者授权评论，并从开放、非 draft、同仓库 PR 回读准确 commit、tree、分支 tip、PR head、main 基线和祖先关系；Writer 创建提案后只请求独立默认分支 Gate，Gate 从 `main` 重建并逐字节验证提案，再通过 Checks API 完成绑定该 head SHA 的 `governance-state-write` Check。先以该 Check 门禁 PR 写固定 Candidate 记录，再从准确合并 tip 以第二个门禁 PR 更新 current、版本快照、candidateSha、Candidate 上下文与摘要。普通用户和插件不得直接更新状态分支。
 
 只有 Candidate 记录与 current 均入库成功，才能进行正式候选交接。
 

@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmod, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import test from "node:test";
 
 import {
@@ -11,14 +11,16 @@ import {
   GovernanceValidationError,
   ROLE_NAMES,
   assertTransition,
+  buildProposalEnvelope,
   buildGovernanceTransition,
-  migrateLegacyBootstrap,
+  migrateFailedBootstrapAudit,
   recoverRole,
   scanGovernanceText,
   validateGovernanceContract,
   validateGovernanceState,
   validateGovernanceTransition,
   validateStateSchema,
+  verifyProtectedProposal,
   verifyRecordFiles,
   verifyRemoteCandidate,
 } from "../scripts/governance-state.mjs";
@@ -36,6 +38,66 @@ const recordFiles = {
   releaseReceipt: "06-release-receipt.md",
   blocked: "07-blocked.md",
 };
+
+const riskAcceptancePolicy = {
+  classifications: [
+    "Blocking Risk",
+    "Accepted / Contained Risk",
+    "Monitored Technical Debt",
+    "Low / Won't Fix Now",
+  ],
+  passEligibleClassifications: [
+    "Accepted / Contained Risk",
+    "Monitored Technical Debt",
+    "Low / Won't Fix Now",
+  ],
+  severities: ["Critical", "High", "Medium", "Low"],
+  acceptedSeverities: ["Medium", "Low"],
+  lowWontFixSeverities: ["Low"],
+  containmentMechanisms: [
+    "isolation",
+    "fail-closed",
+    "feature-disabled",
+    "manual-recovery",
+    "known-issue",
+    "follow-up-version",
+  ],
+  requiredRiskFields: [
+    "knownIssueId",
+    "classification",
+    "issue",
+    "severity",
+    "impactBlastRadius",
+    "containment",
+    "stopEscalationCondition",
+    "plannedFollowUpVersion",
+    "nonWaivableBoundary",
+  ],
+  followUpVersionPatterns: [
+    "^v[0-9]+\\.[0-9]+\\.[0-9]+$",
+    "^governance-[1-9][0-9]*$",
+  ],
+  noBoundaryValue: "none",
+  nonWaivableBoundaries: [
+    { id: "governance-state-authorization", description: "governance-state 可越权修改" },
+    { id: "ruleset-required-check-integrity", description: "Ruleset 或 required check 可绕过、伪造或由错误集成满足" },
+    { id: "candidate-identity-binding", description: "Candidate SHA、Tree、PR 或审计目标无法唯一绑定" },
+    { id: "cas-revision-stale-write-protection", description: "CAS 或 revision 无法阻止陈旧覆盖" },
+    { id: "failed-audit-forward-progress", description: "审计失败后仍可非法前进" },
+    { id: "trusted-writer-boundary", description: "trusted writer 或独立 Gate 的信任边界失效" },
+    { id: "write-outcome-integrity", description: "写入失败、未合并或未读回却报告成功" },
+    { id: "release-candidate-eligibility", description: "错误 Candidate 获得发布资格" },
+    { id: "production-data-security-irreversibility", description: "可能造成生产、数据、安全或不可逆治理错误" },
+  ],
+};
+
+async function writeTree(root, files) {
+  for (const [path, content] of Object.entries(files)) {
+    const target = join(root, ...path.split("/"));
+    await mkdir(dirname(target), { recursive: true });
+    await writeFile(target, content);
+  }
+}
 
 function role(contract, number) {
   return contract.roles.find((item) => item.roleNumber === number);
@@ -72,27 +134,118 @@ function stateAt(stage, overrides = {}) {
 }
 
 function bootstrapState(overrides = {}) {
-  const candidateSha = overrides.candidateSha ?? "d".repeat(40);
-  return stateAt(overrides.stage ?? "RC_AUDIT_PENDING", {
+  const candidateSha = overrides.candidateSha ?? "e24d78fd76cfbca9ebd957d16c406ffbc1c09e1b";
+  return stateAt(overrides.stage ?? "IMPLEMENTATION_REQUIRED", {
     activeVersion: "governance-1",
-    revision: overrides.revision ?? 2,
-    lastUpdatedBy: overrides.lastUpdatedBy ?? { roleNumber: 3, roleName: "超级工作" },
+    revision: overrides.revision ?? 3,
+    lastUpdatedBy: overrides.lastUpdatedBy ?? { roleNumber: 2, roleName: "超级审计" },
     candidateSha,
     candidateContext: {
       branch: "governance/four-role-auto-handoff",
       pullRequest: 13,
       baseSha: "d81785dd51bb0c9be339449566a15d3b3971e02a",
-      treeSha: "e".repeat(40),
+      treeSha: "a54f47d5f5b5b54e18454d5faa7a4fc3a403228d",
     },
     records: { planAudit: null, ...overrides.records },
     recordDigests: { planAudit: null, ...overrides.recordDigests },
     bootstrap: {
-      isBootstrapCandidate: true,
-      candidateSha,
+      mode: "legacy-failed-audit-recovery",
+      completed: true,
+      sourceSchemaVersion: 1,
+      sourceRevision: 2,
+      sourceTip: "3e7867d3cdba75045f6dc8aa0448ccaac3547b68",
+      legacyCandidateSha: "7caf24d4c52f1502d43cbf668329701986669a6e",
+      candidateSha: "e24d78fd76cfbca9ebd957d16c406ffbc1c09e1b",
       candidateBranch: "governance/four-role-auto-handoff",
+      candidateTreeSha: "a54f47d5f5b5b54e18454d5faa7a4fc3a403228d",
+      candidatePullRequest: 13,
+      recoveryPullRequest: 14,
+      recoveryHeadSha: "9451ef05fbe289aaade134bb60fb1a57e5eb15a6",
       baseSha: "d81785dd51bb0c9be339449566a15d3b3971e02a",
+      targetStage: "IMPLEMENTATION_REQUIRED",
+      auditConclusion: "failed",
     },
   });
+}
+
+function knownRisk(overrides = {}) {
+  return {
+    knownIssueId: "RISK-LOW-001",
+    classification: "Accepted / Contained Risk",
+    issue: "受隔离的治理说明展示偏差",
+    severity: "Low",
+    impactBlastRadius: "仅影响人工阅读，不改变状态或发布资格",
+    containment: "known-issue | 保留正式状态机与独立 Gate 的 fail-closed 判定",
+    stopEscalationCondition: "一旦影响 Candidate 身份、受保护状态或发布资格即停止并升级为 Blocking Risk",
+    plannedFollowUpVersion: "governance-2",
+    nonWaivableBoundary: "none",
+    ...overrides,
+  };
+}
+
+function makeRiskDisposition(risks = []) {
+  const lines = ["## 风险处置", "", "风险项数量：" + risks.length];
+  for (const risk of risks) {
+    lines.push(
+      "",
+      "### Known Issue：" + risk.knownIssueId,
+      "风险分类：" + risk.classification,
+      "Issue：" + risk.issue,
+      "Severity：" + risk.severity,
+      "Impact / Blast Radius：" + risk.impactBlastRadius,
+      "Containment：" + risk.containment,
+      "Stop / Escalation Condition：" + risk.stopEscalationCondition,
+      "Planned Follow-up Version：" + risk.plannedFollowUpVersion,
+      "Non-Waivable Boundary：" + risk.nonWaivableBoundary,
+    );
+  }
+  return lines;
+}
+
+function makeRcAuditRecord({
+  auditId = "AUD-TEST-GOV-RC-001",
+  candidateSha,
+  candidateTreeSha,
+  candidatePullRequest,
+  conclusion,
+  targetStage,
+  format = "inline",
+  risks = [],
+}) {
+  const approvedCandidate = conclusion === "通过"
+    ? "`" + candidateSha + "`"
+    : format === "heading" ? "不适用（本轮不通过）" : "不适用";
+  const conclusionLines = format === "heading"
+    ? ["## 最终结论", "", "**" + conclusion + "。** 审计结论与目标状态必须保持绑定。"]
+    : ["最终结论：" + conclusion];
+  return [
+    "审计编号：" + auditId,
+    "审计类型：候选版本审计",
+    "审计对象 Candidate SHA：`" + candidateSha + "`",
+    "审计对象 Tree SHA：`" + candidateTreeSha + "`",
+    "审计对象 PR：`#" + candidatePullRequest + "`",
+    "",
+    ...makeRiskDisposition(risks),
+    "",
+    ...conclusionLines,
+    "批准 Candidate SHA：" + approvedCandidate,
+    "目标状态：`" + targetStage + "`",
+    "下一角色：" + (targetStage === "RELEASE_APPROVED" ? "4 / 超级发布" : "3 / 超级工作"),
+    "",
+  ].join("\n");
+}
+
+function makePlanAuditRecord({ conclusion, targetStage, risks = [] }) {
+  return [
+    "审计编号：AUD-TEST-GOV-PLAN-001",
+    "审计类型：方案审计",
+    "",
+    ...makeRiskDisposition(risks),
+    "",
+    "最终结论：" + conclusion,
+    "目标状态：`" + targetStage + "`",
+    "",
+  ].join("\n");
 }
 
 test("enforces the complete frozen role matrix as an exact allowlist", async () => {
@@ -129,6 +282,13 @@ test("enforces the complete frozen role matrix as an exact allowlist", async () 
 test("keeps the two audit gates and every recovery transition explicit", async () => {
   const contract = await readJson(contractPath);
   assert.deepEqual(contract.requiredWorkflowStages, GOVERNANCE_STAGES);
+  assert.deepEqual(contract.auditPolicy.acceptedConclusions, ["通过", "不通过"]);
+  assert.deepEqual(contract.auditPolicy.conclusionTargets, {
+    PLAN_AUDIT_PENDING: { "通过": "IMPLEMENTATION_APPROVED", "不通过": "PLANNING_REQUIRED" },
+    RC_AUDIT_PENDING: { "通过": "RELEASE_APPROVED", "不通过": "IMPLEMENTATION_REQUIRED" },
+  });
+  assert.deepEqual(contract.auditPolicy.rcAuditIdentityFields, ["candidateSha", "candidateTreeSha", "candidatePullRequest"]);
+  assert.deepEqual(contract.auditPolicy.riskAcceptancePolicy, riskAcceptancePolicy);
   assertTransition(contract, 2, "PLAN_AUDIT_PENDING", "IMPLEMENTATION_APPROVED");
   assertTransition(contract, 3, "IMPLEMENTING", "RC_AUDIT_PENDING");
   assertTransition(contract, 2, "RC_AUDIT_PENDING", "RELEASE_APPROVED");
@@ -136,6 +296,25 @@ test("keeps the two audit gates and every recovery transition explicit", async (
   assertTransition(contract, 2, "BLOCKED", "RC_AUDIT_PENDING");
   assert.throws(() => assertTransition(contract, 1, "IDLE", "RELEASE_APPROVED"), GovernanceValidationError);
   assert.throws(() => assertTransition(contract, 3, "RC_AUDIT_PENDING", "RELEASE_APPROVED"), GovernanceValidationError);
+  const mutated = structuredClone(contract);
+  mutated.auditPolicy.conclusionTargets.RC_AUDIT_PENDING["有条件通过"] = "RELEASE_APPROVED";
+  assert.throws(() => validateGovernanceContract(mutated), /完全一致/u);
+});
+
+test("locks every non-waivable risk boundary in the exact audit policy", async () => {
+  const contract = validateGovernanceContract(await readJson(contractPath));
+  assert.deepEqual(contract.auditPolicy.riskAcceptancePolicy, riskAcceptancePolicy);
+
+  for (const boundary of riskAcceptancePolicy.nonWaivableBoundaries) {
+    const mutated = structuredClone(contract);
+    mutated.auditPolicy.riskAcceptancePolicy.nonWaivableBoundaries =
+      mutated.auditPolicy.riskAcceptancePolicy.nonWaivableBoundaries.filter((item) => item.id !== boundary.id);
+    assert.throws(
+      () => validateGovernanceContract(mutated),
+      /完全一致/u,
+      "accepted deletion of non-waivable boundary " + boundary.id,
+    );
+  }
 });
 
 test("executes the Draft 2020-12 schema and keeps schema-expressible failures equivalent", async () => {
@@ -200,7 +379,7 @@ test("requires the complete audit chain and limits bootstrap to the exact govern
 
   const changedBase = bootstrapState();
   changedBase.candidateContext.baseSha = "f".repeat(40);
-  assert.throws(() => validateGovernanceState(changedBase), /bootstrap Candidate 上下文基线/u);
+  assert.throws(() => validateGovernanceState(changedBase), /失败审计恢复 Candidate 上下文/u);
 });
 
 test("rejects every same-stage write and freezes approved Candidate identity", async () => {
@@ -386,95 +565,826 @@ test("builds a Candidate transition only from an immutable same-repository PR", 
   }, contract), /禁止来自 fork/u);
 });
 
-test("allows exactly one legacy bootstrap migration only with a passing audit of PR #13", async () => {
+test("binds every formal plan-audit conclusion to its exact target state", async () => {
   const contract = await readJson(contractPath);
+  const previous = stateAt("PLAN_AUDIT_PENDING", {
+    revision: 50,
+    candidateSha: null,
+    candidateContext: null,
+    records: { planAudit: null, releaseCandidate: null, rcAudit: null, releaseReceipt: null },
+    recordDigests: { planAudit: null, releaseCandidate: null, rcAudit: null, releaseReceipt: null },
+  });
+  const build = (conclusion, targetStage, recordedTarget = targetStage) => buildGovernanceTransition(previous, {
+    roleNumber: 2,
+    targetStage,
+    pullRequest: {
+      number: 19,
+      state: "open",
+      draft: false,
+      body: makePlanAuditRecord({ conclusion, targetStage: recordedTarget }),
+      head: { sha: "d".repeat(40), ref: "planning/v1.3.1", repo: { full_name: previous.repository } },
+      base: { sha: "b".repeat(40), ref: "main", repo: { full_name: previous.repository } },
+    },
+    treeSha: "e".repeat(40),
+  }, contract);
+
+  assert.equal(build("通过", "IMPLEMENTATION_APPROVED").state.stage, "IMPLEMENTATION_APPROVED");
+  assert.equal(build("不通过", "PLANNING_REQUIRED").state.stage, "PLANNING_REQUIRED");
+  assert.throws(() => build("不通过", "IMPLEMENTATION_APPROVED"), GovernanceValidationError);
+  assert.throws(() => build("有条件通过", "IMPLEMENTATION_APPROVED"), GovernanceValidationError);
+  assert.throws(() => build("通过", "IMPLEMENTATION_APPROVED", "PLANNING_REQUIRED"), GovernanceValidationError);
+});
+
+test("binds an RC audit conclusion and target to the current Candidate SHA, Tree and PR", async () => {
+  const contract = await readJson(contractPath);
+  const candidateSha = "a".repeat(40);
+  const candidateTreeSha = "c".repeat(40);
+  const candidatePullRequest = 20;
+  const previous = stateAt("RC_AUDIT_PENDING", {
+    revision: 51,
+    candidateSha,
+    candidateContext: {
+      branch: "release/v1.3.1",
+      pullRequest: candidatePullRequest,
+      baseSha: "b".repeat(40),
+      treeSha: candidateTreeSha,
+    },
+  });
+  const makePr = (body, overrides = {}) => ({
+    number: overrides.number ?? candidatePullRequest,
+    state: "open",
+    draft: false,
+    body,
+    head: {
+      sha: overrides.headSha ?? candidateSha,
+      ref: overrides.headRef ?? previous.candidateContext.branch,
+      repo: { full_name: previous.repository },
+    },
+    base: {
+      sha: overrides.baseSha ?? previous.candidateContext.baseSha,
+      ref: "main",
+      repo: { full_name: previous.repository },
+    },
+  });
+  const build = (conclusion, targetStage, recordOverrides = {}, prOverrides = {}) => buildGovernanceTransition(previous, {
+    roleNumber: 2,
+    targetStage,
+    pullRequest: makePr(makeRcAuditRecord({
+      candidateSha: recordOverrides.candidateSha ?? candidateSha,
+      candidateTreeSha: recordOverrides.candidateTreeSha ?? candidateTreeSha,
+      candidatePullRequest: recordOverrides.candidatePullRequest ?? candidatePullRequest,
+      conclusion,
+      targetStage: recordOverrides.targetStage ?? targetStage,
+    }), prOverrides),
+    treeSha: prOverrides.treeSha ?? candidateTreeSha,
+  }, contract);
+
+  const approved = build("通过", "RELEASE_APPROVED");
+  assert.equal(approved.state.stage, "RELEASE_APPROVED");
+  assert.equal(approved.state.candidateSha, candidateSha);
+  assert.equal(approved.recordKey, "rcAudit");
+
+  const rejected = build("不通过", "IMPLEMENTATION_REQUIRED");
+  assert.equal(rejected.state.stage, "IMPLEMENTATION_REQUIRED");
+  assert.equal(rejected.state.candidateContext.treeSha, candidateTreeSha);
+
+  const rejectedInputs = [
+    () => build("不通过", "RELEASE_APPROVED"),
+    () => build("有条件通过", "RELEASE_APPROVED"),
+    () => build("通过", "RELEASE_APPROVED", { candidateSha: "d".repeat(40) }),
+    () => build("通过", "RELEASE_APPROVED", { candidateTreeSha: "e".repeat(40) }),
+    () => build("通过", "RELEASE_APPROVED", { candidatePullRequest: 21 }),
+    () => build("通过", "RELEASE_APPROVED", { targetStage: "IMPLEMENTATION_REQUIRED" }),
+    () => build("通过", "RELEASE_APPROVED", {}, { headSha: "d".repeat(40) }),
+    () => build("通过", "RELEASE_APPROVED", {}, { treeSha: "e".repeat(40) }),
+    () => build("通过", "RELEASE_APPROVED", {}, { number: 21 }),
+  ];
+  for (const rejectedInput of rejectedInputs) {
+    assert.throws(rejectedInput, GovernanceValidationError);
+  }
+});
+
+test("accepts contained Medium or Low risks but never waives a protected governance boundary", async () => {
+  const contract = await readJson(contractPath);
+  const candidateSha = "a".repeat(40);
+  const candidateTreeSha = "c".repeat(40);
+  const candidatePullRequest = 20;
+  const previous = stateAt("RC_AUDIT_PENDING", {
+    revision: 52,
+    candidateSha,
+    candidateContext: {
+      branch: "release/v1.3.1",
+      pullRequest: candidatePullRequest,
+      baseSha: "b".repeat(40),
+      treeSha: candidateTreeSha,
+    },
+  });
+  const buildBody = (body, targetStage = "RELEASE_APPROVED") => buildGovernanceTransition(previous, {
+    roleNumber: 2,
+    targetStage,
+    pullRequest: {
+      number: candidatePullRequest,
+      state: "open",
+      draft: false,
+      body,
+      head: { sha: candidateSha, ref: previous.candidateContext.branch, repo: { full_name: previous.repository } },
+      base: { sha: previous.candidateContext.baseSha, ref: "main", repo: { full_name: previous.repository } },
+    },
+    treeSha: candidateTreeSha,
+  }, contract);
+  const record = (risk, conclusion = "通过", targetStage = "RELEASE_APPROVED") => makeRcAuditRecord({
+    candidateSha,
+    candidateTreeSha,
+    candidatePullRequest,
+    conclusion,
+    targetStage,
+    risks: Array.isArray(risk) ? risk : risk ? [risk] : [],
+  });
+
+  assert.equal(buildBody(record(knownRisk())).state.stage, "RELEASE_APPROVED");
+  assert.equal(buildBody(record(knownRisk({
+    knownIssueId: "RISK-CONTAINED-001",
+    severity: "Medium",
+    containment: "isolation | 风险仅限人工审计说明，不接触受保护状态",
+  }))).state.stage, "RELEASE_APPROVED");
+  assert.equal(buildBody(record(knownRisk({
+    knownIssueId: "RISK-DEBT-001",
+    classification: "Monitored Technical Debt",
+    severity: "Medium",
+    containment: "manual-recovery | 文档化恢复步骤并限制影响范围",
+  }))).state.stage, "RELEASE_APPROVED");
+  assert.equal(buildBody(record(knownRisk({
+    knownIssueId: "RISK-WONTFIX-001",
+    classification: "Low / Won't Fix Now",
+    containment: "follow-up-version | 在治理版本二重新评估",
+  }))).state.stage, "RELEASE_APPROVED");
+  assert.equal(
+    buildBody(record(knownRisk({
+      knownIssueId: "RISK-BLOCK-001",
+      classification: "Blocking Risk",
+      severity: "High",
+      nonWaivableBoundary: "trusted-writer-boundary",
+    }), "不通过", "IMPLEMENTATION_REQUIRED"), "IMPLEMENTATION_REQUIRED").state.stage,
+    "IMPLEMENTATION_REQUIRED",
+  );
+
+  assert.throws(
+    () => buildBody(record(knownRisk({ classification: "Blocking Risk" }))),
+    /Blocking Risk|风险/u,
+  );
+  assert.throws(
+    () => buildBody(record(knownRisk({ severity: "High" }))),
+    /High|风险/u,
+  );
+  assert.throws(
+    () => buildBody(record(knownRisk({ severity: "Critical" }))),
+    /Critical|风险/u,
+  );
+  assert.throws(
+    () => buildBody(record(knownRisk({
+      classification: "Low / Won't Fix Now",
+      severity: "Medium",
+    }))),
+    /Won't Fix|Low|风险/u,
+  );
+
+  for (const boundary of riskAcceptancePolicy.nonWaivableBoundaries) {
+    assert.throws(
+      () => buildBody(record(knownRisk({
+        knownIssueId: "RISK-BOUNDARY-" + boundary.id.toUpperCase(),
+        nonWaivableBoundary: boundary.id,
+      }))),
+      /不可豁免|边界/u,
+      "accepted protected boundary " + boundary.id,
+    );
+  }
+
+  const withoutRiskSection = record(null).replace(/\n## 风险处置[\s\S]*?\n最终结论：/u, "\n最终结论：");
+  assert.throws(() => buildBody(withoutRiskSection), /风险处置/u);
+  const badCount = record(knownRisk()).replace("风险项数量：1", "风险项数量：0");
+  assert.throws(() => buildBody(badCount), /风险项数量/u);
+  const missingContainment = record(knownRisk()).replace(/^Containment：.*\n/mu, "");
+  assert.throws(() => buildBody(missingContainment), /Containment|缺失字段/u);
+  assert.throws(
+    () => buildBody(record([knownRisk(), knownRisk()])),
+    /Known Issue ID.*重复|唯一/u,
+  );
+  assert.throws(
+    () => buildBody(record(knownRisk({ containment: "log-only | 只写日志" }))),
+    /Containment/u,
+  );
+  assert.throws(
+    () => buildBody(record(knownRisk({ issue: "TBD" }))),
+    /占位|Issue/u,
+  );
+  assert.throws(
+    () => buildBody(record(knownRisk({ plannedFollowUpVersion: "someday" }))),
+    /Planned Follow-up Version/u,
+  );
+  assert.throws(
+    () => buildBody(record(knownRisk({ classification: "Informational" }))),
+    /风险分类/u,
+  );
+  assert.throws(
+    () => buildBody(record(knownRisk({ nonWaivableBoundary: "unknown-boundary" }))),
+    /Non-Waivable Boundary|边界/u,
+  );
+  const multilineIssue = record(knownRisk()).replace(
+    "Issue：受隔离的治理说明展示偏差",
+    "Issue：受隔离的治理说明展示偏差\n这是一行未声明的延续内容",
+  );
+  assert.throws(() => buildBody(multilineIssue), /多行|未知字段|风险项/u);
+});
+
+test("migrates the fixed failed bootstrap audit to implementation required exactly once", async () => {
+  const contract = await readJson(contractPath);
+  const repository = "q1433031046-ship-it/student-portfolio-cloudflare";
+  const legacyTip = "3e7867d3cdba75045f6dc8aa0448ccaac3547b68";
+  const candidateSha = "e24d78fd76cfbca9ebd957d16c406ffbc1c09e1b";
+  const candidateTreeSha = "a54f47d5f5b5b54e18454d5faa7a4fc3a403228d";
+  const recoveryHeadSha = "9451ef05fbe289aaade134bb60fb1a57e5eb15a6";
   const legacy = {
     schemaVersion: 1,
     project: "student-portfolio-cloudflare",
-    repository: "q1433031046-ship-it/student-portfolio-cloudflare",
+    repository,
     activeVersion: "governance-1",
     stage: "RC_AUDIT_PENDING",
     taskLevel: "L2",
     revision: 2,
     lastUpdatedBy: { roleNumber: 3, roleName: "超级工作" },
-    records: {},
+    records: {
+      plan: "governance/runtime/records/governance-1/01-plan.md",
+      planAudit: null,
+      releaseCandidate: "governance/runtime/records/governance-1/04-release-candidate-r2.md",
+      rcAudit: null,
+      releaseReceipt: null,
+    },
     candidateSha: "7caf24d4c52f1502d43cbf668329701986669a6e",
     releaseTag: null,
     bootstrap: { isBootstrapCandidate: true },
   };
-  const sha = "f".repeat(40);
-  const repository = legacy.repository;
-  const candidatePr = {
+  const candidatePullRequest = {
     number: 13,
     state: "open",
     draft: false,
-    body: "Candidate SHA：" + sha + "\n测试：通过\n生产环境修改：没有\n",
-    head: { sha, ref: "governance/four-role-auto-handoff", repo: { full_name: repository } },
-    base: { sha: "d81785dd51bb0c9be339449566a15d3b3971e02a", ref: "main", repo: { full_name: repository } },
+    head: {
+      sha: candidateSha,
+      ref: "governance/four-role-auto-handoff",
+      repo: { full_name: repository },
+    },
+    base: {
+      sha: "d81785dd51bb0c9be339449566a15d3b3971e02a",
+      ref: "main",
+      repo: { full_name: repository },
+    },
   };
-  const auditPr = {
-    number: 21,
+  const recoveryPullRequest = {
+    number: 14,
     state: "open",
     draft: false,
-    body: "审计编号：AUD-GOV-RC-002\n审计对象：" + sha + "\n最终结论：通过\n",
-    head: { sha: "1".repeat(40), ref: "governance/audit-002", repo: { full_name: repository } },
+    head: {
+      sha: recoveryHeadSha,
+      ref: "recovery/governance-rc-audit-r1",
+      repo: { full_name: repository },
+    },
+    base: {
+      sha: legacyTip,
+      ref: "governance-state",
+      repo: { full_name: repository },
+    },
+  };
+  const request = {
+    legacyTip,
+    candidatePullRequest,
+    recoveryPullRequest,
+    candidateTreeSha,
+    planRecord: "规划编号：GOV-PLAN-1\n目标：四角色治理固化\n",
+    releaseCandidateRecord: [
+      "候选编号：GOV-RC-FAILED-1",
+      "Candidate SHA：`" + candidateSha + "`",
+      "Tree SHA：`" + candidateTreeSha + "`",
+      "生产环境修改：没有",
+      "",
+    ].join("\n"),
+    rcAuditRecord: makeRcAuditRecord({
+      auditId: "AUD-20260831-GOV-RC-001",
+      candidateSha,
+      candidateTreeSha,
+      candidatePullRequest: 13,
+      conclusion: "不通过",
+      targetStage: "IMPLEMENTATION_REQUIRED",
+      format: "heading",
+    }),
+  };
+
+  const result = migrateFailedBootstrapAudit(legacy, request, contract);
+  assert.equal(result.state.schemaVersion, 2);
+  assert.equal(result.state.revision, 3);
+  assert.equal(result.state.stage, "IMPLEMENTATION_REQUIRED");
+  assert.deepEqual(result.state.lastUpdatedBy, { roleNumber: 2, roleName: "超级审计" });
+  assert.equal(result.state.candidateSha, candidateSha);
+  assert.deepEqual(result.state.candidateContext, {
+    branch: "governance/four-role-auto-handoff",
+    pullRequest: 13,
+    baseSha: "d81785dd51bb0c9be339449566a15d3b3971e02a",
+    treeSha: candidateTreeSha,
+  });
+  assert.equal(result.state.records.planAudit, null);
+  assert.equal(result.state.records.releaseCandidate, "governance/runtime/records/governance-1/04-release-candidate.md");
+  assert.equal(result.state.records.rcAudit, "governance/runtime/records/governance-1/05-rc-audit.md");
+  assert.equal(result.state.recordDigests.releaseCandidate, digest(request.releaseCandidateRecord));
+  assert.equal(result.state.recordDigests.rcAudit, digest(request.rcAuditRecord));
+  assert.equal(result.state.bootstrap.mode, "legacy-failed-audit-recovery");
+  assert.equal(result.state.bootstrap.completed, true);
+  assert.equal(result.state.bootstrap.sourceTip, legacyTip);
+  assert.equal(result.state.bootstrap.recoveryHeadSha, recoveryHeadSha);
+
+  const mutations = [
+    (input) => { input.legacyTip = "f".repeat(40); },
+    (input) => { input.candidateTreeSha = "f".repeat(40); },
+    (input) => { input.candidatePullRequest.head.sha = "f".repeat(40); },
+    (input) => { input.recoveryPullRequest.head.sha = "f".repeat(40); },
+    (input) => { input.rcAuditRecord = input.rcAuditRecord.replace("不通过", "通过"); },
+    (input) => { input.rcAuditRecord = input.rcAuditRecord.replace("不通过", "有条件通过"); },
+    (input) => { input.rcAuditRecord = input.rcAuditRecord.replace(candidateSha, "f".repeat(40)); },
+    (input) => { input.rcAuditRecord = input.rcAuditRecord.replace(candidateTreeSha, "f".repeat(40)); },
+    (input) => { input.rcAuditRecord = input.rcAuditRecord.replace("`#13`", "`#12`"); },
+    (input) => { input.rcAuditRecord = input.rcAuditRecord.replace("IMPLEMENTATION_REQUIRED", "RELEASE_APPROVED"); },
+  ];
+  for (const mutate of mutations) {
+    const changed = structuredClone(request);
+    mutate(changed);
+    assert.throws(() => migrateFailedBootstrapAudit(legacy, changed, contract), GovernanceValidationError);
+  }
+
+  const replay = structuredClone(result.state);
+  assert.throws(() => migrateFailedBootstrapAudit(replay, request, contract), /Schema 1/u);
+});
+
+test("verifies an untrusted protected proposal independently", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "governance-proposal-gate-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const baseRoot = join(root, "base");
+  const recordsRoot = join(root, "records");
+  const pointerRoot = join(root, "pointer");
+  const earlyPointerRoot = join(root, "early-pointer");
+  const repository = "q1433031046-ship-it/student-portfolio-cloudflare";
+  const legacyTip = "3e7867d3cdba75045f6dc8aa0448ccaac3547b68";
+  const candidateSha = "e24d78fd76cfbca9ebd957d16c406ffbc1c09e1b";
+  const candidateTreeSha = "a54f47d5f5b5b54e18454d5faa7a4fc3a403228d";
+  const recoveryHeadSha = "9451ef05fbe289aaade134bb60fb1a57e5eb15a6";
+  const recordPath = "governance/runtime/records/governance-1/04-release-candidate.md";
+  const auditPath = "governance/runtime/records/governance-1/05-rc-audit.md";
+  const currentPath = "governance/runtime/current.json";
+  const versionPath = "governance/runtime/versions/governance-1.json";
+  const planRecord = "规划编号：GOV-PLAN-1\n目标：四角色治理固化\n";
+  const releaseCandidateRecord = [
+    "候选编号：GOV-RC-FAILED-1",
+    "Candidate SHA：`" + candidateSha + "`",
+    "Tree SHA：`" + candidateTreeSha + "`",
+    "生产环境修改：没有",
+    "",
+  ].join("\n");
+  const rcAuditRecord = makeRcAuditRecord({
+    auditId: "AUD-20260831-GOV-RC-001",
+    candidateSha,
+    candidateTreeSha,
+    candidatePullRequest: 13,
+    conclusion: "不通过",
+    targetStage: "IMPLEMENTATION_REQUIRED",
+    format: "heading",
+  });
+  const legacy = {
+    schemaVersion: 1,
+    project: "student-portfolio-cloudflare",
+    repository,
+    activeVersion: "governance-1",
+    stage: "RC_AUDIT_PENDING",
+    taskLevel: "L2",
+    revision: 2,
+    lastUpdatedBy: { roleNumber: 3, roleName: "超级工作" },
+    records: {
+      plan: "governance/runtime/records/governance-1/01-plan.md",
+      planAudit: null,
+      releaseCandidate: "governance/runtime/records/governance-1/04-release-candidate-r2.md",
+      rcAudit: null,
+      releaseReceipt: null,
+    },
+    candidateSha: "7caf24d4c52f1502d43cbf668329701986669a6e",
+    releaseTag: null,
+    bootstrap: { isBootstrapCandidate: true },
+  };
+  const candidatePullRequest = {
+    number: 13,
+    state: "open",
+    draft: false,
+    head: { sha: candidateSha, ref: "governance/four-role-auto-handoff", repo: { full_name: repository } },
     base: { sha: "d81785dd51bb0c9be339449566a15d3b3971e02a", ref: "main", repo: { full_name: repository } },
   };
-  const result = migrateLegacyBootstrap(legacy, {
-    candidatePullRequest: candidatePr,
-    auditPullRequest: auditPr,
-    candidateTreeSha: "2".repeat(40),
-    planRecord: "规划编号：GOV-PLAN-1\n目标：治理固化\n",
+  const recoveryPullRequest = {
+    number: 14,
+    state: "open",
+    draft: false,
+    head: { sha: recoveryHeadSha, ref: "recovery/governance-rc-audit-r1", repo: { full_name: repository } },
+    base: { sha: legacyTip, ref: "governance-state", repo: { full_name: repository } },
+    records: { releaseCandidate: releaseCandidateRecord, rcAudit: rcAuditRecord },
+  };
+  const contract = await readJson(contractPath);
+  const baseFiles = {
+    [currentPath]: JSON.stringify(legacy, null, 2) + "\n",
+    "governance/runtime/records/governance-1/01-plan.md": planRecord,
+    "governance/runtime/records/governance-1/04-release-candidate-r2.md": "旧 Candidate 记录\n",
+    [recordPath]: "旧的未审计 Candidate 记录\n",
+  };
+  await writeTree(baseRoot, baseFiles);
+  await writeTree(recordsRoot, { ...baseFiles, [recordPath]: releaseCandidateRecord, [auditPath]: rcAuditRecord });
+  const source = {
+    kind: "bootstrap-failed-audit-recovery",
+    authorizationComment: 1001,
+    legacyTip,
+    candidatePullRequest: 13,
+    candidateSha,
+    candidateTreeSha,
+    recoveryPullRequest: 14,
+    recoveryHeadSha,
+  };
+  const recordsEnvelope = buildProposalEnvelope({
+    phase: "bootstrap-recovery-records",
+    expectedTip: legacyTip,
+    expectedRevision: 2,
+    source,
+    paths: [recordPath, auditPath],
+    contentDigests: {
+      [recordPath]: digest(releaseCandidateRecord),
+      [auditPath]: digest(rcAuditRecord),
+    },
+  });
+  await verifyProtectedProposal({
+    baseRoot,
+    proposalRoot: recordsRoot,
+    proposalBaseSha: legacyTip,
+    envelope: recordsEnvelope,
+    candidatePullRequest,
+    recoveryPullRequest,
+    contract,
+  });
+
+  const migration = migrateFailedBootstrapAudit(legacy, {
+    legacyTip,
+    candidatePullRequest,
+    recoveryPullRequest,
+    candidateTreeSha,
+    planRecord,
+    releaseCandidateRecord,
+    rcAuditRecord,
   }, contract);
-  assert.equal(result.state.schemaVersion, 2);
-  assert.equal(result.state.stage, "RELEASE_APPROVED");
-  assert.equal(result.state.revision, 3);
-  assert.equal(result.state.candidateSha, sha);
-  assert.equal(result.state.records.planAudit, null);
+  const stateText = JSON.stringify(migration.state, null, 2) + "\n";
+  const pointerBaseTip = "b".repeat(40);
+  const recordsFiles = { ...baseFiles, [recordPath]: releaseCandidateRecord, [auditPath]: rcAuditRecord };
+  await writeTree(pointerRoot, { ...recordsFiles, [currentPath]: stateText, [versionPath]: stateText });
+  await writeTree(earlyPointerRoot, { ...baseFiles, [currentPath]: stateText, [versionPath]: stateText });
+  const pointerEnvelope = buildProposalEnvelope({
+    phase: "bootstrap-recovery-pointer",
+    expectedTip: pointerBaseTip,
+    expectedRevision: 2,
+    source,
+    paths: [currentPath, versionPath],
+    contentDigests: { [currentPath]: digest(stateText), [versionPath]: digest(stateText) },
+  });
+  await verifyProtectedProposal({
+    baseRoot: recordsRoot,
+    proposalRoot: pointerRoot,
+    proposalBaseSha: pointerBaseTip,
+    envelope: pointerEnvelope,
+    candidatePullRequest,
+    recoveryPullRequest,
+    contract,
+  });
 
-  const failedAudit = structuredClone(auditPr);
-  failedAudit.body = "审计编号：AUD-GOV-RC-002\n审计对象：" + sha + "\n最终结论：不通过\n";
-  assert.throws(() => migrateLegacyBootstrap(legacy, {
-    candidatePullRequest: candidatePr,
-    auditPullRequest: failedAudit,
-    candidateTreeSha: "2".repeat(40),
-    planRecord: "规划编号：GOV-PLAN-1\n目标：治理固化\n",
-  }, contract), /没有通过结论|不通过/u);
+  await writeFile(join(recordsRoot, "governance/runtime/extra.md"), "extra\n");
+  await assert.rejects(() => verifyProtectedProposal({ baseRoot, proposalRoot: recordsRoot, proposalBaseSha: legacyTip, envelope: recordsEnvelope, candidatePullRequest, recoveryPullRequest, contract }), GovernanceValidationError);
+  await rm(join(recordsRoot, "governance/runtime/extra.md"));
 
-  const futureLegacy = structuredClone(legacy);
-  futureLegacy.activeVersion = "governance-2";
-  assert.throws(() => migrateLegacyBootstrap(futureLegacy, {
-    candidatePullRequest: candidatePr,
-    auditPullRequest: auditPr,
-    candidateTreeSha: "2".repeat(40),
-    planRecord: "规划编号：GOV-PLAN-1\n目标：治理固化\n",
-  }, contract), /旧 bootstrap 阶段不匹配/u);
+  await rm(join(recordsRoot, ...auditPath.split("/")));
+  await assert.rejects(() => verifyProtectedProposal({ baseRoot, proposalRoot: recordsRoot, proposalBaseSha: legacyTip, envelope: recordsEnvelope, candidatePullRequest, recoveryPullRequest, contract }), GovernanceValidationError);
+  await writeTree(recordsRoot, { [auditPath]: rcAuditRecord });
+
+  await writeTree(recordsRoot, { [recordPath]: releaseCandidateRecord + "篡改\n" });
+  await assert.rejects(() => verifyProtectedProposal({ baseRoot, proposalRoot: recordsRoot, proposalBaseSha: legacyTip, envelope: recordsEnvelope, candidatePullRequest, recoveryPullRequest, contract }), GovernanceValidationError);
+  await writeTree(recordsRoot, { [recordPath]: releaseCandidateRecord });
+
+  const wrongDigest = structuredClone(recordsEnvelope);
+  wrongDigest.contentDigests[recordPath] = "f".repeat(64);
+  await assert.rejects(() => verifyProtectedProposal({ baseRoot, proposalRoot: recordsRoot, proposalBaseSha: legacyTip, envelope: wrongDigest, candidatePullRequest, recoveryPullRequest, contract }), GovernanceValidationError);
+  const wrongPhase = structuredClone(recordsEnvelope);
+  wrongPhase.phase = "bootstrap-recovery-pointer";
+  await assert.rejects(() => verifyProtectedProposal({ baseRoot, proposalRoot: recordsRoot, proposalBaseSha: legacyTip, envelope: wrongPhase, candidatePullRequest, recoveryPullRequest, contract }), GovernanceValidationError);
+  const wrongTip = structuredClone(recordsEnvelope);
+  wrongTip.expectedTip = "f".repeat(40);
+  await assert.rejects(() => verifyProtectedProposal({ baseRoot, proposalRoot: recordsRoot, proposalBaseSha: legacyTip, envelope: wrongTip, candidatePullRequest, recoveryPullRequest, contract }), GovernanceValidationError);
+  const wrongSource = structuredClone(recordsEnvelope);
+  wrongSource.source.recoveryHeadSha = "f".repeat(40);
+  await assert.rejects(() => verifyProtectedProposal({ baseRoot, proposalRoot: recordsRoot, proposalBaseSha: legacyTip, envelope: wrongSource, candidatePullRequest, recoveryPullRequest, contract }), GovernanceValidationError);
+  await assert.rejects(() => verifyProtectedProposal({ baseRoot, proposalRoot: earlyPointerRoot, proposalBaseSha: pointerBaseTip, envelope: pointerEnvelope, candidatePullRequest, recoveryPullRequest, contract }), GovernanceValidationError);
+
+  const recordTarget = join(recordsRoot, ...recordPath.split("/"));
+  await rm(recordTarget);
+  try {
+    await symlink(join(baseRoot, ...recordPath.split("/")), recordTarget, "file");
+    await assert.rejects(() => verifyProtectedProposal({ baseRoot, proposalRoot: recordsRoot, proposalBaseSha: legacyTip, envelope: recordsEnvelope, candidatePullRequest, recoveryPullRequest, contract }), /符号链接/u);
+  } catch (error) {
+    if (error?.code !== "EPERM") throw error;
+  } finally {
+    await rm(recordTarget, { force: true });
+    await writeTree(recordsRoot, { [recordPath]: releaseCandidateRecord });
+  }
+});
+
+test("reconstructs normal record and pointer proposals from the owner-authorized transition", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "governance-transition-gate-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const baseRoot = join(root, "base");
+  const recordRoot = join(root, "record");
+  const pointerRoot = join(root, "pointer");
+  const contract = await readJson(contractPath);
+  const stateTip = "9".repeat(40);
+  const pointerTip = "8".repeat(40);
+  const candidateSha = "d".repeat(40);
+  const treeSha = "e".repeat(40);
+  const previous = stateAt("IMPLEMENTING", { revision: 50 });
+  const sourcePr = {
+    number: 20,
+    state: "open",
+    draft: false,
+    body: "Candidate SHA：" + candidateSha + "\nTree SHA：" + treeSha + "\n测试：全部通过\n生产环境修改：没有\n",
+    head: { sha: candidateSha, ref: "release/v1.3.1", repo: { full_name: previous.repository } },
+    base: { sha: "b".repeat(40), ref: "main", repo: { full_name: previous.repository } },
+    treeSha,
+    stateTip,
+  };
+  const source = {
+    kind: "governance-transition",
+    authorizationComment: 2001,
+    stateTip,
+    pullRequest: 20,
+    headSha: candidateSha,
+    treeSha,
+    roleNumber: 3,
+    targetStage: "RC_AUDIT_PENDING",
+  };
+  const transition = buildGovernanceTransition(previous, {
+    roleNumber: 3,
+    targetStage: "RC_AUDIT_PENDING",
+    pullRequest: sourcePr,
+    treeSha,
+  }, contract);
+  const currentPath = "governance/runtime/current.json";
+  const recordPath = transition.state.records.releaseCandidate;
+  const versionPath = "governance/runtime/versions/1.3.1.json";
+  const baseFiles = {
+    [currentPath]: JSON.stringify(previous, null, 2) + "\n",
+    [recordPath]: "previous Candidate record\n",
+  };
+  await writeTree(baseRoot, baseFiles);
+  await writeTree(recordRoot, { ...baseFiles, [recordPath]: transition.record });
+  const recordEnvelope = buildProposalEnvelope({
+    phase: "transition-record",
+    expectedTip: stateTip,
+    expectedRevision: 50,
+    source,
+    paths: [recordPath],
+    contentDigests: { [recordPath]: digest(transition.record) },
+  });
+  await verifyProtectedProposal({
+    baseRoot,
+    proposalRoot: recordRoot,
+    proposalBaseSha: stateTip,
+    envelope: recordEnvelope,
+    candidatePullRequest: sourcePr,
+    recoveryPullRequest: {},
+    contract,
+  });
+
+  const nextText = JSON.stringify(transition.state, null, 2) + "\n";
+  await writeTree(pointerRoot, {
+    ...baseFiles,
+    [recordPath]: transition.record,
+    [currentPath]: nextText,
+    [versionPath]: nextText,
+  });
+  const pointerEnvelope = buildProposalEnvelope({
+    phase: "transition-pointer",
+    expectedTip: pointerTip,
+    expectedRevision: 50,
+    source,
+    paths: [currentPath, versionPath],
+    contentDigests: { [currentPath]: digest(nextText), [versionPath]: digest(nextText) },
+  });
+  await verifyProtectedProposal({
+    baseRoot: recordRoot,
+    proposalRoot: pointerRoot,
+    proposalBaseSha: pointerTip,
+    envelope: pointerEnvelope,
+    candidatePullRequest: sourcePr,
+    recoveryPullRequest: {},
+    contract,
+  });
+});
+
+test("independent Gate rejects failed, conditional and wrong-Candidate RC approval proposals", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "governance-rc-audit-gate-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const baseRoot = join(root, "base");
+  const contract = await readJson(contractPath);
+  const stateTip = "9".repeat(40);
+  const candidateSha = "a".repeat(40);
+  const candidateTreeSha = "c".repeat(40);
+  const candidatePullRequest = 20;
+  const previous = stateAt("RC_AUDIT_PENDING", {
+    revision: 52,
+    candidateSha,
+    candidateContext: {
+      branch: "release/v1.3.1",
+      pullRequest: candidatePullRequest,
+      baseSha: "b".repeat(40),
+      treeSha: candidateTreeSha,
+    },
+  });
+  const currentPath = contract.runtime.currentPath;
+  const recordPath = previous.records.rcAudit;
+  const baseFiles = { [currentPath]: JSON.stringify(previous, null, 2) + "\n" };
+  await writeTree(baseRoot, baseFiles);
+
+  const source = {
+    kind: "governance-transition",
+    authorizationComment: 3001,
+    stateTip,
+    pullRequest: candidatePullRequest,
+    headSha: candidateSha,
+    treeSha: candidateTreeSha,
+    roleNumber: 2,
+    targetStage: "RELEASE_APPROVED",
+  };
+  const verifyRecord = async (name, body, prOverrides = {}) => {
+    const proposalRoot = join(root, name);
+    await writeTree(proposalRoot, { ...baseFiles, [recordPath]: body });
+    const sourcePr = {
+      number: prOverrides.number ?? candidatePullRequest,
+      state: "open",
+      draft: false,
+      body,
+      head: {
+        sha: prOverrides.headSha ?? candidateSha,
+        ref: previous.candidateContext.branch,
+        repo: { full_name: previous.repository },
+      },
+      base: {
+        sha: previous.candidateContext.baseSha,
+        ref: "main",
+        repo: { full_name: previous.repository },
+      },
+      treeSha: prOverrides.treeSha ?? candidateTreeSha,
+      stateTip,
+    };
+    const envelope = buildProposalEnvelope({
+      phase: "transition-record",
+      expectedTip: stateTip,
+      expectedRevision: previous.revision,
+      source,
+      paths: [recordPath],
+      contentDigests: { [recordPath]: digest(body) },
+    });
+    return verifyProtectedProposal({
+      baseRoot,
+      proposalRoot,
+      proposalBaseSha: stateTip,
+      envelope,
+      candidatePullRequest: sourcePr,
+      recoveryPullRequest: {},
+      contract,
+    });
+  };
+  const validRecord = makeRcAuditRecord({
+    candidateSha,
+    candidateTreeSha,
+    candidatePullRequest,
+    conclusion: "通过",
+    targetStage: "RELEASE_APPROVED",
+  });
+  await verifyRecord("valid", validRecord);
+  const containedLowRecord = makeRcAuditRecord({
+    candidateSha,
+    candidateTreeSha,
+    candidatePullRequest,
+    conclusion: "通过",
+    targetStage: "RELEASE_APPROVED",
+    risks: [knownRisk()],
+  });
+  await verifyRecord("contained-low", containedLowRecord);
+
+  const rejectedRecords = [
+    ["failed", makeRcAuditRecord({ candidateSha, candidateTreeSha, candidatePullRequest, conclusion: "不通过", targetStage: "RELEASE_APPROVED" })],
+    ["conditional", makeRcAuditRecord({ candidateSha, candidateTreeSha, candidatePullRequest, conclusion: "有条件通过", targetStage: "RELEASE_APPROVED" })],
+    ["wrong-sha", makeRcAuditRecord({ candidateSha: "d".repeat(40), candidateTreeSha, candidatePullRequest, conclusion: "通过", targetStage: "RELEASE_APPROVED" })],
+    ["wrong-tree", makeRcAuditRecord({ candidateSha, candidateTreeSha: "e".repeat(40), candidatePullRequest, conclusion: "通过", targetStage: "RELEASE_APPROVED" })],
+    ["wrong-pr", makeRcAuditRecord({ candidateSha, candidateTreeSha, candidatePullRequest: 21, conclusion: "通过", targetStage: "RELEASE_APPROVED" })],
+    ["accepted-trust-root-blocker", makeRcAuditRecord({
+      candidateSha,
+      candidateTreeSha,
+      candidatePullRequest,
+      conclusion: "通过",
+      targetStage: "RELEASE_APPROVED",
+      risks: [knownRisk({ knownIssueId: "RISK-TRUST-ROOT-001", nonWaivableBoundary: "trusted-writer-boundary" })],
+    })],
+    ["accepted-candidate-identity-blocker", makeRcAuditRecord({
+      candidateSha,
+      candidateTreeSha,
+      candidatePullRequest,
+      conclusion: "通过",
+      targetStage: "RELEASE_APPROVED",
+      risks: [knownRisk({ knownIssueId: "RISK-CANDIDATE-001", nonWaivableBoundary: "candidate-identity-binding" })],
+    })],
+    ["accepted-cas-blocker", makeRcAuditRecord({
+      candidateSha,
+      candidateTreeSha,
+      candidatePullRequest,
+      conclusion: "通过",
+      targetStage: "RELEASE_APPROVED",
+      risks: [knownRisk({ knownIssueId: "RISK-CAS-001", nonWaivableBoundary: "cas-revision-stale-write-protection" })],
+    })],
+    ["accepted-protected-state-blocker", makeRcAuditRecord({
+      candidateSha,
+      candidateTreeSha,
+      candidatePullRequest,
+      conclusion: "通过",
+      targetStage: "RELEASE_APPROVED",
+      risks: [knownRisk({ knownIssueId: "RISK-PROTECTED-STATE-001", nonWaivableBoundary: "governance-state-authorization" })],
+    })],
+  ];
+  for (const [name, body] of rejectedRecords) {
+    await assert.rejects(() => verifyRecord(name, body), GovernanceValidationError);
+  }
+  await assert.rejects(() => verifyRecord("wrong-source-head", validRecord, { headSha: "d".repeat(40) }), GovernanceValidationError);
+  await assert.rejects(() => verifyRecord("wrong-source-tree", validRecord, { treeSha: "e".repeat(40) }), GovernanceValidationError);
+  await assert.rejects(() => verifyRecord("wrong-source-pr", validRecord, { number: 21 }), GovernanceValidationError);
 });
 
 function assertProtectedWriterSurface(workflow, writer, contract) {
+  const checkoutPin = "d23441a48e516b6c34aea4fa41551a30e30af803";
+  const checkoutUses = workflow.match(/uses: actions\/checkout@[^\s]+/gu) ?? [];
+  assert.equal(checkoutUses.length, 3);
+  assert.ok(checkoutUses.every((entry) => entry === "uses: actions/checkout@" + checkoutPin));
   assert.match(workflow, /issue_comment:\s*\n\s*types: \[created\]/u);
+  assert.match(workflow, /pull_request_target:/u);
+  assert.match(workflow, /repository_dispatch:\s*\n\s*types: \[governance-proposal\]/u);
+  assert.match(workflow, /governance-proposal-gate:/u);
+  assert.match(workflow, /checks: write/u);
+  assert.equal((workflow.match(/checks: write/gu) ?? []).length, 1);
+  assert.equal((workflow.match(/actions: write/gu) ?? []).length, 0);
+  assert.match(workflow, /repos\/\$REPOSITORY\/check-runs["']? --method POST/u);
+  assert.match(workflow, /name=governance-state-write/u);
+  assert.match(workflow, /head_sha=\$head_sha/u);
+  assert.match(workflow, /EXPECTED_PROPOSAL_HEAD/u);
+  assert.match(workflow, /check-runs\/\$CHECK_ID["']? --method PATCH/u);
   assert.match(workflow, /COMMENT_ACTOR.*REPOSITORY_OWNER/su);
   assert.match(workflow, /\^\/governance-transition.*\[0-9a-f\]\{40\}/u);
   assert.match(workflow, /ref: main/u);
   assert.match(workflow, /persist-credentials: false/u);
-  assert.match(workflow, /validate-transition.*--previous.*--records-root/su);
-  assert.match(workflow, /verify-remote/u);
+  assert.match(workflow, /verify-protected-proposal/u);
+  assert.match(workflow, /issues\/comments\/\$authorization_comment/u);
+  assert.match(workflow, /\.user\.login == \$owner/u);
   assert.match(workflow, /Write the immutable record through a protected pull request[\s\S]*Write current and version snapshot through a protected pull request/u);
   assert.match(workflow, /pull-requests: write/u);
-  assert.match(workflow, /statuses: write/u);
   assert.match(workflow, /governance-protected-write\.sh/u);
   assert.match(writer, /governance-state-write/u);
+  assert.match(writer, /repos\/\$REPOSITORY\/dispatches/u);
+  assert.match(writer, /\{event_type:"governance-proposal",client_payload:\{proposal_pr:\$proposal_pr\}\}/u);
+  assert.match(writer, /REQUIRED_STATUS_APP_ID=15368/u);
+  assert.match(writer, /commits\/\$head_sha\/check-runs/u);
+  assert.match(writer, /\.app\.id == \$app_id/u);
+  assert.match(writer, /\.app\.slug == "github-actions"/u);
+  assert.match(writer, /\.head_sha == \$head/u);
   assert.match(writer, /repos\/\$REPOSITORY\/pulls/u);
-  assert.match(writer, /repos\/\$REPOSITORY\/statuses\/\$head_sha/u);
   assert.match(writer, /pulls\/\$pull_request\/merge/u);
   assert.equal((writer.match(/if \[\[ "\$remote_tip" != "\$EXPECTED_TIP" \]\]; then/gu) ?? []).length, 3);
   assert.match(writer, /base=governance-state|base_ref.*governance-state/u);
   assert.doesNotMatch(workflow, /push origin HEAD:refs\/heads\/governance-state/u);
   assert.doesNotMatch(writer, /HEAD:refs\/heads\/governance-state/u);
+  assert.doesNotMatch(workflow + writer, /statuses: write|repos\/\$REPOSITORY\/statuses\//u);
+  assert.doesNotMatch(writer, /check-runs["']?\s+--method\s+(POST|PATCH)/u);
   assert.doesNotMatch(workflow, /governance-state\.mjs[^\n]* \+\s/u);
   assert.doesNotMatch(workflow + writer, /wrangler|cloudflare:deploy|git tag|refs\/tags\//u);
   assert.equal(contract.runtime.writeTransport, "protected-pull-request");
   assert.equal(contract.runtime.requiredStatusContext, "governance-state-write");
+  assert.equal(contract.runtime.requiredStatusAppId, 15368);
+  assert.equal(contract.runtime.statusProducer, "default-branch-repository-dispatch-proposal-gate");
+  assert.equal(contract.runtime.requiredCheckTransport, "checks-api-head-sha");
+  assert.equal(contract.runtime.writerRequestsIndependentGate, true);
+  assert.equal(contract.runtime.authorizationSource, "repository-owner-issue-comment");
+  assert.equal(contract.runtime.authorizationRevalidatedByGate, true);
+  assert.equal(contract.runtime.writerMayCreateStatus, false);
+  assert.equal(contract.runtime.writerMayCreateCheckRun, false);
+  assert.equal(contract.runtime.proposalVerifierExecutesHeadCode, false);
   assert.equal(contract.runtime.pullRequestRequired, true);
   assert.equal(contract.runtime.strictUpToDateRequired, true);
   assert.equal(contract.runtime.directPushAllowed, false);
@@ -482,7 +1392,7 @@ function assertProtectedWriterSurface(workflow, writer, contract) {
   assert.equal(contract.runtime.cloudflarePreviewBuildsAllowed, false);
 }
 
-test("ships an owner-only protected writer through two status-gated pull requests", async () => {
+test("ships an owner-only protected writer through two independently checked pull requests", async () => {
   const [workflow, writer, contract] = await Promise.all([
     readText(".github/workflows/governance-state.yml"),
     readText("scripts/governance-protected-write.sh"),
@@ -499,6 +1409,8 @@ test("detects protected writer drift before Candidate creation", async () => {
   ]);
   const mutations = [
     [workflow, writer.replace("governance-state-write", "untrusted-status"), contract],
+    [workflow, writer.replace("REQUIRED_STATUS_APP_ID=15368", "REQUIRED_STATUS_APP_ID=1"), contract],
+    [workflow, writer.replace('app.slug == "github-actions"', 'app.slug == "other"'), contract],
     [workflow, writer.replace("base=governance-state", "base=main"), contract],
     [workflow, writer.replace('if [[ "$remote_tip" != "$EXPECTED_TIP" ]]; then', "if false; then"), contract],
     [workflow + "\ngit push origin HEAD:refs/heads/governance-state\n", writer, contract],
@@ -510,13 +1422,22 @@ test("detects protected writer drift before Candidate creation", async () => {
       writer,
       contract,
     ],
+    [workflow + "\npermissions:\n  statuses: write\n", writer, contract],
+    [workflow.replace("checks: write", "checks: read"), writer, contract],
+    [workflow, writer.replace('event_type:"governance-proposal"', 'event_type:"other"'), contract],
+    [workflow.replaceAll("actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803", "actions/checkout@v6"), writer, contract],
   ];
   for (const mutation of mutations) {
     assert.throws(() => assertProtectedWriterSurface(...mutation), assert.AssertionError);
   }
 });
 
-test("merges one governance phase through an exact-tip protected pull request", async (t) => {
+test("waits for the pinned GitHub Actions check and merges the exact protected proposal", async (t) => {
+  const bashProbe = spawnSync("bash", ["--version"], { encoding: "utf8" });
+  if (bashProbe.error?.code === "ENOENT") {
+    t.skip("Bash integration runs on the Linux GitHub Actions runner");
+    return;
+  }
   const root = await mkdtemp(join(tmpdir(), "governance-protected-writer-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const remote = join(root, "remote.git");
@@ -530,7 +1451,7 @@ test("merges one governance phase through an exact-tip protected pull request", 
 
   const run = (command, args, options = {}) => {
     const result = spawnSync(command, args, { encoding: "utf8", ...options });
-    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.equal(result.status, 0, result.error?.message || result.stderr || result.stdout);
     return result.stdout.trim();
   };
   run("git", ["init", "--bare", remote]);
@@ -547,7 +1468,18 @@ test("merges one governance phase through an exact-tip protected pull request", 
 
   const recordPath = "governance/runtime/records/1.3.1/01-plan.md";
   await mkdir(join(work, "governance/runtime/records/1.3.1"), { recursive: true });
-  await writeFile(join(work, recordPath), "规划编号：TEST-1\n");
+  const record = "规划编号：TEST-1\n";
+  await writeFile(join(work, recordPath), record);
+  const envelopePath = join(root, "envelope.json");
+  const envelope = buildProposalEnvelope({
+    phase: "transition-record",
+    expectedTip,
+    expectedRevision: 1,
+    source: { kind: "transition-test" },
+    paths: [recordPath],
+    contentDigests: { [recordPath]: digest(record) },
+  });
+  await writeFile(envelopePath, JSON.stringify(envelope) + "\n");
 
   const fakeGh = `#!/usr/bin/env bash
 set -euo pipefail
@@ -555,11 +1487,13 @@ endpoint="$2"
 shift 2
 method="GET"
 jq_filter=""
+input_path=""
 declare -A fields=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --method) method="$2"; shift 2 ;;
     --jq) jq_filter="$2"; shift 2 ;;
+    --input) input_path="$2"; shift 2 ;;
     -f) fields["\${2%%=*}"]="\${2#*=}"; shift 2 ;;
     *) shift ;;
   esac
@@ -568,10 +1502,19 @@ if [[ "$endpoint" == "repos/$REPOSITORY/pulls" && "$method" == "POST" ]]; then
   head_ref="\${fields[head]}"
   head_sha="$(git --git-dir="$TEST_REMOTE" rev-parse "refs/heads/$head_ref")"
   printf '{"number":42,"state":"open","draft":false,"base":{"ref":"governance-state","repo":{"full_name":"%s"}},"head":{"ref":"%s","sha":"%s","repo":{"full_name":"%s"}}}\n' "$REPOSITORY" "$head_ref" "$head_sha" "$REPOSITORY"
-elif [[ "$endpoint" == "repos/$REPOSITORY/statuses/"* && "$method" == "POST" ]]; then
-  printf '{}\n'
+elif [[ "$endpoint" == "repos/$REPOSITORY/dispatches" && "$method" == "POST" ]]; then
+  jq -e '.event_type == "governance-proposal" and .client_payload.proposal_pr == "42"' "$input_path" >/dev/null
+  exit 0
+elif [[ "$endpoint" == "repos/$REPOSITORY/commits/"*"/check-runs?per_page=100" ]]; then
+  head_sha="\${endpoint#repos/$REPOSITORY/commits/}"
+  head_sha="\${head_sha%/check-runs?per_page=100}"
+  printf '{"check_runs":[{"id":9001,"name":"governance-state-write","status":"completed","conclusion":"success","head_sha":"%s","app":{"id":15368,"slug":"github-actions"}}]}\n' "$head_sha"
 elif [[ "$endpoint" == "repos/$REPOSITORY/pulls/42" && "$jq_filter" == ".mergeable" ]]; then
   printf 'true\n'
+elif [[ "$endpoint" == "repos/$REPOSITORY/pulls/42" ]]; then
+  head_ref="governance-write/$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-transition-record"
+  head_sha="$(git --git-dir="$TEST_REMOTE" rev-parse "refs/heads/$head_ref")"
+  printf '{"number":42,"state":"open","draft":false,"base":{"ref":"governance-state","repo":{"full_name":"%s"}},"head":{"ref":"%s","sha":"%s","repo":{"full_name":"%s"}}}\n' "$REPOSITORY" "$head_ref" "$head_sha" "$REPOSITORY"
 elif [[ "$endpoint" == "repos/$REPOSITORY/pulls/42/merge" && "$method" == "PUT" ]]; then
   head_sha="\${fields[sha]}"
   base_sha="$(git --git-dir="$TEST_REMOTE" rev-parse refs/heads/governance-state)"
@@ -592,15 +1535,16 @@ fi
     "scripts/governance-protected-write.sh",
     work,
     expectedTip,
-    "record",
+    "transition-record",
     "Record verified governance transition",
     "Record verified governance transition",
+    envelopePath,
     recordPath,
   ], {
     cwd: process.cwd(),
     env: {
       ...process.env,
-      PATH: bin + ":" + process.env.PATH,
+      PATH: bin + delimiter + process.env.PATH,
       GH_TOKEN: "fictional",
       REPOSITORY: "owner/repo",
       REPOSITORY_OWNER: "owner",
@@ -609,6 +1553,10 @@ fi
       GITHUB_OUTPUT: output,
       RUNNER_TEMP: runnerTemp,
       TEST_REMOTE: remote,
+      GOVERNANCE_CHECK_ATTEMPTS: "1",
+      GOVERNANCE_CHECK_INTERVAL_SECONDS: "0",
+      GOVERNANCE_MERGEABLE_ATTEMPTS: "1",
+      GOVERNANCE_MERGEABLE_INTERVAL_SECONDS: "0",
     },
   });
   const mergedTip = run("git", ["--git-dir", remote, "rev-parse", "refs/heads/governance-state"]);
@@ -617,16 +1565,257 @@ fi
   assert.equal(run("git", ["--git-dir", remote, "rev-list", "--parents", "-n", "1", mergedTip]).split(" ").length, 3);
 });
 
-test("stops Cloudflare Workers Builds for governance branches before build or version upload", () => {
-  for (const branch of ["governance-state", "governance/four-role-auto-handoff"]) {
+test("rejects wrong-app, wrong-head, failed, and missing governance checks without merging", async (t) => {
+  const bashProbe = spawnSync("bash", ["--version"], { encoding: "utf8" });
+  if (bashProbe.error?.code === "ENOENT") {
+    t.skip("Bash integration runs on the Linux GitHub Actions runner");
+    return;
+  }
+  const suiteRoot = await mkdtemp(join(tmpdir(), "governance-check-rejection-"));
+  t.after(() => rm(suiteRoot, { recursive: true, force: true }));
+
+  for (const mode of ["wrong-app", "wrong-head", "failure", "timeout"]) {
+    const root = join(suiteRoot, mode);
+    const remote = join(root, "remote.git");
+    const work = join(root, "work");
+    const bin = join(root, "bin");
+    const runnerTemp = join(root, "runner");
+    const output = join(root, "github-output");
+    const calls = join(root, "gh-calls");
+    await mkdir(work, { recursive: true });
+    await mkdir(bin, { recursive: true });
+    await mkdir(runnerTemp, { recursive: true });
+    const runGit = (args) => {
+      const result = spawnSync("git", args, { encoding: "utf8" });
+      assert.equal(result.status, 0, result.error?.message || result.stderr || result.stdout);
+      return result.stdout.trim();
+    };
+    runGit(["init", "--bare", remote]);
+    runGit(["init", work]);
+    runGit(["-C", work, "config", "user.name", "Governance Test"]);
+    runGit(["-C", work, "config", "user.email", "governance-test@users.noreply.github.com"]);
+    await writeTree(work, { "governance/runtime/current.json": "{}\n" });
+    runGit(["-C", work, "add", "governance/runtime/current.json"]);
+    runGit(["-C", work, "commit", "-m", "Initialize governance state"]);
+    runGit(["-C", work, "remote", "add", "origin", remote]);
+    runGit(["-C", work, "push", "origin", "HEAD:refs/heads/governance-state"]);
+    const expectedTip = runGit(["--git-dir", remote, "rev-parse", "refs/heads/governance-state"]);
+    const recordPath = "governance/runtime/records/1.3.1/01-plan.md";
+    const record = "规划编号：TEST-REJECT\n";
+    await writeTree(work, { [recordPath]: record });
+    const envelopePath = join(root, "envelope.json");
+    await writeFile(envelopePath, JSON.stringify(buildProposalEnvelope({
+      phase: "transition-record",
+      expectedTip,
+      expectedRevision: 1,
+      source: { kind: "transition-test" },
+      paths: [recordPath],
+      contentDigests: { [recordPath]: digest(record) },
+    })) + "\n");
+    const fakeGh = `#!/usr/bin/env bash
+set -euo pipefail
+endpoint="$2"
+printf '%s\n' "$endpoint" >> "$TEST_CALLS"
+shift 2
+method="GET"
+input_path=""
+declare -A fields=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --method) method="$2"; shift 2 ;;
+    --input) input_path="$2"; shift 2 ;;
+    -f) fields["\${2%%=*}"]="\${2#*=}"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+if [[ "$endpoint" == "repos/$REPOSITORY/pulls" && "$method" == "POST" ]]; then
+  head_ref="\${fields[head]}"
+  head_sha="$(git --git-dir="$TEST_REMOTE" rev-parse "refs/heads/$head_ref")"
+  printf '{"number":42,"state":"open","draft":false,"base":{"ref":"governance-state","repo":{"full_name":"%s"}},"head":{"ref":"%s","sha":"%s","repo":{"full_name":"%s"}}}\n' "$REPOSITORY" "$head_ref" "$head_sha" "$REPOSITORY"
+elif [[ "$endpoint" == "repos/$REPOSITORY/dispatches" && "$method" == "POST" ]]; then
+  jq -e '.event_type == "governance-proposal" and .client_payload.proposal_pr == "42"' "$input_path" >/dev/null
+  exit 0
+elif [[ "$endpoint" == "repos/$REPOSITORY/commits/"*"/check-runs?per_page=100" ]]; then
+  head_sha="\${endpoint#repos/$REPOSITORY/commits/}"
+  head_sha="\${head_sha%/check-runs?per_page=100}"
+  case "$TEST_CHECK_MODE" in
+    wrong-app) app_id=1; check_head="$head_sha"; conclusion=success ;;
+    wrong-head) app_id=15368; check_head=ffffffffffffffffffffffffffffffffffffffff; conclusion=success ;;
+    failure) app_id=15368; check_head="$head_sha"; conclusion=failure ;;
+    timeout) printf '{"check_runs":[]}\n'; exit 0 ;;
+  esac
+  printf '{"check_runs":[{"id":9001,"name":"governance-state-write","status":"completed","conclusion":"%s","head_sha":"%s","app":{"id":%s,"slug":"github-actions"}}]}\n' "$conclusion" "$check_head" "$app_id"
+else
+  echo "Unexpected fake gh call: $endpoint" >&2
+  exit 1
+fi
+`;
+    const ghPath = join(bin, "gh");
+    await writeFile(ghPath, fakeGh);
+    await chmod(ghPath, 0o755);
+    const result = spawnSync("bash", [
+      "scripts/governance-protected-write.sh",
+      work,
+      expectedTip,
+      "transition-record",
+      "Record rejected governance transition",
+      "Record rejected governance transition",
+      envelopePath,
+      recordPath,
+    ], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PATH: bin + delimiter + process.env.PATH,
+        GH_TOKEN: "fictional",
+        REPOSITORY: "owner/repo",
+        REPOSITORY_OWNER: "owner",
+        GITHUB_RUN_ID: "12" + mode.length,
+        GITHUB_RUN_ATTEMPT: "1",
+        GITHUB_OUTPUT: output,
+        RUNNER_TEMP: runnerTemp,
+        TEST_REMOTE: remote,
+        TEST_CALLS: calls,
+        TEST_CHECK_MODE: mode,
+        GOVERNANCE_CHECK_ATTEMPTS: "1",
+        GOVERNANCE_CHECK_INTERVAL_SECONDS: "0",
+      },
+    });
+    assert.equal(result.status, 75, mode + ": " + (result.stderr || result.stdout));
+    assert.doesNotMatch(await readFile(calls, "utf8"), /\/merge/u, mode);
+  }
+});
+
+test("blocks every governance-only Workers Build before build or version upload", async (t) => {
+  const bashProbe = spawnSync("bash", ["--version"], { encoding: "utf8" });
+  if (bashProbe.error?.code === "ENOENT") {
+    t.skip("Bash integration runs on the Linux GitHub Actions runner");
+    return;
+  }
+  for (const branch of [
+    "governance-state",
+    "governance/four-role-auto-handoff",
+    "governance/bootstrap-trust-root",
+    "governance-write/123-1-bootstrap-recovery-records",
+  ]) {
     const result = spawnSync("bash", ["scripts/build-verified.sh"], {
       encoding: "utf8",
       env: { ...process.env, WORKERS_CI: "1", WORKERS_CI_BRANCH: branch },
     });
     assert.equal(result.status, 78, branch);
-    assert.match(result.stderr, /disabled for governance-only branches/u);
+    assert.match(result.stderr, /disabled for a verified governance-only event/u);
     assert.doesNotMatch(result.stdout, /Running bounded vinext build/u);
   }
+
+  const root = await mkdtemp(join(tmpdir(), "governance-workers-guard-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const run = (args) => {
+    const result = spawnSync("git", ["-C", root, ...args], { encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    return result.stdout.trim();
+  };
+  run(["init"]);
+  run(["config", "user.name", "Governance Test"]);
+  run(["config", "user.email", "governance-test@users.noreply.github.com"]);
+  await writeTree(root, { "AGENTS.md": "baseline\n", "app/product.txt": "product baseline\n" });
+  run(["add", "."]);
+  run(["commit", "-m", "Initial baseline"]);
+  run(["branch", "-M", "main"]);
+  run(["checkout", "-b", "governance/bootstrap-trust-root"]);
+  const trustRootPaths = {
+    ".github/workflows/governance-state.yml": "trusted workflow\n",
+    "AGENTS.md": "baseline\ntrusted governance entry\n",
+    "docs/plans/protected-write.md": "protected write plan\n",
+    "docs/superpowers/plans/trust-root.md": "trust root plan\n",
+    "docs/superpowers/specs/trust-root.md": "trust root design\n",
+    "governance/README.md": "trusted governance\n",
+    "package-lock.json": "{}\n",
+    "package.json": "{}\n",
+    "scripts/build-verified.sh": "trusted build guard\n",
+    "scripts/governance-protected-write.sh": "trusted writer\n",
+    "scripts/governance-state.mjs": "trusted verifier\n",
+    "tests/governance-contract.test.mjs": "trusted tests\n",
+  };
+  await writeTree(root, trustRootPaths);
+  run(["add", ...Object.keys(trustRootPaths)]);
+  run(["commit", "-m", "Install governance trust root"]);
+  run(["checkout", "main"]);
+  run(["merge", "--no-ff", "governance/bootstrap-trust-root", "-m", "Merge pull request #15 from governance/bootstrap-trust-root"]);
+  const trustRootMerge = run(["rev-parse", "HEAD"]);
+  const guardedMerge = spawnSync("bash", [join(process.cwd(), "scripts/build-verified.sh")], {
+    cwd: root,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      WORKERS_CI: "1",
+      WORKERS_CI_BRANCH: "main",
+      WORKERS_CI_COMMIT_SHA: trustRootMerge,
+    },
+  });
+  assert.equal(guardedMerge.status, 78);
+  assert.match(guardedMerge.stderr, /disabled for a verified governance-only event/u);
+  assert.doesNotMatch(guardedMerge.stdout, /Running bounded vinext build/u);
+
+  run(["checkout", "-b", "marked-product-change"]);
+  await writeTree(root, { "app/product.txt": "changed product\n" });
+  run(["add", "app/product.txt"]);
+  run(["commit", "-m", "Change product"]);
+  run(["checkout", "main"]);
+  run(["merge", "--no-ff", "marked-product-change", "-m", "Governance trust root: invalid product change"]);
+  const mismatchedMerge = run(["rev-parse", "HEAD"]);
+  const mismatch = spawnSync("bash", [join(process.cwd(), "scripts/build-verified.sh")], {
+    cwd: root,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      WORKERS_CI: "1",
+      WORKERS_CI_BRANCH: "main",
+      WORKERS_CI_COMMIT_SHA: mismatchedMerge,
+    },
+  });
+  assert.equal(mismatch.status, 78);
+  assert.match(mismatch.stderr, /governance trust-root path mismatch/u);
+  assert.doesNotMatch(mismatch.stdout, /Running bounded vinext build/u);
+
+  run(["checkout", "-b", "ordinary-product-change"]);
+  await writeTree(root, { "app/product.txt": "ordinary product\n" });
+  run(["add", "app/product.txt"]);
+  run(["commit", "-m", "Ordinary product change"]);
+  const ordinaryCommit = run(["rev-parse", "HEAD"]);
+  const ordinary = spawnSync("bash", [join(process.cwd(), "scripts/build-verified.sh")], {
+    cwd: root,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      WORKERS_CI: "1",
+      WORKERS_CI_BRANCH: "main",
+      WORKERS_CI_COMMIT_SHA: ordinaryCommit,
+      SITES_ENV_READY: "1",
+      SITES_PROJECT_ROOT: root,
+    },
+  });
+  assert.equal(ordinary.status, 69);
+  assert.doesNotMatch(ordinary.stderr, /governance-only|trust-root path mismatch/u);
+
+  run(["checkout", "main"]);
+  await writeTree(root, { ".github/workflows/governance-state.yml": "unreviewed direct trust-root change\n" });
+  run(["add", ".github/workflows/governance-state.yml"]);
+  run(["commit", "-m", "Change governance workflow directly"]);
+  const oneParentTrustRoot = run(["rev-parse", "HEAD"]);
+  const invalidShape = spawnSync("bash", [join(process.cwd(), "scripts/build-verified.sh")], {
+    cwd: root,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      WORKERS_CI: "1",
+      WORKERS_CI_BRANCH: "main",
+      WORKERS_CI_COMMIT_SHA: oneParentTrustRoot,
+    },
+  });
+  assert.equal(invalidShape.status, 78);
+  assert.match(invalidShape.stderr, /trust-root merge shape cannot be resolved/u);
+  assert.doesNotMatch(invalidShape.stdout, /Running bounded vinext build/u);
 });
 
 test("documents protected writes, bootstrap retirement and no-preview activation gates", async () => {
@@ -642,13 +1831,53 @@ test("documents protected writes, bootstrap retirement and no-preview activation
     assert.match(source, /compare-and-swap|CAS/u);
     assert.match(source, /无秘密|泄密/u);
   }
-  assert.match(readme, /bootstrap.*governance-1/su);
-  assert.match(readme, /进入 main.*不得再次|进入.*main.*禁用/su);
+  assert.match(readme, /一次性失败审计恢复.*governance-1/su);
+  assert.match(readme, /trust-root.*main/su);
+  assert.match(readme, /Schema 2.*revision 3.*IMPLEMENTATION_REQUIRED/su);
+  assert.match(readme + workflow + agents, /15368/u);
   assert.match(agents, /Four-role governance entry/u);
   for (const source of roles) {
     assert.match(source, /受保护/u);
     assert.match(source, /不要求用户搬运已有交接文件/u);
   }
+});
+
+test("documents risk acceptance without weakening the formal audit state machine", async () => {
+  const [readme, workflow, auditRole, workRole, auditTemplate, candidateTemplate] = await Promise.all([
+    readText("governance/README.md"),
+    readText("governance/workflow.md"),
+    readText("governance/roles/super-audit.md"),
+    readText("governance/roles/super-work.md"),
+    readText("governance/handoff/audit-report.md"),
+    readText("governance/handoff/release-candidate.md"),
+  ]);
+  const classifications = [
+    "Blocking Risk",
+    "Accepted / Contained Risk",
+    "Monitored Technical Debt",
+    "Low / Won't Fix Now",
+  ];
+  const labels = [
+    "Known Issue",
+    "风险分类",
+    "Issue",
+    "Severity",
+    "Impact / Blast Radius",
+    "Containment",
+    "Stop / Escalation Condition",
+    "Planned Follow-up Version",
+    "Non-Waivable Boundary",
+  ];
+  for (const source of [readme, workflow, auditRole, auditTemplate]) {
+    for (const classification of classifications) assert.match(source, new RegExp(classification.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "u"));
+    for (const label of labels) assert.match(source, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "u"));
+    assert.match(source, /不可豁免/u);
+    assert.match(source, /第三.*审计结论|审计结论.*仍(?:然)?只有.*通过.*不通过|不生成.*审计终局/u);
+  }
+  assert.match(workRole, /披露.*Known Issue/su);
+  assert.match(workRole, /不得.*(?:接受|Accepted).*角色 2/su);
+  assert.match(candidateTemplate, /披露.*Known Issue/su);
+  assert.match(candidateTemplate, /不得.*(?:接受|Accepted).*角色 2/su);
 });
 
 test("keeps all six handoff templates and the governance-only product freeze", async () => {

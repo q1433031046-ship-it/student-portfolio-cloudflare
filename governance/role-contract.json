@@ -11,9 +11,18 @@
     "productionDeploymentTriggeredByStateBranch": false,
     "writeWorkflow": ".github/workflows/governance-state.yml",
     "writeCommand": "/governance-transition <expected-tip> <expected-revision> <role-number> <target-stage>",
-    "bootstrapWriteCommand": "/governance-bootstrap <expected-tip> <expected-revision> <candidate-pr-number>",
+    "bootstrapRecoveryCommand": "/governance-bootstrap-recover <expected-tip> 2 13 14 <candidate-sha> <tree-sha> <recovery-head-sha>",
     "writeTransport": "protected-pull-request",
     "requiredStatusContext": "governance-state-write",
+    "requiredStatusAppId": 15368,
+    "statusProducer": "default-branch-repository-dispatch-proposal-gate",
+    "requiredCheckTransport": "checks-api-head-sha",
+    "writerRequestsIndependentGate": true,
+    "authorizationSource": "repository-owner-issue-comment",
+    "authorizationRevalidatedByGate": true,
+    "writerMayCreateStatus": false,
+    "writerMayCreateCheckRun": false,
+    "proposalVerifierExecutesHeadCode": false,
     "pullRequestRequired": true,
     "strictUpToDateRequired": true,
     "directPushAllowed": false,
@@ -22,12 +31,95 @@
     "recordFirstThenPointer": true,
     "compareAndSwapRequired": true
   },
+  "auditPolicy": {
+    "acceptedConclusions": ["通过", "不通过"],
+    "conclusionTargets": {
+      "PLAN_AUDIT_PENDING": {
+        "通过": "IMPLEMENTATION_APPROVED",
+        "不通过": "PLANNING_REQUIRED"
+      },
+      "RC_AUDIT_PENDING": {
+        "通过": "RELEASE_APPROVED",
+        "不通过": "IMPLEMENTATION_REQUIRED"
+      }
+    },
+    "rcAuditIdentityFields": ["candidateSha", "candidateTreeSha", "candidatePullRequest"],
+    "approvedCandidateShaRequiredOnPass": true,
+    "riskAcceptancePolicy": {
+      "classifications": [
+        "Blocking Risk",
+        "Accepted / Contained Risk",
+        "Monitored Technical Debt",
+        "Low / Won't Fix Now"
+      ],
+      "passEligibleClassifications": [
+        "Accepted / Contained Risk",
+        "Monitored Technical Debt",
+        "Low / Won't Fix Now"
+      ],
+      "severities": ["Critical", "High", "Medium", "Low"],
+      "acceptedSeverities": ["Medium", "Low"],
+      "lowWontFixSeverities": ["Low"],
+      "containmentMechanisms": [
+        "isolation",
+        "fail-closed",
+        "feature-disabled",
+        "manual-recovery",
+        "known-issue",
+        "follow-up-version"
+      ],
+      "requiredRiskFields": [
+        "knownIssueId",
+        "classification",
+        "issue",
+        "severity",
+        "impactBlastRadius",
+        "containment",
+        "stopEscalationCondition",
+        "plannedFollowUpVersion",
+        "nonWaivableBoundary"
+      ],
+      "followUpVersionPatterns": [
+        "^v[0-9]+\\.[0-9]+\\.[0-9]+$",
+        "^governance-[1-9][0-9]*$"
+      ],
+      "noBoundaryValue": "none",
+      "nonWaivableBoundaries": [
+        { "id": "governance-state-authorization", "description": "governance-state 可越权修改" },
+        { "id": "ruleset-required-check-integrity", "description": "Ruleset 或 required check 可绕过、伪造或由错误集成满足" },
+        { "id": "candidate-identity-binding", "description": "Candidate SHA、Tree、PR 或审计目标无法唯一绑定" },
+        { "id": "cas-revision-stale-write-protection", "description": "CAS 或 revision 无法阻止陈旧覆盖" },
+        { "id": "failed-audit-forward-progress", "description": "审计失败后仍可非法前进" },
+        { "id": "trusted-writer-boundary", "description": "trusted writer 或独立 Gate 的信任边界失效" },
+        { "id": "write-outcome-integrity", "description": "写入失败、未合并或未读回却报告成功" },
+        { "id": "release-candidate-eligibility", "description": "错误 Candidate 获得发布资格" },
+        { "id": "production-data-security-irreversibility", "description": "可能造成生产、数据、安全或不可逆治理错误" }
+      ]
+    }
+  },
   "bootstrapPolicy": {
     "activeVersion": "governance-1",
     "candidateBranch": "governance/four-role-auto-handoff",
     "baseSha": "d81785dd51bb0c9be339449566a15d3b3971e02a",
     "planAuditMayBeNull": true,
-    "disableAfterContractOnMain": true
+    "disableAfterContractOnMain": true,
+    "failedAuditRecovery": {
+      "legacyTip": "3e7867d3cdba75045f6dc8aa0448ccaac3547b68",
+      "legacyRevision": 2,
+      "legacyCandidateSha": "7caf24d4c52f1502d43cbf668329701986669a6e",
+      "candidatePullRequest": 13,
+      "candidateSha": "e24d78fd76cfbca9ebd957d16c406ffbc1c09e1b",
+      "candidateTreeSha": "a54f47d5f5b5b54e18454d5faa7a4fc3a403228d",
+      "recoveryPullRequest": 14,
+      "recoveryBranch": "recovery/governance-rc-audit-r1",
+      "recoveryHeadSha": "9451ef05fbe289aaade134bb60fb1a57e5eb15a6",
+      "auditConclusion": "failed",
+      "targetStage": "IMPLEMENTATION_REQUIRED",
+      "resultSchemaVersion": 2,
+      "resultRevision": 3,
+      "singleUse": true,
+      "retainCompletedReceipt": true
+    }
   },
   "requiredWorkflowStages": [
     "IDLE",

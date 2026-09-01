@@ -124,12 +124,39 @@
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["isBootstrapCandidate", "candidateSha", "candidateBranch", "baseSha"],
+          "required": [
+            "mode",
+            "completed",
+            "sourceSchemaVersion",
+            "sourceRevision",
+            "sourceTip",
+            "legacyCandidateSha",
+            "candidateSha",
+            "candidateBranch",
+            "candidateTreeSha",
+            "candidatePullRequest",
+            "recoveryPullRequest",
+            "recoveryHeadSha",
+            "baseSha",
+            "targetStage",
+            "auditConclusion"
+          ],
           "properties": {
-            "isBootstrapCandidate": { "const": true },
-            "candidateSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+            "mode": { "const": "legacy-failed-audit-recovery" },
+            "completed": { "const": true },
+            "sourceSchemaVersion": { "const": 1 },
+            "sourceRevision": { "const": 2 },
+            "sourceTip": { "const": "3e7867d3cdba75045f6dc8aa0448ccaac3547b68" },
+            "legacyCandidateSha": { "const": "7caf24d4c52f1502d43cbf668329701986669a6e" },
+            "candidateSha": { "const": "e24d78fd76cfbca9ebd957d16c406ffbc1c09e1b" },
             "candidateBranch": { "const": "governance/four-role-auto-handoff" },
-            "baseSha": { "const": "d81785dd51bb0c9be339449566a15d3b3971e02a" }
+            "candidateTreeSha": { "const": "a54f47d5f5b5b54e18454d5faa7a4fc3a403228d" },
+            "candidatePullRequest": { "const": 13 },
+            "recoveryPullRequest": { "const": 14 },
+            "recoveryHeadSha": { "const": "9451ef05fbe289aaade134bb60fb1a57e5eb15a6" },
+            "baseSha": { "const": "d81785dd51bb0c9be339449566a15d3b3971e02a" },
+            "targetStage": { "const": "IMPLEMENTATION_REQUIRED" },
+            "auditConclusion": { "const": "failed" }
           }
         }
       ]

@@ -3,32 +3,247 @@ name: Governance State Transition
 on:
   issue_comment:
     types: [created]
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [governance-state]
+  repository_dispatch:
+    types: [governance-proposal]
 
 permissions:
   contents: read
   issues: read
   pull-requests: read
 
-concurrency:
-  group: governance-state-transition
-  cancel-in-progress: false
-
 jobs:
-  validate-and-write:
-    if: >-
-      github.event.issue.pull_request &&
-      startsWith(github.event.comment.body, '/governance-transition ')
+  governance-proposal-gate:
+    if: github.event_name == 'pull_request_target' || github.event_name == 'repository_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      checks: write
+      contents: read
+      issues: read
+      pull-requests: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPOSITORY: ${{ github.repository }}
+      REPOSITORY_OWNER: ${{ github.repository_owner }}
+      PROPOSAL_PR_NUMBER: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.proposal_pr || github.event.pull_request.number }}
+    steps:
+      - name: Create the trusted head-bound governance check
+        id: gate_check
+        shell: bash
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          [[ "$PROPOSAL_PR_NUMBER" =~ ^[1-9][0-9]*$ ]]
+          proposal_pr="$RUNNER_TEMP/proposal-pr-initial.json"
+          gh api "repos/$REPOSITORY/pulls/$PROPOSAL_PR_NUMBER" > "$proposal_pr"
+          jq -e --arg repository "$REPOSITORY" '
+            .state == "open" and
+            .draft == false and
+            .user.login == "github-actions[bot]" and
+            .base.ref == "governance-state" and
+            .base.repo.full_name == $repository and
+            .head.repo.full_name == $repository and
+            (.head.sha | test("^[0-9a-f]{40}$"))
+          ' "$proposal_pr" >/dev/null
+          head_sha="$(jq -r '.head.sha' "$proposal_pr")"
+          check="$RUNNER_TEMP/governance-check.json"
+          gh api "repos/$REPOSITORY/check-runs" --method POST \
+            -f "name=governance-state-write" \
+            -f "head_sha=$head_sha" \
+            -f "status=in_progress" \
+            -f "details_url=$RUN_URL" > "$check"
+          check_id="$(jq -r '.id // empty' "$check")"
+          [[ "$check_id" =~ ^[1-9][0-9]*$ ]]
+          {
+            echo "check_id=$check_id"
+            echo "head_sha=$head_sha"
+          } >> "$GITHUB_OUTPUT"
+          jq -e --arg head "$head_sha" '
+            .name == "governance-state-write" and
+            .head_sha == $head and
+            .status == "in_progress" and
+            .app.id == 15368 and
+            .app.slug == "github-actions" and
+            (.id | type == "number" and . > 0)
+          ' "$check" >/dev/null
+
+      - name: Checkout only trusted default-branch verification code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: main
+          path: trusted
+          persist-credentials: false
+
+      - name: Install trusted verifier dependencies
+        working-directory: trusted
+        shell: bash
+        run: npm ci --ignore-scripts
+
+      - name: Reconstruct and verify the protected proposal without executing it
+        id: verification
+        working-directory: trusted
+        shell: bash
+        env:
+          EXPECTED_PROPOSAL_HEAD: ${{ steps.gate_check.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          proposal_pr="$RUNNER_TEMP/proposal-pr.json"
+          gh api "repos/$REPOSITORY/pulls/$PROPOSAL_PR_NUMBER" > "$proposal_pr"
+          jq -e --arg repository "$REPOSITORY" '
+            .state == "open" and
+            .draft == false and
+            .user.login == "github-actions[bot]" and
+            .base.ref == "governance-state" and
+            .base.repo.full_name == $repository and
+            .head.repo.full_name == $repository and
+            (.head.sha | test("^[0-9a-f]{40}$")) and
+            (.base.sha | test("^[0-9a-f]{40}$")) and
+            (.head.ref | test("^governance-write/[0-9]+-[0-9]+-[a-z0-9][a-z0-9-]{0,63}$"))
+          ' "$proposal_pr" >/dev/null
+
+          body="$RUNNER_TEMP/proposal-body.txt"
+          jq -r '.body // ""' "$proposal_pr" > "$body"
+          [[ "$(grep -c '^<!-- governance-envelope$' "$body" || true)" == "1" ]]
+          [[ "$(grep -c '^-->$' "$body" || true)" == "1" ]]
+          envelope="$RUNNER_TEMP/envelope.json"
+          awk '/^<!-- governance-envelope$/{getline; print; exit}' "$body" > "$envelope"
+          canonical="$RUNNER_TEMP/envelope-canonical.json"
+          node scripts/governance-state.mjs build-proposal-envelope "$envelope" \
+            --contract governance/role-contract.json \
+            --output "$canonical"
+          cmp "$envelope" "$canonical"
+
+          phase="$(jq -r '.phase' "$envelope")"
+          expected_tip="$(jq -r '.expectedTip' "$envelope")"
+          source_tip="$(jq -r '.source.stateTip // .source.legacyTip // empty' "$envelope")"
+          head_ref="$(jq -r '.head.ref' "$proposal_pr")"
+          base_sha="$(jq -r '.base.sha' "$proposal_pr")"
+          head_sha="$(jq -r '.head.sha' "$proposal_pr")"
+          [[ "$head_sha" == "$EXPECTED_PROPOSAL_HEAD" ]]
+          [[ "$head_ref" =~ ^governance-write/([0-9]+)-([0-9]+)-(.+)$ ]]
+          [[ "${BASH_REMATCH[3]}" == "$phase" ]]
+          [[ "$base_sha" == "$expected_tip" ]]
+          [[ "$source_tip" =~ ^[0-9a-f]{40}$ ]]
+
+          data="$RUNNER_TEMP/proposal-data"
+          base_root="$RUNNER_TEMP/proposal-base"
+          proposal_root="$RUNNER_TEMP/proposal-head"
+          mkdir -p "$base_root" "$proposal_root"
+          git init --quiet "$data"
+          git -C "$data" remote add origin "https://x-access-token:$GH_TOKEN@github.com/$REPOSITORY.git"
+          git -C "$data" fetch --no-tags --depth=3 origin "$base_sha" "$head_sha"
+          read -r proposal_commit proposal_parent proposal_extra < <(git -C "$data" rev-list --parents -n 1 "$head_sha")
+          [[ "$proposal_commit" == "$head_sha" && "$proposal_parent" == "$base_sha" && -z "${proposal_extra:-}" ]]
+          if [[ "$base_sha" != "$source_tip" ]]; then
+            read -r base_commit first_parent second_parent base_extra < <(git -C "$data" rev-list --parents -n 1 "$base_sha")
+            [[ "$base_commit" == "$base_sha" && "$first_parent" == "$source_tip" && -n "$second_parent" && -z "${base_extra:-}" ]]
+          fi
+          git -C "$data" archive "$base_sha" | tar -x -C "$base_root"
+          git -C "$data" archive "$head_sha" | tar -x -C "$proposal_root"
+
+          candidate_pr="$RUNNER_TEMP/source-candidate-pr.json"
+          recovery_pr="$RUNNER_TEMP/source-recovery-pr.json"
+          source_kind="$(jq -r '.source.kind' "$envelope")"
+          authorization_comment="$(jq -r '.source.authorizationComment' "$envelope")"
+          [[ "$authorization_comment" =~ ^[1-9][0-9]*$ ]]
+          authorization="$RUNNER_TEMP/authorization-comment.json"
+          gh api "repos/$REPOSITORY/issues/comments/$authorization_comment" > "$authorization"
+          jq -e --arg owner "$REPOSITORY_OWNER" --argjson comment_id "$authorization_comment" \
+            '.id == $comment_id and .user.login == $owner' "$authorization" >/dev/null
+          authorization_issue="$(jq -r '.issue_url | split("/") | last' "$authorization")"
+          authorization_body="$(jq -r '.body' "$authorization")"
+          if [[ "$source_kind" == "bootstrap-failed-audit-recovery" ]]; then
+            [[ "$authorization_issue" == "14" ]]
+            [[ "$authorization_body" =~ ^/governance-bootstrap-recover\ ([0-9a-f]{40})\ (2)\ (13)\ (14)\ ([0-9a-f]{40})\ ([0-9a-f]{40})\ ([0-9a-f]{40})$ ]]
+            [[ "${BASH_REMATCH[1]}" == "$(jq -r '.source.legacyTip' "$envelope")" ]]
+            [[ "${BASH_REMATCH[2]}" == "$(jq -r '.expectedRevision' "$envelope")" ]]
+            [[ "${BASH_REMATCH[3]}" == "$(jq -r '.source.candidatePullRequest' "$envelope")" ]]
+            [[ "${BASH_REMATCH[4]}" == "$(jq -r '.source.recoveryPullRequest' "$envelope")" ]]
+            [[ "${BASH_REMATCH[5]}" == "$(jq -r '.source.candidateSha' "$envelope")" ]]
+            [[ "${BASH_REMATCH[6]}" == "$(jq -r '.source.candidateTreeSha' "$envelope")" ]]
+            [[ "${BASH_REMATCH[7]}" == "$(jq -r '.source.recoveryHeadSha' "$envelope")" ]]
+            candidate_number="$(jq -r '.source.candidatePullRequest' "$envelope")"
+            recovery_number="$(jq -r '.source.recoveryPullRequest' "$envelope")"
+            gh api "repos/$REPOSITORY/pulls/$candidate_number" > "$candidate_pr"
+            gh api "repos/$REPOSITORY/pulls/$recovery_number" > "$recovery_pr.raw"
+            candidate_head="$(jq -r '.head.sha' "$candidate_pr")"
+            candidate_tree="$(gh api "repos/$REPOSITORY/git/commits/$candidate_head" --jq '.tree.sha')"
+            [[ "$candidate_tree" == "$(jq -r '.source.candidateTreeSha' "$envelope")" ]]
+            recovery_head="$(jq -r '.head.sha' "$recovery_pr.raw")"
+            git -C "$data" fetch --no-tags --depth=1 origin "$recovery_head"
+            git -C "$data" show "$recovery_head:governance/runtime/records/governance-1/04-release-candidate.md" > "$RUNNER_TEMP/source-candidate.md"
+            git -C "$data" show "$recovery_head:governance/runtime/records/governance-1/05-rc-audit.md" > "$RUNNER_TEMP/source-audit.md"
+            jq --rawfile candidate "$RUNNER_TEMP/source-candidate.md" \
+              --rawfile audit "$RUNNER_TEMP/source-audit.md" \
+              '. + {records: {releaseCandidate: $candidate, rcAudit: $audit}}' \
+              "$recovery_pr.raw" > "$recovery_pr"
+          elif [[ "$source_kind" == "governance-transition" ]]; then
+            source_number="$(jq -r '.source.pullRequest' "$envelope")"
+            [[ "$authorization_issue" == "$source_number" ]]
+            [[ "$authorization_body" =~ ^/governance-transition\ ([0-9a-f]{40})\ ([0-9]+)\ ([1-4])\ ([A-Z_]+)$ ]]
+            [[ "${BASH_REMATCH[1]}" == "$(jq -r '.source.stateTip' "$envelope")" ]]
+            [[ "${BASH_REMATCH[2]}" == "$(jq -r '.expectedRevision' "$envelope")" ]]
+            [[ "${BASH_REMATCH[3]}" == "$(jq -r '.source.roleNumber' "$envelope")" ]]
+            [[ "${BASH_REMATCH[4]}" == "$(jq -r '.source.targetStage' "$envelope")" ]]
+            gh api "repos/$REPOSITORY/pulls/$source_number" > "$candidate_pr.raw"
+            source_head="$(jq -r '.head.sha' "$candidate_pr.raw")"
+            source_tree="$(gh api "repos/$REPOSITORY/git/commits/$source_head" --jq '.tree.sha')"
+            jq --arg tree "$source_tree" --arg state_tip "$source_tip" \
+              '. + {treeSha: $tree, stateTip: $state_tip}' "$candidate_pr.raw" > "$candidate_pr"
+            printf '{}\n' > "$recovery_pr"
+          else
+            echo "Unknown governance proposal source." >&2
+            exit 1
+          fi
+
+          node scripts/governance-state.mjs verify-protected-proposal "$envelope" \
+            --contract governance/role-contract.json \
+            --base-root "$base_root" \
+            --proposal-root "$proposal_root" \
+            --proposal-base-sha "$base_sha" \
+            --candidate-pr "$candidate_pr" \
+            --recovery-pr "$recovery_pr"
+
+      - name: Complete the trusted head-bound governance check
+        if: always() && steps.gate_check.outputs.check_id != ''
+        shell: bash
+        env:
+          CHECK_ID: ${{ steps.gate_check.outputs.check_id }}
+          VERIFICATION_OUTCOME: ${{ steps.verification.outcome }}
+        run: |
+          set -euo pipefail
+          conclusion="failure"
+          if [[ "$VERIFICATION_OUTCOME" == "success" ]]; then
+            conclusion="success"
+          fi
+          gh api "repos/$REPOSITORY/check-runs/$CHECK_ID" --method PATCH \
+            -f "status=completed" \
+            -f "conclusion=$conclusion" >/dev/null
+          [[ "$conclusion" == "success" ]]
+
+  transition:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.pull_request &&
+      startsWith(github.event.comment.body, '/governance-transition ')
+    concurrency:
+      group: governance-state-orchestrator
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
       issues: write
       pull-requests: write
-      statuses: write
     env:
       GH_TOKEN: ${{ github.token }}
       COMMENT_ACTOR: ${{ github.actor }}
       COMMENT_BODY: ${{ github.event.comment.body }}
+      COMMENT_ID: ${{ github.event.comment.id }}
       PR_NUMBER: ${{ github.event.issue.number }}
       REPOSITORY: ${{ github.repository }}
       REPOSITORY_OWNER: ${{ github.repository_owner }}
@@ -38,14 +253,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "$COMMENT_ACTOR" != "$REPOSITORY_OWNER" ]]; then
-            echo "Only the repository owner may request a governance transition." >&2
-            exit 1
-          fi
-          if [[ ! "$COMMENT_BODY" =~ ^/governance-transition\ ([0-9a-f]{40})\ ([0-9]+)\ ([1-4])\ ([A-Z_]+)$ ]]; then
-            echo "Use the exact governance transition command." >&2
-            exit 1
-          fi
+          [[ "$COMMENT_ACTOR" == "$REPOSITORY_OWNER" ]]
+          [[ "$COMMENT_BODY" =~ ^/governance-transition\ ([0-9a-f]{40})\ ([0-9]+)\ ([1-4])\ ([A-Z_]+)$ ]]
           {
             echo "expected_tip=${BASH_REMATCH[1]}"
             echo "expected_revision=${BASH_REMATCH[2]}"
@@ -53,81 +262,78 @@ jobs:
             echo "target_stage=${BASH_REMATCH[4]}"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Checkout only trusted default-branch validation code
-        uses: actions/checkout@v6
+      - name: Checkout only trusted default-branch orchestration code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: main
           persist-credentials: false
 
-      - name: Resolve the immutable same-repository proposal
-        id: proposal
+      - name: Install trusted orchestration dependencies
         shell: bash
-        env:
-          EXPECTED_REVISION: ${{ steps.command.outputs.expected_revision }}
-        run: |
-          set -euo pipefail
-          proposal="$RUNNER_TEMP/proposal.json"
-          gh api "repos/$REPOSITORY/pulls/$PR_NUMBER" > "$proposal"
-          jq -e --arg repository "$REPOSITORY" '
-            .state == "open" and
-            .draft == false and
-            .base.ref == "main" and
-            .base.repo.full_name == $repository and
-            .head.repo.full_name == $repository and
-            (.head.sha | test("^[0-9a-f]{40}$"))
-          ' "$proposal" >/dev/null
-          head_sha="$(jq -r '.head.sha' "$proposal")"
-          tree_sha="$(gh api "repos/$REPOSITORY/git/commits/$head_sha" --jq '.tree.sha')"
-          if [[ ! "$tree_sha" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "GitHub returned an invalid proposal tree." >&2
-            exit 1
-          fi
-          {
-            echo "path=$proposal"
-            echo "head_sha=$head_sha"
-            echo "tree_sha=$tree_sha"
-          } >> "$GITHUB_OUTPUT"
+        run: npm ci --ignore-scripts
 
-      - name: Read the exact previous state branch tip
-        id: previous
+      - name: Resolve immutable source and exact state tip
+        id: inputs
         shell: bash
         env:
           EXPECTED_TIP: ${{ steps.command.outputs.expected_tip }}
           EXPECTED_REVISION: ${{ steps.command.outputs.expected_revision }}
+          ROLE_NUMBER: ${{ steps.command.outputs.role_number }}
+          TARGET_STAGE: ${{ steps.command.outputs.target_stage }}
         run: |
           set -euo pipefail
+          source_pr="$RUNNER_TEMP/source-pr.json"
+          gh api "repos/$REPOSITORY/pulls/$PR_NUMBER" > "$source_pr.raw"
+          jq -e --arg repository "$REPOSITORY" '
+            .state == "open" and .draft == false and
+            .base.ref == "main" and
+            .base.repo.full_name == $repository and
+            .head.repo.full_name == $repository and
+            (.head.sha | test("^[0-9a-f]{40}$"))
+          ' "$source_pr.raw" >/dev/null
+          head_sha="$(jq -r '.head.sha' "$source_pr.raw")"
+          tree_sha="$(gh api "repos/$REPOSITORY/git/commits/$head_sha" --jq '.tree.sha')"
+          [[ "$tree_sha" =~ ^[0-9a-f]{40}$ ]]
+          jq --arg tree "$tree_sha" --arg state_tip "$EXPECTED_TIP" \
+            '. + {treeSha: $tree, stateTip: $state_tip}' "$source_pr.raw" > "$source_pr"
+
           state_root="$RUNNER_TEMP/governance-state"
-          git init "$state_root"
+          git init --quiet "$state_root"
           git -C "$state_root" remote add origin "https://x-access-token:$GH_TOKEN@github.com/$REPOSITORY.git"
           git -C "$state_root" fetch --no-tags --depth=1 origin refs/heads/governance-state
-          actual_tip="$(git -C "$state_root" rev-parse FETCH_HEAD)"
-          if [[ "$actual_tip" != "$EXPECTED_TIP" ]]; then
-            echo "governance-state tip changed; reload before retrying." >&2
-            exit 1
-          fi
-          git -C "$state_root" checkout -b governance-state FETCH_HEAD
-          previous="$RUNNER_TEMP/previous.json"
-          cp "$state_root/governance/runtime/current.json" "$previous"
-          actual_revision="$(jq -r '.revision' "$previous")"
-          if [[ "$actual_revision" != "$EXPECTED_REVISION" ]]; then
-            echo "Governance revision changed; reload before retrying." >&2
-            exit 1
-          fi
+          [[ "$(git -C "$state_root" rev-parse FETCH_HEAD)" == "$EXPECTED_TIP" ]]
+          git -C "$state_root" checkout --quiet -b governance-state FETCH_HEAD
+          previous="$state_root/governance/runtime/current.json"
+          [[ "$(jq -r '.revision' "$previous")" == "$EXPECTED_REVISION" ]]
+
+          source="$RUNNER_TEMP/transition-source.json"
+          jq -n \
+            --argjson authorization_comment "$COMMENT_ID" \
+            --arg state_tip "$EXPECTED_TIP" \
+            --argjson pull_request "$PR_NUMBER" \
+            --arg head_sha "$head_sha" \
+            --arg tree_sha "$tree_sha" \
+            --argjson role_number "$ROLE_NUMBER" \
+            --arg target_stage "$TARGET_STAGE" \
+            '{kind:"governance-transition",authorizationComment:$authorization_comment,stateTip:$state_tip,pullRequest:$pull_request,headSha:$head_sha,treeSha:$tree_sha,roleNumber:$role_number,targetStage:$target_stage}' > "$source"
           {
-            echo "root=$state_root"
-            echo "state=$previous"
+            echo "state_root=$state_root"
+            echo "previous=$previous"
+            echo "source_pr=$source_pr"
+            echo "source=$source"
+            echo "tree_sha=$tree_sha"
           } >> "$GITHUB_OUTPUT"
 
       - name: Build and validate the field-limited transition
         id: transition
         shell: bash
         env:
+          PREVIOUS_PATH: ${{ steps.inputs.outputs.previous }}
+          SOURCE_PR: ${{ steps.inputs.outputs.source_pr }}
+          TREE_SHA: ${{ steps.inputs.outputs.tree_sha }}
           ROLE_NUMBER: ${{ steps.command.outputs.role_number }}
           TARGET_STAGE: ${{ steps.command.outputs.target_stage }}
-          PROPOSAL_PATH: ${{ steps.proposal.outputs.path }}
-          TREE_SHA: ${{ steps.proposal.outputs.tree_sha }}
-          PREVIOUS_PATH: ${{ steps.previous.outputs.state }}
-          STATE_ROOT: ${{ steps.previous.outputs.root }}
+          STATE_ROOT: ${{ steps.inputs.outputs.state_root }}
         run: |
           set -euo pipefail
           next="$RUNNER_TEMP/next.json"
@@ -137,7 +343,7 @@ jobs:
             --contract governance/role-contract.json \
             --role "$ROLE_NUMBER" \
             --target "$TARGET_STAGE" \
-            --pr "$PROPOSAL_PATH" \
+            --pr "$SOURCE_PR" \
             --tree-sha "$TREE_SHA" \
             --output "$next" \
             --record-output "$record" \
@@ -157,6 +363,7 @@ jobs:
           fi
           {
             echo "next=$next"
+            echo "record=$record"
             echo "record_path=$record_path"
           } >> "$GITHUB_OUTPUT"
 
@@ -164,21 +371,32 @@ jobs:
         id: record_commit
         shell: bash
         env:
-          STATE_ROOT: ${{ steps.previous.outputs.root }}
-          EXPECTED_TIP: ${{ steps.command.outputs.expected_tip }}
+          STATE_ROOT: ${{ steps.inputs.outputs.state_root }}
+          SOURCE_PATH: ${{ steps.inputs.outputs.source }}
+          RECORD_FILE: ${{ steps.transition.outputs.record }}
           RECORD_PATH: ${{ steps.transition.outputs.record_path }}
+          EXPECTED_TIP: ${{ steps.command.outputs.expected_tip }}
+          EXPECTED_REVISION: ${{ steps.command.outputs.expected_revision }}
         run: |
           set -euo pipefail
           git -C "$STATE_ROOT" config user.name "github-actions[bot]"
           git -C "$STATE_ROOT" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           current_tip="$EXPECTED_TIP"
           if [[ -n "$RECORD_PATH" ]]; then
+            digest="$(sha256sum "$RECORD_FILE" | cut -d' ' -f1)"
+            spec="$RUNNER_TEMP/record-envelope-spec.json"
+            envelope="$RUNNER_TEMP/record-envelope.json"
+            jq -n --arg phase "transition-record" --arg tip "$EXPECTED_TIP" \
+              --argjson revision "$EXPECTED_REVISION" --slurpfile source "$SOURCE_PATH" \
+              --arg path "$RECORD_PATH" --arg digest "$digest" \
+              '{phase:$phase,expectedTip:$tip,expectedRevision:$revision,source:$source[0],paths:[$path],contentDigests:{($path):$digest}}' > "$spec"
+            node scripts/governance-state.mjs build-proposal-envelope "$spec" --contract governance/role-contract.json --output "$envelope"
             output="$RUNNER_TEMP/record-write-output"
             GITHUB_OUTPUT="$output" bash scripts/governance-protected-write.sh \
-              "$STATE_ROOT" "$EXPECTED_TIP" record \
+              "$STATE_ROOT" "$EXPECTED_TIP" transition-record \
               "Record verified governance transition" \
               "Record verified governance transition" \
-              "$RECORD_PATH"
+              "$envelope" "$RECORD_PATH"
             current_tip="$(sed -n 's/^tip=//p' "$output")"
           fi
           echo "tip=$current_tip" >> "$GITHUB_OUTPUT"
@@ -187,23 +405,37 @@ jobs:
         id: pointer_commit
         shell: bash
         env:
-          STATE_ROOT: ${{ steps.previous.outputs.root }}
+          STATE_ROOT: ${{ steps.inputs.outputs.state_root }}
+          SOURCE_PATH: ${{ steps.inputs.outputs.source }}
           NEXT_PATH: ${{ steps.transition.outputs.next }}
           EXPECTED_TIP: ${{ steps.record_commit.outputs.tip }}
+          EXPECTED_REVISION: ${{ steps.command.outputs.expected_revision }}
         run: |
           set -euo pipefail
           git -C "$STATE_ROOT" fetch --no-tags --depth=1 origin refs/heads/governance-state
           [[ "$(git -C "$STATE_ROOT" rev-parse FETCH_HEAD)" == "$EXPECTED_TIP" ]]
           git -C "$STATE_ROOT" reset --hard FETCH_HEAD
           active_version="$(jq -r '.activeVersion' "$NEXT_PATH")"
-          cp "$NEXT_PATH" "$STATE_ROOT/governance/runtime/current.json"
-          mkdir -p "$STATE_ROOT/governance/runtime/versions"
-          cp "$NEXT_PATH" "$STATE_ROOT/governance/runtime/versions/$active_version.json"
+          current_path="governance/runtime/current.json"
+          version_path="governance/runtime/versions/$active_version.json"
+          cp "$NEXT_PATH" "$STATE_ROOT/$current_path"
+          mkdir -p "$STATE_ROOT/$(dirname "$version_path")"
+          cp "$NEXT_PATH" "$STATE_ROOT/$version_path"
+          current_digest="$(sha256sum "$STATE_ROOT/$current_path" | cut -d' ' -f1)"
+          version_digest="$(sha256sum "$STATE_ROOT/$version_path" | cut -d' ' -f1)"
+          spec="$RUNNER_TEMP/pointer-envelope-spec.json"
+          envelope="$RUNNER_TEMP/pointer-envelope.json"
+          jq -n --arg phase "transition-pointer" --arg tip "$EXPECTED_TIP" \
+            --argjson revision "$EXPECTED_REVISION" --slurpfile source "$SOURCE_PATH" \
+            --arg current "$current_path" --arg version "$version_path" \
+            --arg current_digest "$current_digest" --arg version_digest "$version_digest" \
+            '{phase:$phase,expectedTip:$tip,expectedRevision:$revision,source:$source[0],paths:[$current,$version],contentDigests:{($current):$current_digest,($version):$version_digest}}' > "$spec"
+          node scripts/governance-state.mjs build-proposal-envelope "$spec" --contract governance/role-contract.json --output "$envelope"
           bash scripts/governance-protected-write.sh \
-            "$STATE_ROOT" "$EXPECTED_TIP" pointer \
+            "$STATE_ROOT" "$EXPECTED_TIP" transition-pointer \
             "Advance verified governance state" \
             "Advance verified governance state" \
-            governance/runtime/current.json "governance/runtime/versions/$active_version.json"
+            "$envelope" "$current_path" "$version_path"
 
       - name: Confirm the verified handoff
         shell: bash
@@ -212,176 +444,238 @@ jobs:
           TARGET_STAGE: ${{ steps.command.outputs.target_stage }}
         run: |
           set -euo pipefail
-          gh api "repos/$REPOSITORY/issues/$PR_NUMBER/comments" --method POST -f "body=Governance transition committed by the protected writer: $TARGET_STAGE at $NEW_TIP."
+          gh api "repos/$REPOSITORY/issues/$PR_NUMBER/comments" --method POST \
+            -f "body=Governance transition committed by the protected writer: $TARGET_STAGE at $NEW_TIP."
 
-  migrate-approved-bootstrap:
+  bootstrap-recovery:
     if: >-
+      github.event_name == 'issue_comment' &&
       github.event.issue.pull_request &&
-      startsWith(github.event.comment.body, '/governance-bootstrap ')
+      startsWith(github.event.comment.body, '/governance-bootstrap-recover ')
+    concurrency:
+      group: governance-state-orchestrator
+      cancel-in-progress: false
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     permissions:
       contents: write
       issues: write
       pull-requests: write
-      statuses: write
     env:
       GH_TOKEN: ${{ github.token }}
       COMMENT_ACTOR: ${{ github.actor }}
       COMMENT_BODY: ${{ github.event.comment.body }}
-      AUDIT_PR_NUMBER: ${{ github.event.issue.number }}
+      COMMENT_ID: ${{ github.event.comment.id }}
+      COMMENT_PR_NUMBER: ${{ github.event.issue.number }}
       REPOSITORY: ${{ github.repository }}
       REPOSITORY_OWNER: ${{ github.repository_owner }}
     steps:
-      - name: Parse the one-time bootstrap migration command
+      - name: Parse the exact one-time failed-audit recovery command
         id: command
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "$COMMENT_ACTOR" != "$REPOSITORY_OWNER" ]]; then
-            echo "Only the repository owner may request bootstrap migration." >&2
-            exit 1
-          fi
-          if [[ ! "$COMMENT_BODY" =~ ^/governance-bootstrap\ ([0-9a-f]{40})\ (2)\ (13)$ ]]; then
-            echo "Use the exact one-time bootstrap migration command." >&2
-            exit 1
-          fi
+          [[ "$COMMENT_ACTOR" == "$REPOSITORY_OWNER" ]]
+          [[ "$COMMENT_PR_NUMBER" == "14" ]]
+          [[ "$COMMENT_BODY" =~ ^/governance-bootstrap-recover\ ([0-9a-f]{40})\ (2)\ (13)\ (14)\ ([0-9a-f]{40})\ ([0-9a-f]{40})\ ([0-9a-f]{40})$ ]]
           {
             echo "expected_tip=${BASH_REMATCH[1]}"
             echo "expected_revision=${BASH_REMATCH[2]}"
             echo "candidate_pr=${BASH_REMATCH[3]}"
+            echo "recovery_pr=${BASH_REMATCH[4]}"
+            echo "candidate_sha=${BASH_REMATCH[5]}"
+            echo "tree_sha=${BASH_REMATCH[6]}"
+            echo "recovery_head=${BASH_REMATCH[7]}"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Checkout trusted bootstrap migration code
-        uses: actions/checkout@v6
+      - name: Checkout trusted failed-audit recovery code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: main
           persist-credentials: false
 
-      - name: Resolve Candidate and passing audit pull requests
-        id: proposals
+      - name: Install trusted recovery dependencies
         shell: bash
-        env:
-          CANDIDATE_PR: ${{ steps.command.outputs.candidate_pr }}
-        run: |
-          set -euo pipefail
-          candidate="$RUNNER_TEMP/candidate-pr.json"
-          audit="$RUNNER_TEMP/audit-pr.json"
-          gh api "repos/$REPOSITORY/pulls/$CANDIDATE_PR" > "$candidate"
-          gh api "repos/$REPOSITORY/pulls/$AUDIT_PR_NUMBER" > "$audit"
-          for proposal in "$candidate" "$audit"; do
-            jq -e --arg repository "$REPOSITORY" '
-              .state == "open" and
-              .draft == false and
-              .base.ref == "main" and
-              .base.repo.full_name == $repository and
-              .head.repo.full_name == $repository
-            ' "$proposal" >/dev/null
-          done
-          candidate_sha="$(jq -r '.head.sha' "$candidate")"
-          tree_sha="$(gh api "repos/$REPOSITORY/git/commits/$candidate_sha" --jq '.tree.sha')"
-          {
-            echo "candidate=$candidate"
-            echo "audit=$audit"
-            echo "tree_sha=$tree_sha"
-          } >> "$GITHUB_OUTPUT"
+        run: npm ci --ignore-scripts
 
-      - name: Read the exact legacy bootstrap tip
-        id: previous
+      - name: Resolve the fixed PR identities and legacy state
+        id: inputs
         shell: bash
         env:
           EXPECTED_TIP: ${{ steps.command.outputs.expected_tip }}
           EXPECTED_REVISION: ${{ steps.command.outputs.expected_revision }}
+          CANDIDATE_PR: ${{ steps.command.outputs.candidate_pr }}
+          RECOVERY_PR: ${{ steps.command.outputs.recovery_pr }}
+          CANDIDATE_SHA: ${{ steps.command.outputs.candidate_sha }}
+          TREE_SHA: ${{ steps.command.outputs.tree_sha }}
+          RECOVERY_HEAD: ${{ steps.command.outputs.recovery_head }}
         run: |
           set -euo pipefail
+          policy="$(jq -c '.bootstrapPolicy.failedAuditRecovery' governance/role-contract.json)"
+          [[ "$EXPECTED_TIP" == "$(jq -r '.legacyTip' <<<"$policy")" ]]
+          [[ "$EXPECTED_REVISION" == "$(jq -r '.legacyRevision' <<<"$policy")" ]]
+          [[ "$CANDIDATE_PR" == "$(jq -r '.candidatePullRequest' <<<"$policy")" ]]
+          [[ "$RECOVERY_PR" == "$(jq -r '.recoveryPullRequest' <<<"$policy")" ]]
+          [[ "$CANDIDATE_SHA" == "$(jq -r '.candidateSha' <<<"$policy")" ]]
+          [[ "$TREE_SHA" == "$(jq -r '.candidateTreeSha' <<<"$policy")" ]]
+          [[ "$RECOVERY_HEAD" == "$(jq -r '.recoveryHeadSha' <<<"$policy")" ]]
+
+          candidate_pr="$RUNNER_TEMP/candidate-pr.json"
+          recovery_pr="$RUNNER_TEMP/recovery-pr.json"
+          gh api "repos/$REPOSITORY/pulls/$CANDIDATE_PR" > "$candidate_pr"
+          gh api "repos/$REPOSITORY/pulls/$RECOVERY_PR" > "$recovery_pr"
+          jq -e --arg repository "$REPOSITORY" --arg sha "$CANDIDATE_SHA" '
+            .number == 13 and .state == "open" and .draft == false and
+            .head.sha == $sha and .head.repo.full_name == $repository and
+            .base.repo.full_name == $repository
+          ' "$candidate_pr" >/dev/null
+          jq -e --arg repository "$REPOSITORY" --arg sha "$RECOVERY_HEAD" '
+            .number == 14 and .state == "open" and .draft == false and
+            .head.sha == $sha and .head.repo.full_name == $repository and
+            .base.repo.full_name == $repository
+          ' "$recovery_pr" >/dev/null
+          [[ "$(gh api "repos/$REPOSITORY/git/commits/$CANDIDATE_SHA" --jq '.tree.sha')" == "$TREE_SHA" ]]
+
           state_root="$RUNNER_TEMP/governance-state"
-          git init "$state_root"
+          git init --quiet "$state_root"
           git -C "$state_root" remote add origin "https://x-access-token:$GH_TOKEN@github.com/$REPOSITORY.git"
           git -C "$state_root" fetch --no-tags --depth=1 origin refs/heads/governance-state
-          actual_tip="$(git -C "$state_root" rev-parse FETCH_HEAD)"
-          [[ "$actual_tip" == "$EXPECTED_TIP" ]]
-          git -C "$state_root" checkout -b governance-state FETCH_HEAD
-          previous="$RUNNER_TEMP/legacy-current.json"
-          cp "$state_root/governance/runtime/current.json" "$previous"
+          [[ "$(git -C "$state_root" rev-parse FETCH_HEAD)" == "$EXPECTED_TIP" ]]
+          git -C "$state_root" fetch --no-tags --depth=1 origin "$RECOVERY_HEAD"
+          git -C "$state_root" checkout --quiet -b governance-state "$EXPECTED_TIP"
+          previous="$state_root/governance/runtime/current.json"
           [[ "$(jq -r '.schemaVersion' "$previous")" == "1" ]]
           [[ "$(jq -r '.revision' "$previous")" == "$EXPECTED_REVISION" ]]
+          git -C "$state_root" show "$RECOVERY_HEAD:governance/runtime/records/governance-1/04-release-candidate.md" > "$RUNNER_TEMP/source-candidate.md"
+          git -C "$state_root" show "$RECOVERY_HEAD:governance/runtime/records/governance-1/05-rc-audit.md" > "$RUNNER_TEMP/source-audit.md"
+
+          source="$RUNNER_TEMP/bootstrap-source.json"
+          jq -n --argjson authorization_comment "$COMMENT_ID" --arg legacy_tip "$EXPECTED_TIP" --arg candidate_sha "$CANDIDATE_SHA" \
+            --arg tree_sha "$TREE_SHA" --arg recovery_head "$RECOVERY_HEAD" \
+            '{kind:"bootstrap-failed-audit-recovery",authorizationComment:$authorization_comment,legacyTip:$legacy_tip,candidatePullRequest:13,candidateSha:$candidate_sha,candidateTreeSha:$tree_sha,recoveryPullRequest:14,recoveryHeadSha:$recovery_head}' > "$source"
           {
-            echo "root=$state_root"
-            echo "state=$previous"
+            echo "state_root=$state_root"
+            echo "previous=$previous"
+            echo "candidate_pr=$candidate_pr"
+            echo "recovery_pr=$recovery_pr"
+            echo "candidate_record=$RUNNER_TEMP/source-candidate.md"
+            echo "audit_record=$RUNNER_TEMP/source-audit.md"
+            echo "source=$source"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Build and validate the single-use migration
+      - name: Build the exact failed-audit migration
         id: migration
         shell: bash
         env:
-          STATE_ROOT: ${{ steps.previous.outputs.root }}
-          PREVIOUS_PATH: ${{ steps.previous.outputs.state }}
-          CANDIDATE_PR_PATH: ${{ steps.proposals.outputs.candidate }}
-          AUDIT_PR_PATH: ${{ steps.proposals.outputs.audit }}
-          TREE_SHA: ${{ steps.proposals.outputs.tree_sha }}
+          STATE_ROOT: ${{ steps.inputs.outputs.state_root }}
+          PREVIOUS_PATH: ${{ steps.inputs.outputs.previous }}
+          CANDIDATE_PR_PATH: ${{ steps.inputs.outputs.candidate_pr }}
+          RECOVERY_PR_PATH: ${{ steps.inputs.outputs.recovery_pr }}
+          CANDIDATE_RECORD: ${{ steps.inputs.outputs.candidate_record }}
+          AUDIT_RECORD: ${{ steps.inputs.outputs.audit_record }}
+          EXPECTED_TIP: ${{ steps.command.outputs.expected_tip }}
+          TREE_SHA: ${{ steps.command.outputs.tree_sha }}
         run: |
           set -euo pipefail
-          next="$RUNNER_TEMP/next.json"
-          candidate_record="$RUNNER_TEMP/release-candidate.md"
-          audit_record="$RUNNER_TEMP/rc-audit.md"
+          next="$RUNNER_TEMP/recovered-next.json"
+          candidate_output="$RUNNER_TEMP/recovered-candidate.md"
+          audit_output="$RUNNER_TEMP/recovered-audit.md"
           plan_record="$STATE_ROOT/governance/runtime/records/governance-1/01-plan.md"
-          node scripts/governance-state.mjs build-bootstrap "$PREVIOUS_PATH" \
+          node scripts/governance-state.mjs build-bootstrap-recovery "$PREVIOUS_PATH" \
             --contract governance/role-contract.json \
+            --legacy-tip "$EXPECTED_TIP" \
             --candidate-pr "$CANDIDATE_PR_PATH" \
-            --audit-pr "$AUDIT_PR_PATH" \
+            --recovery-pr "$RECOVERY_PR_PATH" \
             --tree-sha "$TREE_SHA" \
             --plan-record "$plan_record" \
+            --candidate-record "$CANDIDATE_RECORD" \
+            --audit-record "$AUDIT_RECORD" \
             --output "$next" \
-            --candidate-output "$candidate_record" \
-            --audit-output "$audit_record"
-          cp "$candidate_record" "$STATE_ROOT/governance/runtime/records/governance-1/04-release-candidate.md"
-          cp "$audit_record" "$STATE_ROOT/governance/runtime/records/governance-1/05-rc-audit.md"
+            --candidate-output "$candidate_output" \
+            --audit-output "$audit_output"
+          cp "$candidate_output" "$STATE_ROOT/governance/runtime/records/governance-1/04-release-candidate.md"
+          cp "$audit_output" "$STATE_ROOT/governance/runtime/records/governance-1/05-rc-audit.md"
           node scripts/governance-state.mjs validate-static "$next" --contract governance/role-contract.json
           node scripts/governance-state.mjs verify-records "$next" --contract governance/role-contract.json --records-root "$STATE_ROOT"
           GITHUB_TOKEN="$GH_TOKEN" node scripts/governance-state.mjs verify-remote "$next" --contract governance/role-contract.json
-          echo "next=$next" >> "$GITHUB_OUTPUT"
+          {
+            echo "next=$next"
+            echo "candidate_output=$candidate_output"
+            echo "audit_output=$audit_output"
+          } >> "$GITHUB_OUTPUT"
 
-      - name: Write bootstrap records through a protected pull request
+      - name: Write recovered audit records through a protected pull request
         id: records
         shell: bash
         env:
-          STATE_ROOT: ${{ steps.previous.outputs.root }}
+          STATE_ROOT: ${{ steps.inputs.outputs.state_root }}
+          SOURCE_PATH: ${{ steps.inputs.outputs.source }}
+          CANDIDATE_RECORD: ${{ steps.migration.outputs.candidate_output }}
+          AUDIT_RECORD: ${{ steps.migration.outputs.audit_output }}
           EXPECTED_TIP: ${{ steps.command.outputs.expected_tip }}
+          EXPECTED_REVISION: ${{ steps.command.outputs.expected_revision }}
         run: |
           set -euo pipefail
           git -C "$STATE_ROOT" config user.name "github-actions[bot]"
           git -C "$STATE_ROOT" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          candidate_path="governance/runtime/records/governance-1/04-release-candidate.md"
+          audit_path="governance/runtime/records/governance-1/05-rc-audit.md"
+          candidate_digest="$(sha256sum "$CANDIDATE_RECORD" | cut -d' ' -f1)"
+          audit_digest="$(sha256sum "$AUDIT_RECORD" | cut -d' ' -f1)"
+          spec="$RUNNER_TEMP/bootstrap-record-envelope-spec.json"
+          envelope="$RUNNER_TEMP/bootstrap-record-envelope.json"
+          jq -n --arg phase "bootstrap-recovery-records" --arg tip "$EXPECTED_TIP" \
+            --argjson revision "$EXPECTED_REVISION" --slurpfile source "$SOURCE_PATH" \
+            --arg candidate_path "$candidate_path" --arg audit_path "$audit_path" \
+            --arg candidate_digest "$candidate_digest" --arg audit_digest "$audit_digest" \
+            '{phase:$phase,expectedTip:$tip,expectedRevision:$revision,source:$source[0],paths:[$candidate_path,$audit_path],contentDigests:{($candidate_path):$candidate_digest,($audit_path):$audit_digest}}' > "$spec"
+          node scripts/governance-state.mjs build-proposal-envelope "$spec" --contract governance/role-contract.json --output "$envelope"
           bash scripts/governance-protected-write.sh \
-            "$STATE_ROOT" "$EXPECTED_TIP" bootstrap-records \
-            "Record approved governance bootstrap" \
-            "Record approved governance bootstrap" \
-            governance/runtime/records/governance-1/04-release-candidate.md \
-            governance/runtime/records/governance-1/05-rc-audit.md
+            "$STATE_ROOT" "$EXPECTED_TIP" bootstrap-recovery-records \
+            "Record failed governance bootstrap audit" \
+            "Record failed governance bootstrap audit" \
+            "$envelope" "$candidate_path" "$audit_path"
 
-      - name: Write the migrated current pointer through a protected pull request
+      - name: Write the recovered state pointer through a protected pull request
         id: pointer
         shell: bash
         env:
-          STATE_ROOT: ${{ steps.previous.outputs.root }}
+          STATE_ROOT: ${{ steps.inputs.outputs.state_root }}
+          SOURCE_PATH: ${{ steps.inputs.outputs.source }}
           NEXT_PATH: ${{ steps.migration.outputs.next }}
           EXPECTED_TIP: ${{ steps.records.outputs.tip }}
+          EXPECTED_REVISION: ${{ steps.command.outputs.expected_revision }}
         run: |
           set -euo pipefail
           git -C "$STATE_ROOT" fetch --no-tags --depth=1 origin refs/heads/governance-state
           [[ "$(git -C "$STATE_ROOT" rev-parse FETCH_HEAD)" == "$EXPECTED_TIP" ]]
           git -C "$STATE_ROOT" reset --hard FETCH_HEAD
-          cp "$NEXT_PATH" "$STATE_ROOT/governance/runtime/current.json"
-          cp "$NEXT_PATH" "$STATE_ROOT/governance/runtime/versions/governance-1.json"
+          current_path="governance/runtime/current.json"
+          version_path="governance/runtime/versions/governance-1.json"
+          cp "$NEXT_PATH" "$STATE_ROOT/$current_path"
+          mkdir -p "$STATE_ROOT/$(dirname "$version_path")"
+          cp "$NEXT_PATH" "$STATE_ROOT/$version_path"
+          current_digest="$(sha256sum "$STATE_ROOT/$current_path" | cut -d' ' -f1)"
+          version_digest="$(sha256sum "$STATE_ROOT/$version_path" | cut -d' ' -f1)"
+          spec="$RUNNER_TEMP/bootstrap-pointer-envelope-spec.json"
+          envelope="$RUNNER_TEMP/bootstrap-pointer-envelope.json"
+          jq -n --arg phase "bootstrap-recovery-pointer" --arg tip "$EXPECTED_TIP" \
+            --argjson revision "$EXPECTED_REVISION" --slurpfile source "$SOURCE_PATH" \
+            --arg current "$current_path" --arg version "$version_path" \
+            --arg current_digest "$current_digest" --arg version_digest "$version_digest" \
+            '{phase:$phase,expectedTip:$tip,expectedRevision:$revision,source:$source[0],paths:[$current,$version],contentDigests:{($current):$current_digest,($version):$version_digest}}' > "$spec"
+          node scripts/governance-state.mjs build-proposal-envelope "$spec" --contract governance/role-contract.json --output "$envelope"
           bash scripts/governance-protected-write.sh \
-            "$STATE_ROOT" "$EXPECTED_TIP" bootstrap-pointer \
-            "Migrate approved governance bootstrap" \
-            "Migrate approved governance bootstrap" \
-            governance/runtime/current.json governance/runtime/versions/governance-1.json
+            "$STATE_ROOT" "$EXPECTED_TIP" bootstrap-recovery-pointer \
+            "Recover failed governance bootstrap state" \
+            "Recover failed governance bootstrap state" \
+            "$envelope" "$current_path" "$version_path"
 
-      - name: Confirm the one-time migration
+      - name: Confirm the one-time failed-audit recovery
         shell: bash
         env:
           NEW_TIP: ${{ steps.pointer.outputs.tip }}
         run: |
           set -euo pipefail
-          gh api "repos/$REPOSITORY/issues/$AUDIT_PR_NUMBER/comments" --method POST -f "body=Approved governance bootstrap migrated by the protected writer at $NEW_TIP."
+          gh api "repos/$REPOSITORY/issues/14/comments" --method POST \
+            -f "body=Failed governance audit recovered through two protected proposals at $NEW_TIP. Current stage: IMPLEMENTATION_REQUIRED."
