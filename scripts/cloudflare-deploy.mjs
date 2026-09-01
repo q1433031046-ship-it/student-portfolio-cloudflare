@@ -48,10 +48,12 @@ const BRIDGE_WRANGLER_SAFETY = Object.freeze({
   autoconfig: false,
   supportedRemoteBindingTypes: BRIDGE_SUPPORTED_REMOTE_BINDING_TYPES,
 });
-const BRIDGE_NO_PROVISION_ARGS = Object.freeze(["--experimental-provision=false"]);
+const BRIDGE_NO_PROVISION_ARGS = Object.freeze([
+  "--experimental-provision=false",
+  "--experimental-auto-create=false",
+]);
 const BRIDGE_SAFE_DEPLOY_ARGS = Object.freeze([
   ...BRIDGE_NO_PROVISION_ARGS,
-  "--experimental-auto-create=false",
   "--autoconfig=false",
 ]);
 const BRIDGE_UNSUPPORTED_RESOURCE_CONFIG_FIELDS = Object.freeze([
@@ -93,19 +95,7 @@ const BRIDGE_UNSUPPORTED_RESOURCE_CONFIG_FIELDS = Object.freeze([
 ]);
 
 function usage() {
-  return `用法: bash scripts/deploy-cloudflare.sh [选项]
-
-选项:
-  --mode auto|new|upgrade|workers-builds-upgrade
-                           自动识别、仅首次部署、人工升级或 Workers Builds 严格升级（默认 auto）
-  --config PATH            Wrangler 配置（默认 wrangler.jsonc）
-  --manifest PATH          部署契约（默认 deployment/agent-manifest.json）
-  --bridge-manifest PATH   Workers Builds 升级桥契约（严格升级模式必需）
-  --output PATH            将升级前资源指纹写入指定文件（仅与 --inspect 同用）
-  --fingerprint PATH       升级前资源指纹；现有站点升级时必须提供并严格复核
-  --inspect                仅核对现有站点资源指纹，不迁移或部署
-  --help                   显示帮助
-`;
+  return `用法: bash scripts/deploy-cloudflare.sh [选项]\n\n选项:\n  --mode auto|new|upgrade|workers-builds-upgrade\n                           自动识别、仅首次部署、人工升级或 Workers Builds 严格升级（默认 auto）\n  --config PATH            Wrangler 配置（默认 wrangler.jsonc）\n  --manifest PATH          部署契约（默认 deployment/agent-manifest.json）\n  --bridge-manifest PATH   Workers Builds 升级桥契约（严格升级模式必需）\n  --output PATH            将升级前资源指纹写入指定文件（仅与 --inspect 同用）\n  --fingerprint PATH       升级前资源指纹；现有站点升级时必须提供并严格复核\n  --inspect                仅核对现有站点资源指纹，不迁移或部署\n  --help                   显示帮助\n`;
 }
 
 function parseArgs(argv) {
