@@ -809,6 +809,39 @@ const RISK_FIELD_LABELS = Object.freeze({
   nonWaivableBoundary: "Non-Waivable Boundary",
 });
 
+const AUDIT_RISK_SCOPE_LABELS = Object.freeze([
+  "风险项数量",
+  ...Object.values(RISK_FIELD_LABELS),
+]);
+
+function normalizedAuditFieldLine(line) {
+  let plain = line.trim();
+  let previous;
+  do {
+    previous = plain;
+    plain = plain
+      .replace(/^(?:>\s*)+/u, "")
+      .replace(/^[-+*]\s+/u, "")
+      .replace(/^#{1,6}\s+/u, "")
+      .trim();
+  } while (plain !== previous);
+  return plain.replace(/[`*_~]/gu, "").trim();
+}
+
+function auditRiskFieldOccurrences(lines) {
+  const occurrences = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const plain = normalizedAuditFieldLine(lines[index]);
+    for (const label of AUDIT_RISK_SCOPE_LABELS) {
+      if (!plain.startsWith(label)) continue;
+      if (!/^\s*[：:]/u.test(plain.slice(label.length))) continue;
+      occurrences.push({ index, label });
+      break;
+    }
+  }
+  return occurrences;
+}
+
 function meaningfulRiskValue(value, description) {
   invariant(
     value.length > 0 && !/^(?:TBD|TODO|unknown|待定|未知|无|N\/A|不适用|<[^>]+>)$/iu.test(value),
@@ -839,6 +872,13 @@ function auditRiskBlocks(body) {
   const countText = markdownAtom(requireAuditField(section, ["风险项数量"], "风险项数量"));
   invariant(/^(?:0|[1-9][0-9]*)$/u.test(countText), "风险项数量必须是非负整数");
   const count = Number.parseInt(countText, 10);
+  const fieldOccurrences = auditRiskFieldOccurrences(lines);
+  const knownIssueCount = fieldOccurrences.filter(({ label }) => label === RISK_FIELD_LABELS.knownIssueId).length;
+  invariant(count === knownIssueCount, "风险项数量必须覆盖整份正式审计记录中的 Known Issue");
+  invariant(
+    fieldOccurrences.every(({ index }) => index >= start && index < end),
+    "正式审计记录中的风险字段只能位于唯一风险处置区块",
+  );
 
   const starts = [];
   for (let index = 0; index < sectionLines.length; index += 1) {

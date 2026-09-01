@@ -204,6 +204,23 @@ function makeRiskDisposition(risks = []) {
   return lines;
 }
 
+function makeOutOfScopeRiskFields(risk = knownRisk()) {
+  return [
+    "## 审计补充",
+    "",
+    "### Known Issue：" + risk.knownIssueId,
+    "风险分类：" + risk.classification,
+    "Issue：" + risk.issue,
+    "Severity：" + risk.severity,
+    "Impact / Blast Radius：" + risk.impactBlastRadius,
+    "Containment：" + risk.containment,
+    "Stop / Escalation Condition：" + risk.stopEscalationCondition,
+    "Planned Follow-up Version：" + risk.plannedFollowUpVersion,
+    "Non-Waivable Boundary：" + risk.nonWaivableBoundary,
+    "",
+  ].join("\n");
+}
+
 function makeRcAuditRecord({
   auditId = "AUD-TEST-GOV-RC-001",
   candidateSha,
@@ -850,7 +867,7 @@ test("binds an RC audit conclusion and target to the current Candidate SHA, Tree
   }
 });
 
-test("accepts contained Medium or Low risks but never waives a protected governance boundary", async () => {
+test("Builder accepts contained risks but fails closed on protected boundaries and out-of-scope risk fields", async () => {
   const contract = await readJson(contractPath);
   const candidateSha = "a".repeat(40);
   const candidateTreeSha = "c".repeat(40);
@@ -949,6 +966,33 @@ test("accepts contained Medium or Low risks but never waives a protected governa
   assert.throws(() => buildBody(withoutRiskSection), /风险处置/u);
   const badCount = record(knownRisk()).replace("风险项数量：1", "风险项数量：0");
   assert.throws(() => buildBody(badCount), /风险项数量/u);
+  const hiddenSecondRisk = record(knownRisk()) + "\n" + makeOutOfScopeRiskFields(knownRisk({
+    knownIssueId: "RISK-OUTSIDE-002",
+  }));
+  assert.throws(
+    () => buildBody(hiddenSecondRisk),
+    /风险项数量.*整份正式审计记录/u,
+  );
+  const outOfScopeRiskFields = [
+    "### Known Issue：RISK-OUTSIDE-001",
+    "风险项数量：0",
+    "风险分类：Blocking Risk",
+    "Issue：风险字段位于正式风险处置区块之外",
+    "Severity：Critical",
+    "Impact / Blast Radius：错误 Candidate 可能取得发布资格",
+    "Containment：fail-closed | 任何外置风险字段都必须拒绝",
+    "Stop / Escalation Condition：外置字段被接受时立即停止",
+    "Planned Follow-up Version：governance-2",
+    "Non-Waivable Boundary：release-candidate-eligibility",
+  ];
+  for (const field of outOfScopeRiskFields) {
+    const outside = record(null).replace("## 风险处置", "## 审计补充\n\n" + field + "\n\n## 风险处置");
+    assert.throws(
+      () => buildBody(outside),
+      /风险字段.*风险处置|风险项数量.*整份正式审计记录/u,
+      "accepted out-of-scope risk field: " + field,
+    );
+  }
   const missingContainment = record(knownRisk()).replace(/^Containment：.*\n/mu, "");
   assert.throws(() => buildBody(missingContainment), /Containment|缺失字段/u);
   assert.throws(
@@ -1377,7 +1421,7 @@ test("reconstructs normal record and pointer proposals from the owner-authorized
   });
 });
 
-test("independent Gate rejects failed, conditional and wrong-Candidate RC approval proposals", async (t) => {
+test("independent Gate rejects invalid RC approvals and out-of-scope risk fields end to end", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "governance-rc-audit-gate-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const baseRoot = join(root, "base");
@@ -1468,6 +1512,17 @@ test("independent Gate rejects failed, conditional and wrong-Candidate RC approv
   });
   await verifyRecord("contained-low", containedLowRecord);
 
+  const outOfScopeRiskBlock = validRecord + "\n" + makeOutOfScopeRiskFields(knownRisk({
+    knownIssueId: "RISK-GATE-OUTSIDE-001",
+    classification: "Blocking Risk",
+    severity: "Critical",
+    nonWaivableBoundary: "release-candidate-eligibility",
+  }));
+  const outOfScopeRiskField = validRecord.replace(
+    "## 风险处置",
+    "## 审计补充\n\n> **Severity：Critical**\n\n## 风险处置",
+  );
+
   const rejectedRecords = [
     ["failed", makeRcAuditRecord({ candidateSha, candidateTreeSha, candidatePullRequest, conclusion: "不通过", targetStage: "RELEASE_APPROVED" })],
     ["conditional", makeRcAuditRecord({ candidateSha, candidateTreeSha, candidatePullRequest, conclusion: "有条件通过", targetStage: "RELEASE_APPROVED" })],
@@ -1506,6 +1561,8 @@ test("independent Gate rejects failed, conditional and wrong-Candidate RC approv
       targetStage: "RELEASE_APPROVED",
       risks: [knownRisk({ knownIssueId: "RISK-PROTECTED-STATE-001", nonWaivableBoundary: "governance-state-authorization" })],
     })],
+    ["out-of-scope-risk-block", outOfScopeRiskBlock],
+    ["out-of-scope-risk-field", outOfScopeRiskField],
   ];
   for (const [name, body] of rejectedRecords) {
     await assert.rejects(() => verifyRecord(name, body), GovernanceValidationError);
