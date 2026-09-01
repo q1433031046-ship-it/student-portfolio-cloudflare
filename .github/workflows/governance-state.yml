@@ -357,10 +357,9 @@ jobs:
             --contract governance/role-contract.json \
             --previous "$PREVIOUS_PATH" \
             --records-root "$STATE_ROOT"
-          if [[ "$(jq -r '.candidateSha // empty' "$next")" != "" ]]; then
-            GITHUB_TOKEN="$GH_TOKEN" node scripts/governance-state.mjs verify-remote "$next" \
-              --contract governance/role-contract.json
-          fi
+          GITHUB_TOKEN="$GH_TOKEN" node scripts/governance-state.mjs verify-remote-transition "$next" \
+            --contract governance/role-contract.json \
+            --previous "$PREVIOUS_PATH"
           {
             echo "next=$next"
             echo "record=$record"

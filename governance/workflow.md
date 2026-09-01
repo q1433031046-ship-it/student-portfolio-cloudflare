@@ -26,6 +26,8 @@
 
 同阶段 revision 更新一律禁止。每条转换都有独立字段允许列表；进入 RELEASE_APPROVED 后，activeVersion、candidateSha、Candidate 上下文、releaseCandidate 和 rcAudit 全部冻结。
 
+进入 `IMPLEMENTING` 后，上一轮被驳回的 Candidate 身份只作为历史证据保留。可信 writer 必须继续核验该 commit 与 Tree 对象，但不得要求旧分支 tip、旧 PR head 或旧 `main` Base 仍保持活动绑定；实现分支正是在这个阶段允许前进。`IMPLEMENTING → RC_AUDIT_PENDING` 必须重新绑定新 Candidate，并恢复 commit、Tree、分支 tip、开放非 draft 同仓 PR、准确 Base 与祖先关系的完整远端核验。由 `IMPLEMENTING` 进入 `BLOCKED` 时沿用历史对象核验，使角色 3 在分支已移动后仍能失败关闭；这项例外不能授予任何审计或发布资格。
+
 ## BLOCKED 恢复
 
 进入 BLOCKED 时必须保存 sourceStage、责任角色和 07-blocked.md。只有记录的责任角色能恢复，而且只能回到来源对应的最小安全阶段：
