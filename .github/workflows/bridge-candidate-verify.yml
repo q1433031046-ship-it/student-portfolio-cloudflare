@@ -1,0 +1,81 @@
+name: Emergency Bridge Candidate Verification
+
+on:
+  push:
+    branches:
+      - emergency/v1.3.0-workers-builds-upgrade-bridge
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bridge-candidate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bridge-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22.13.0
+          cache: npm
+
+      - name: Confirm exact branch head
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$GITHUB_REF" = "refs/heads/emergency/v1.3.0-workers-builds-upgrade-bridge"
+
+      - name: Install
+        run: npm ci
+
+      - name: Production dependency audit
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Script syntax
+        run: |
+          bash -n scripts/*.sh
+          node --check scripts/*.mjs
+
+      - name: Migration drift
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run db:generate
+          changes="$(git status --porcelain --untracked-files=all -- drizzle)"
+          if [[ -n "$changes" ]]; then
+            printf '%s\n' "$changes"
+            exit 1
+          fi
+
+      - name: Upgrade bridge focused tests
+        run: node --test tests/cloudflare-workers-builds-upgrade-bridge.test.mjs tests/cloudflare-workers-builds-upgrade-bridge-flags.test.mjs
+
+      - name: Deployment contract focused tests
+        run: node --test tests/agent-deployment-package.test.mjs
+
+      - name: Full tests and production build
+        run: npm test
+
+      - name: Wrangler offline dry run
+        run: |
+          npx --no-install wrangler deploy --dry-run --keep-vars --strict --experimental-provision=false --experimental-auto-create=false --autoconfig=false --config wrangler.jsonc
+          git diff --exit-code -- wrangler.jsonc
+
+      - name: Lint
+        run: npm run lint
+
+      - name: TypeScript
+        run: ./node_modules/.bin/tsc --noEmit
+
+      - name: Diff check
+        run: git diff --check
