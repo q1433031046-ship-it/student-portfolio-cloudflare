@@ -1,0 +1,269 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/q1433031046-ship-it/student-portfolio-cloudflare/governance/state-schema.json",
+  "title": "Student portfolio governance current state",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "project",
+    "repository",
+    "activeVersion",
+    "stage",
+    "taskLevel",
+    "revision",
+    "lastUpdatedBy",
+    "records",
+    "recordDigests",
+    "candidateSha",
+    "candidateContext",
+    "releaseTag",
+    "block",
+    "bootstrap"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 2 },
+    "project": { "const": "student-portfolio-cloudflare" },
+    "repository": { "const": "q1433031046-ship-it/student-portfolio-cloudflare" },
+    "activeVersion": {
+      "type": "string",
+      "pattern": "^(?:[0-9]+\\.[0-9]+\\.[0-9]+|governance-[a-z0-9][a-z0-9.-]*)$"
+    },
+    "stage": {
+      "enum": [
+        "IDLE",
+        "PLANNING",
+        "PLAN_AUDIT_PENDING",
+        "IMPLEMENTATION_APPROVED",
+        "IMPLEMENTING",
+        "RC_AUDIT_PENDING",
+        "RELEASE_APPROVED",
+        "PRODUCTION_PREFLIGHT",
+        "RELEASING",
+        "PRODUCTION_VERIFIED",
+        "IMPLEMENTATION_REQUIRED",
+        "PLANNING_REQUIRED",
+        "BLOCKED",
+        "ROLLED_BACK"
+      ]
+    },
+    "taskLevel": { "enum": ["L0", "L1", "L2", "L3"] },
+    "revision": { "type": "integer", "minimum": 0 },
+    "lastUpdatedBy": { "$ref": "#/$defs/roleIdentity" },
+    "records": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["plan", "planAudit", "releaseCandidate", "rcAudit", "releaseReceipt", "blocked"],
+      "properties": {
+        "plan": { "$ref": "#/$defs/runtimePointer" },
+        "planAudit": { "$ref": "#/$defs/runtimePointer" },
+        "releaseCandidate": { "$ref": "#/$defs/runtimePointer" },
+        "rcAudit": { "$ref": "#/$defs/runtimePointer" },
+        "releaseReceipt": { "$ref": "#/$defs/runtimePointer" },
+        "blocked": { "$ref": "#/$defs/runtimePointer" }
+      }
+    },
+    "recordDigests": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["plan", "planAudit", "releaseCandidate", "rcAudit", "releaseReceipt", "blocked"],
+      "properties": {
+        "plan": { "$ref": "#/$defs/digest" },
+        "planAudit": { "$ref": "#/$defs/digest" },
+        "releaseCandidate": { "$ref": "#/$defs/digest" },
+        "rcAudit": { "$ref": "#/$defs/digest" },
+        "releaseReceipt": { "$ref": "#/$defs/digest" },
+        "blocked": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "candidateSha": {
+      "anyOf": [
+        { "type": "null" },
+        { "type": "string", "pattern": "^[0-9a-f]{40}$" }
+      ]
+    },
+    "candidateContext": {
+      "anyOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["branch", "pullRequest", "baseSha", "treeSha"],
+          "properties": {
+            "branch": { "type": "string", "pattern": "^[A-Za-z0-9._/-]+$" },
+            "pullRequest": { "type": "integer", "minimum": 1 },
+            "baseSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+            "treeSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" }
+          }
+        }
+      ]
+    },
+    "releaseTag": {
+      "anyOf": [
+        { "type": "null" },
+        { "type": "string", "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+$" }
+      ]
+    },
+    "block": {
+      "anyOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sourceStage", "ownerRoleNumber"],
+          "properties": {
+            "sourceStage": { "$ref": "#/$defs/nonTerminalStage" },
+            "ownerRoleNumber": { "type": "integer", "minimum": 1, "maximum": 4 }
+          }
+        }
+      ]
+    },
+    "bootstrap": {
+      "anyOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "mode",
+            "completed",
+            "sourceSchemaVersion",
+            "sourceRevision",
+            "sourceTip",
+            "legacyCandidateSha",
+            "candidateSha",
+            "candidateBranch",
+            "candidateTreeSha",
+            "candidatePullRequest",
+            "recoveryPullRequest",
+            "recoveryHeadSha",
+            "baseSha",
+            "targetStage",
+            "auditConclusion"
+          ],
+          "properties": {
+            "mode": { "const": "legacy-failed-audit-recovery" },
+            "completed": { "const": true },
+            "sourceSchemaVersion": { "const": 1 },
+            "sourceRevision": { "const": 2 },
+            "sourceTip": { "const": "3e7867d3cdba75045f6dc8aa0448ccaac3547b68" },
+            "legacyCandidateSha": { "const": "7caf24d4c52f1502d43cbf668329701986669a6e" },
+            "candidateSha": { "const": "e24d78fd76cfbca9ebd957d16c406ffbc1c09e1b" },
+            "candidateBranch": { "const": "governance/four-role-auto-handoff" },
+            "candidateTreeSha": { "const": "a54f47d5f5b5b54e18454d5faa7a4fc3a403228d" },
+            "candidatePullRequest": { "const": 13 },
+            "recoveryPullRequest": { "const": 14 },
+            "recoveryHeadSha": { "const": "9451ef05fbe289aaade134bb60fb1a57e5eb15a6" },
+            "baseSha": { "const": "d81785dd51bb0c9be339449566a15d3b3971e02a" },
+            "targetStage": { "const": "IMPLEMENTATION_REQUIRED" },
+            "auditConclusion": { "const": "failed" }
+          }
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "runtimePointer": {
+      "anyOf": [
+        { "type": "null" },
+        {
+          "type": "string",
+          "pattern": "^governance/runtime/records/[A-Za-z0-9.-]+/(?:01-plan|02-plan-audit|04-release-candidate|05-rc-audit|06-release-receipt|07-blocked)\\.md$"
+        }
+      ]
+    },
+    "digest": {
+      "anyOf": [
+        { "type": "null" },
+        { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      ]
+    },
+    "roleIdentity": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["roleNumber", "roleName"],
+          "properties": { "roleNumber": { "const": 1 }, "roleName": { "const": "超级规划" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["roleNumber", "roleName"],
+          "properties": { "roleNumber": { "const": 2 }, "roleName": { "const": "超级审计" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["roleNumber", "roleName"],
+          "properties": { "roleNumber": { "const": 3 }, "roleName": { "const": "超级工作" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["roleNumber", "roleName"],
+          "properties": { "roleNumber": { "const": 4 }, "roleName": { "const": "超级发布" } }
+        }
+      ]
+    },
+    "nonTerminalStage": {
+      "enum": [
+        "PLANNING",
+        "PLAN_AUDIT_PENDING",
+        "IMPLEMENTATION_APPROVED",
+        "IMPLEMENTING",
+        "RC_AUDIT_PENDING",
+        "RELEASE_APPROVED",
+        "PRODUCTION_PREFLIGHT",
+        "RELEASING",
+        "IMPLEMENTATION_REQUIRED",
+        "PLANNING_REQUIRED"
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "stage": { "enum": ["PLAN_AUDIT_PENDING", "IMPLEMENTATION_APPROVED", "IMPLEMENTING", "RC_AUDIT_PENDING", "RELEASE_APPROVED", "PRODUCTION_PREFLIGHT", "RELEASING", "PRODUCTION_VERIFIED", "IMPLEMENTATION_REQUIRED", "PLANNING_REQUIRED", "ROLLED_BACK"] } } },
+      "then": { "properties": { "records": { "properties": { "plan": { "type": "string" } } }, "recordDigests": { "properties": { "plan": { "type": "string" } } } } }
+    },
+    {
+      "if": {
+        "allOf": [
+          { "properties": { "stage": { "enum": ["IMPLEMENTATION_APPROVED", "IMPLEMENTING", "RC_AUDIT_PENDING", "RELEASE_APPROVED", "PRODUCTION_PREFLIGHT", "RELEASING", "PRODUCTION_VERIFIED", "IMPLEMENTATION_REQUIRED", "PLANNING_REQUIRED", "ROLLED_BACK"] } } },
+          { "properties": { "bootstrap": { "type": "null" } } }
+        ]
+      },
+      "then": { "properties": { "records": { "properties": { "planAudit": { "type": "string" } } }, "recordDigests": { "properties": { "planAudit": { "type": "string" } } } } }
+    },
+    {
+      "if": { "properties": { "stage": { "enum": ["RC_AUDIT_PENDING", "RELEASE_APPROVED", "PRODUCTION_PREFLIGHT", "RELEASING", "PRODUCTION_VERIFIED", "IMPLEMENTATION_REQUIRED", "ROLLED_BACK"] } } },
+      "then": {
+        "properties": {
+          "records": { "properties": { "releaseCandidate": { "type": "string" } } },
+          "recordDigests": { "properties": { "releaseCandidate": { "type": "string" } } },
+          "candidateSha": { "type": "string" },
+          "candidateContext": { "type": "object" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "stage": { "enum": ["RELEASE_APPROVED", "PRODUCTION_PREFLIGHT", "RELEASING", "PRODUCTION_VERIFIED", "IMPLEMENTATION_REQUIRED", "ROLLED_BACK"] } } },
+      "then": { "properties": { "records": { "properties": { "rcAudit": { "type": "string" } } }, "recordDigests": { "properties": { "rcAudit": { "type": "string" } } } } }
+    },
+    {
+      "if": { "properties": { "stage": { "enum": ["PRODUCTION_VERIFIED", "ROLLED_BACK"] } } },
+      "then": { "properties": { "records": { "properties": { "releaseReceipt": { "type": "string" } } }, "recordDigests": { "properties": { "releaseReceipt": { "type": "string" } } } } }
+    },
+    {
+      "if": { "properties": { "stage": { "const": "BLOCKED" } } },
+      "then": {
+        "properties": {
+          "block": { "type": "object" },
+          "records": { "properties": { "blocked": { "type": "string" } } },
+          "recordDigests": { "properties": { "blocked": { "type": "string" } } }
+        }
+      },
+      "else": { "properties": { "block": { "type": "null" } } }
+    }
+  ]
+}
