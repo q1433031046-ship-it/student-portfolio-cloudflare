@@ -28,6 +28,17 @@ jobs:
       base_main_sha: ${{ steps.resolve.outputs.base_main_sha }}
       confirm_version: ${{ steps.resolve.outputs.confirm_version }}
     steps:
+      - name: Checkout the protected release parser
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22.13.0
+
       - name: Resolve the exact owner-approved release PR
         id: resolve
         shell: bash
@@ -45,11 +56,16 @@ jobs:
             echo "Only the repository owner can request a release." >&2
             exit 1
           fi
-          if [[ ! "$COMMENT_BODY" =~ ^/verify-and-tag\ v([0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?)$ ]]; then
+          command_prefix="/verify-and-tag "
+          version_input="${COMMENT_BODY#"$command_prefix"}"
+          if [[ "$COMMENT_BODY" != "$command_prefix"* || "$version_input" != v* ]]; then
             echo "Use the exact command: /verify-and-tag vX.Y.Z[-PRERELEASE]" >&2
             exit 1
           fi
-          confirm_version="${BASH_REMATCH[1]}"
+          if ! confirm_version="$(node shared/semantic-version.mjs parse "$version_input")"; then
+            echo "Use the exact command: /verify-and-tag vX.Y.Z[-PRERELEASE]" >&2
+            exit 1
+          fi
 
           pr_json="$(gh api "repos/${REPOSITORY}/pulls/${PR_NUMBER}")"
           pr_state="$(jq -r '.state' <<<"$pr_json")"

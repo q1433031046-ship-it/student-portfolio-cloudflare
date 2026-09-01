@@ -51,6 +51,12 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22.13.0
+          cache: npm
+
       - name: Validate invocation and remote candidate refs
         shell: bash
         run: |
@@ -83,7 +89,9 @@ jobs:
             echo "base_main_sha must be a full lowercase commit SHA." >&2
             exit 1
           fi
-          if [[ ! "$confirm_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
+          parser_path="$RUNNER_TEMP/semantic-version.mjs"
+          git show "${GITHUB_WORKFLOW_SHA}:shared/semantic-version.mjs" > "$parser_path"
+          if ! confirm_version="$(node "$parser_path" parse "$confirm_version")"; then
             echo "confirm_version must be an exact semantic version, optionally with a prerelease suffix." >&2
             exit 1
           fi
@@ -109,12 +117,6 @@ jobs:
             echo "candidate_sha is not a descendant of base_main_sha." >&2
             exit 1
           fi
-
-      - name: Setup Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: 22.13.0
-          cache: npm
 
       - name: Install
         run: npm ci
@@ -225,6 +227,11 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22.13.0
+
       - name: Revalidate remote objects and immutable release contract
         shell: bash
         run: |
@@ -236,7 +243,7 @@ jobs:
             echo "Release SHAs must be full lowercase commit identifiers." >&2
             exit 1
           fi
-          if [[ ! "$confirm_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
+          if ! confirm_version="$(node shared/semantic-version.mjs parse "$confirm_version")"; then
             echo "confirm_version must be an exact semantic version, optionally with a prerelease suffix." >&2
             exit 1
           fi
