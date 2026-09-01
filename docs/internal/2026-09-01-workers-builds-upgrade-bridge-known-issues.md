@@ -2,17 +2,7 @@
 
 This record applies only to the v1.3.0 emergency Workers Builds existing-site upgrade bridge. It does not relax the hard safety gates for Worker identity, fixed D1/MEDIA_KV resources, Secrets/vars preservation, migration ordering, migration failure, immutable product source, or resource provisioning.
 
-## KI-1 — No native GitHub Actions check on the exact release-base Draft PR
-
-- **Risk level:** Low.
-- **Issue:** `.github/workflows/verify.yml` listens to pull requests targeting `main`, while the emergency Candidate must remain based on `release/v1.3.0@4658bc834d6ea21aa94ce0db0d9c99e82b856235`. Retargeting the Candidate solely to obtain a check would change the audited base and would not be equivalent evidence.
-- **Maximum impact:** Reduced independence/reproducibility of test evidence. This issue does not by itself change Worker, D1, MEDIA_KV, Secrets, vars, migrations, or production data.
-- **Current isolation:** Every verification report must bind the exact remote Candidate Head and Tree; GitHub CI must be reported as absent rather than passed. Role 2 independently rereads the remote Candidate and may fail closed if mandatory verification cannot be reproduced.
-- **Why it does not block this emergency bridge:** The absence of a check-run is an evidence-transport limitation, not a path around the runtime safety gates. It cannot authorize a deployment, resource replacement, or migration by itself.
-- **Stop condition:** Stop the upgrade if the tested SHA/Tree does not exactly match the remote Candidate, or if mandatory local/independent verification cannot be reproduced sufficiently for audit.
-- **Planned follow-up:** v1.3.1 — add a general exact-SHA verification path suitable for non-`main` release-base Candidates without changing their audited base.
-
-## KI-2 — Resource-ID redaction is pattern-based
+## KI-1 — Resource-ID redaction is pattern-based
 
 - **Risk level:** Low.
 - **Issue:** Failure-output redaction recognizes current token/password/resource-key patterns, UUIDs, and 32-character hexadecimal identifiers. A future Cloudflare/Wrangler release could introduce a new opaque resource identifier format without a recognizable resource key.
