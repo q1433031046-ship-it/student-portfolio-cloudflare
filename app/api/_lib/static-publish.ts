@@ -1,6 +1,13 @@
 import { getStaticPublishingSecret } from "./app-secret";
 import { writeAuditLog } from "./audit";
-import { NetlifyClient, NetlifyClientError, type NetlifyDeploy } from "./netlify-client";
+import {
+  NetlifyClient,
+  NetlifyClientError,
+  serializeTransportEvidence,
+  withDeployMatch,
+  type NetlifyDeploy,
+  type NetlifyTransportEvidence,
+} from "./netlify-client";
 import { cleanupUnreferencedMedia } from "./media-cleanup";
 import { getPortfolioDb, getPortfolioRecord } from "./portfolio-store";
 import { getBucket, type UploadBucket } from "./storage";
@@ -16,7 +23,6 @@ import {
   getStaticSiteBinding,
   insertFrozenStaticJob,
   noteStaticJobError,
-  restartStaticJobGeneration,
   setStaticBindingStatus,
   transitionStaticJob,
   type StaticPublishJobRow,
@@ -55,15 +61,41 @@ export async function freezeAndTriggerStaticPublish(revision: number, actorEmail
   });
   if (!created.inserted) return { job: created.job, repeated: true as const };
 
-  await transitionStaticJob(jobId, "FROZEN", "BUILD_TRIGGERED", "build");
+  const triggeredJob = requireJob(await transitionStaticJob(jobId, "FROZEN", "BUILD_TRIGGERED", "build"));
   const hookBody = { jobId, generation: 1, providerRequestKey, bootstrapGrant: bootstrapToken };
   try {
-    await client.triggerDraftBuild(getStaticPublishingSecret("NETLIFY_DRAFT_BUILD_HOOK"), hookBody, providerRequestKey);
+    const trigger = await client.triggerDraftBuild(getStaticPublishingSecret("NETLIFY_DRAFT_BUILD_HOOK"), hookBody, providerRequestKey);
     await writeAuditLog({ actorEmail, action: "static_site.publish.triggered", targetType: "static_publish_job", targetId: jobId,
-      summary: { sourceRevision: revision, candidateSha256: frozen.candidateSha256, providerRequestKey } });
+      summary: { sourceRevision: revision, candidateSha256: frozen.candidateSha256, providerRequestKey,
+        transportEvidence: serializeTransportEvidence(trigger.evidence) } });
   } catch (error) {
-    await noteStaticJobError(jobId, "BUILD_TRIGGERED", errorCode(error), "Build Hook 结果不确定；将按 request key 找回原 Deploy，不会创建第二个 Build");
-    await writeFailureAudit(actorEmail, jobId, "build", error);
+    // Every non-success response or exception first performs a read-only,
+    // exact-key recovery lookup. This never invokes the Hook a second time.
+    let recovered: NetlifyDeploy | null = null;
+    let recoveryMatch: "none" | "unique" | "multiple" | "unknown" = "none";
+    try {
+      recovered = await client.findDeployByRequestKey(binding.site_id, providerRequestKey, new Date(triggeredJob.updated_at));
+      recoveryMatch = recovered ? "unique" : "none";
+      if (recovered) {
+        assertDeployIdentity(recovered, binding.site_id);
+        const current = await getStaticPublishJob(jobId);
+        if (current?.status === "BUILD_TRIGGERED") {
+          await transitionStaticJob(jobId, "BUILD_TRIGGERED", "DRAFT_DEPLOY_LOCATED", "locate", {
+            deployId: recovered.id, deployPermalink: validatedDeployPermalink(recovered),
+          });
+        }
+      }
+    } catch (recoveryError) {
+      recoveryMatch = errorCode(recoveryError) === "NETLIFY_DEPLOY_AMBIGUOUS" ? "multiple" : "unknown";
+    }
+    const evidence = error instanceof NetlifyClientError && error.evidence
+      ? withDeployMatch(error.evidence, recoveryMatch, recovered ? await shortHash(recovered.id) : undefined) : undefined;
+    const current = await getStaticPublishJob(jobId);
+    if (current?.status === "BUILD_TRIGGERED") {
+      await noteStaticJobError(jobId, "BUILD_TRIGGERED", recoveryMatch === "multiple" ? "NETLIFY_DEPLOY_AMBIGUOUS" : errorCode(error),
+        "Build Hook 结果未确认；已按当前 request key 查询，未创建第二个 Build");
+    }
+    await writeFailureAudit(actorEmail, jobId, "build", error, evidence);
   }
   return { job: await getStaticPublishJob(jobId), repeated: false as const };
 }
@@ -160,7 +192,7 @@ export async function advanceStaticPublish(jobId: string, actorEmail: string) {
 }
 
 export async function retryStaticPublish(jobId: string, actorEmail: string) {
-  let job = requireJob(await getStaticPublishJob(jobId));
+  const job = requireJob(await getStaticPublishJob(jobId));
   if (job.status !== "FAILED_RETRYABLE") return advanceStaticPublish(jobId, actorEmail);
   const binding = await getStaticSiteBinding();
   assertUsableBinding(binding, true);
@@ -174,30 +206,23 @@ export async function retryStaticPublish(jobId: string, actorEmail: string) {
     return advanceStaticPublish(job.id, actorEmail);
   }
   const found = await client.findDeployByRequestKey(binding.site_id, job.provider_request_key, new Date(job.updated_at));
-  if (found && !isTerminalFailedDeploy(found)) {
-    await transitionStaticJob(job.id, "FAILED_RETRYABLE", "DRAFT_DEPLOY_LOCATED", "locate", {
-      deployId: found.id, deployPermalink: validatedDeployPermalink(found),
-    });
-    return advanceStaticPublish(job.id, actorEmail);
+  if (!found) {
+    // A missing match is unconfirmed, including after bootstrap expiry. Time
+    // alone never authorizes a new generation or another Hook POST.
+    await writeAuditLog({ actorEmail, action: "static_site.publish.recovery_waiting", targetType: "static_publish_job", targetId: job.id,
+      summary: { generation: job.export_generation, providerRequestKey: job.provider_request_key, deployMatch: "none" } });
+    return { job: await getStaticPublishJob(job.id), waiting: true as const, reason: "NETLIFY_DEPLOY_PENDING" };
   }
-  if (!found && Date.parse(job.bootstrap_expires_at) > Date.now()) {
-    throw new StaticPublishError("NETLIFY_ORIGINAL_DEPLOY_UNCERTAIN", "原 Build 仍在可找回窗口内，暂不能创建新的 Build");
-  }
-  const generation = job.export_generation + 1;
-  const bootstrapToken = createOpaqueToken();
-  const providerRequestKey = await requestKey(binding.site_id, job.id, job.idempotency_key, generation);
-  job = requireJob(await restartStaticJobGeneration({ jobId: job.id, expectedGeneration: job.export_generation,
-    providerRequestKey, bootstrapTokenSha256: await tokenDigest(bootstrapToken), bootstrapExpiresAt: bootstrapExpiresAt() }));
-  try {
-    await client.triggerDraftBuild(getStaticPublishingSecret("NETLIFY_DRAFT_BUILD_HOOK"), {
-      jobId: job.id, generation, providerRequestKey, bootstrapGrant: bootstrapToken,
-    }, providerRequestKey);
-  } catch (error) {
-    await noteStaticJobError(job.id, "BUILD_TRIGGERED", errorCode(error), "重试 Build Hook 结果不确定；将按新 request key 找回同一尝试");
-  }
-  await writeAuditLog({ actorEmail, action: "static_site.publish.retried", targetType: "static_publish_job", targetId: job.id,
-    summary: { generation, providerRequestKey } });
-  return { job: await getStaticPublishJob(job.id), waiting: true as const, reason: "NETLIFY_DEPLOY_PENDING" };
+  assertDeployIdentity(found, binding.site_id);
+  await transitionStaticJob(job.id, "FAILED_RETRYABLE", "DRAFT_DEPLOY_LOCATED", "locate", {
+    deployId: found.id, deployPermalink: validatedDeployPermalink(found),
+  });
+  await writeAuditLog({ actorEmail, action: "static_site.publish.recovery_found", targetType: "static_publish_job", targetId: job.id,
+    summary: { generation: job.export_generation, providerRequestKey: job.provider_request_key, deployMatch: "unique",
+      deployIdHash: await shortHash(found.id) } });
+  // Continue with this exact Deploy, even when its terminal state will cause a
+  // fail-closed stop in advanceStaticPublish; never trigger a second Build.
+  return advanceStaticPublish(job.id, actorEmail);
 }
 
 export async function rollbackStaticPublish(targetDeployId: string, actorEmail: string) {
@@ -351,7 +376,10 @@ function parseArtifactManifest(value: string | null) {
 async function failJob(job: StaticPublishJobRow, error: unknown) {
   const latest = await getStaticPublishJob(job.id);
   if (!latest || new Set(["PUBLISHED", "FAILED_RETRYABLE", "FAILED_FINAL", "ROLLED_BACK"]).has(latest.status)) return;
-  const final = error instanceof StaticArtifactError || (error instanceof StaticPublishError && /IDENTITY|MISMATCH|INVALID|AMBIGUOUS/u.test(error.code));
+  const final = error instanceof StaticArtifactError
+    || (error instanceof StaticPublishError && /IDENTITY|MISMATCH|INVALID|AMBIGUOUS|MISSING|DRAFT_DEPLOY_FAILED/u.test(error.code))
+    || (error instanceof NetlifyClientError && ["NETLIFY_DEPLOY_AMBIGUOUS", "NETLIFY_DEPLOY_SITE_MISMATCH",
+      "NETLIFY_DEPLOY_PERMALINK_MISSING", "NETLIFY_DEPLOY_PERMALINK_INVALID"].includes(error.code));
   await transitionStaticJob(latest.id, latest.status, final ? "FAILED_FINAL" : "FAILED_RETRYABLE", latest.phase, {
     errorCode: errorCode(error), errorSummary: final ? "制品或身份核验失败，上一正式站保持不变" : "操作未完成，可在确认远端状态后重试",
   });
@@ -369,14 +397,23 @@ function requiredValue<T>(value: T | null | undefined, label: string): T {
 }
 function normalizePath(path: string) { return path.replaceAll("\\", "/").replace(/^\/+/, ""); }
 function errorCode(error: unknown) {
-  return typeof error === "object" && error && "code" in error && typeof error.code === "string" ? error.code : "STATIC_OPERATION_FAILED";
+  if (error instanceof StaticPublishError || error instanceof NetlifyClientError || error instanceof StaticArtifactError) return error.code;
+  return "STATIC_OPERATION_FAILED";
 }
 function normalizeError(error: unknown) {
   return error instanceof StaticPublishError || error instanceof NetlifyClientError || error instanceof StaticArtifactError
     ? error : new StaticPublishError("STATIC_OPERATION_FAILED", "静态发布操作暂时失败", 503);
 }
-async function writeFailureAudit(actorEmail: string, jobId: string, phase: string, error: unknown) {
+async function writeFailureAudit(
+  actorEmail: string,
+  jobId: string,
+  phase: string,
+  error: unknown,
+  evidenceOverride?: NetlifyTransportEvidence,
+) {
+  const transportEvidence = evidenceOverride
+    ?? (error instanceof NetlifyClientError && error.evidence ? error.evidence : undefined);
   await writeAuditLog({ actorEmail, action: "static_site.operation.failed", targetType: "static_publish_job", targetId: jobId,
-    summary: { phase, code: errorCode(error) } });
+    summary: { phase, code: errorCode(error), ...(transportEvidence ? { transportEvidence: serializeTransportEvidence(transportEvidence) } : {}) } });
 }
 async function shortHash(value: string) { return (await sha256Hex(value)).slice(0, 16); }
