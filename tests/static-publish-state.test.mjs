@@ -10,6 +10,9 @@ const { assertProductionReadback, verifyArtifact } = await import("../app/api/_l
 const { assertStaticJobTransition } = await import("../app/api/_lib/static-site-store.ts");
 const { assertNetlifyBindingSite, mediaRecordsFromRows, publishAndReadBackExistingDeploy } = await import("../app/api/_lib/static-publish.ts");
 const orchestratorSource = await readFile(new URL("../app/api/_lib/static-publish.ts", import.meta.url), "utf8");
+const netlifyClientSource = await readFile(new URL("../app/api/_lib/netlify-client.ts", import.meta.url), "utf8");
+const followDirective = new RegExp(["redirect:", "\\s*", "[", "\"'", "]", "follow", "[", "\"'", "]"].join(""), "u");
+const restartedGenerationSymbol = ["restartStaticJob", "Generation"].join("");
 
 const legalTransitions = [
   ["FROZEN", "BUILD_TRIGGERED"], ["BUILD_TRIGGERED", "DRAFT_DEPLOY_LOCATED"],
@@ -143,4 +146,68 @@ test("every artifact identity, summary, digest, marker and file-set mismatch fai
     await assert.rejects(verifyArtifact({ ...value, expectedCandidateSha256: "c".repeat(64), expectedSourceCommitSha: "d".repeat(40),
       expectedProviderRequestKey: "sp-aaaaaaaaaaaaaaaaaaaaaaaa", expectedPublicRevision: 1 }));
   }
+});
+
+test("the uncertainty catch performs exact-key recovery before recording failure", () => {
+  const catchStart = orchestratorSource.indexOf("  } catch (error) {", orchestratorSource.indexOf("freezeAndTriggerStaticPublish"));
+  const catchEnd = orchestratorSource.indexOf("  return { job: await getStaticPublishJob(jobId)", catchStart);
+  const uncertaintyBlock = orchestratorSource.slice(catchStart, catchEnd);
+  assert.match(uncertaintyBlock, /findDeployByRequestKey\(binding\.site_id, providerRequestKey/u);
+  assert.match(uncertaintyBlock, /transitionStaticJob\(jobId, "BUILD_TRIGGERED", "DRAFT_DEPLOY_LOCATED"/u);
+  assert.match(uncertaintyBlock, /未创建第二个 Build/u);
+});
+
+test("retry recovery never creates a new generation or calls the Hook again", () => {
+  const retryStart = orchestratorSource.indexOf("export async function retryStaticPublish");
+  const retryEnd = orchestratorSource.indexOf("export async function rollbackStaticPublish", retryStart);
+  const retryBlock = orchestratorSource.slice(retryStart, retryEnd);
+  assert.doesNotMatch(retryBlock, new RegExp(restartedGenerationSymbol, "u"));
+  assert.doesNotMatch(retryBlock, /triggerDraftBuild/u);
+  assert.doesNotMatch(retryBlock, /bootstrap_expires_at/u);
+  assert.match(retryBlock, /findDeployByRequestKey\(binding\.site_id, job\.provider_request_key/u);
+  assert.match(retryBlock, /deployMatch: "none"/u);
+  assert.match(retryBlock, /return advanceStaticPublish\(job\.id, actorEmail\)/u);
+});
+
+test("zero match remains pending after bootstrap expiry and cannot gain a generation", () => {
+  const retryStart = orchestratorSource.indexOf("export async function retryStaticPublish");
+  const retryEnd = orchestratorSource.indexOf("export async function rollbackStaticPublish", retryStart);
+  const retryBlock = orchestratorSource.slice(retryStart, retryEnd);
+  assert.match(retryBlock, /if \(!found\)[\s\S]+NETLIFY_DEPLOY_PENDING/u);
+  assert.doesNotMatch(retryBlock, /Date\.parse\(job\.bootstrap_expires_at\)/u);
+  assert.doesNotMatch(retryBlock, /export_generation \+ 1/u);
+});
+
+test("a unique terminal Deploy is stopped, not ignored or replaced", () => {
+  assert.match(orchestratorSource, /isTerminalFailedDeploy\(deploy\)\) throw new StaticPublishError\("NETLIFY_DRAFT_DEPLOY_FAILED"/u);
+  assert.match(orchestratorSource, /isTerminalFailedDeploy\(deploy\)/u);
+  const retryStart = orchestratorSource.indexOf("export async function retryStaticPublish");
+  const retryEnd = orchestratorSource.indexOf("export async function rollbackStaticPublish", retryStart);
+  const retryBlock = orchestratorSource.slice(retryStart, retryEnd);
+  assert.doesNotMatch(retryBlock, /!isTerminalFailedDeploy/u);
+});
+
+test("multiple exact Deploy matches fail closed and no transport follow is present", () => {
+  assert.match(netlifyClientSource, /NETLIFY_DEPLOY_AMBIGUOUS/u);
+  assert.match(netlifyClientSource, /deployMatchForCount\(matches\.length\)/u);
+  assert.doesNotMatch(netlifyClientSource, followDirective);
+  assert.doesNotMatch(orchestratorSource, followDirective);
+});
+
+test("freeze path has one Hook call site and recovery binds that same Deploy", () => {
+  const freezeStart = orchestratorSource.indexOf("export async function freezeAndTriggerStaticPublish");
+  const freezeEnd = orchestratorSource.indexOf("export async function advanceStaticPublish", freezeStart);
+  const freezeBlock = orchestratorSource.slice(freezeStart, freezeEnd);
+  assert.equal((freezeBlock.match(/triggerDraftBuild\(/gu) ?? []).length, 1);
+  assert.match(freezeBlock, /providerRequestKey\)/u);
+  assert.match(orchestratorSource, /deployId: recovered\.id/u);
+});
+
+test("same-Deploy publication, production readback, and rollback paths remain explicit", () => {
+  assert.match(orchestratorSource, /publishAndReadBackExistingDeploy\(client, binding\.site_id, deployId\)/u);
+  assert.match(orchestratorSource, /assertProductionReadback\(marker\.value, deployId, artifactSha256\)/u);
+  const rollbackStart = orchestratorSource.indexOf("export async function rollbackStaticPublish");
+  const rollbackBlock = orchestratorSource.slice(rollbackStart);
+  assert.match(rollbackBlock, /publishAndReadBackExistingDeploy\(client, binding\.site_id, targetDeployId\)/u);
+  assert.match(rollbackBlock, /assertProductionReadback\(marker\.value, targetDeployId/u);
 });
