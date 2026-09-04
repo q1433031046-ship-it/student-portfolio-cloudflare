@@ -220,12 +220,16 @@ test("polling stops at ARTIFACT_VERIFIED and only an explicit route action can p
   const advanceStart = orchestratorSource.indexOf("export async function advanceStaticPublish");
   const promoteStart = orchestratorSource.indexOf("export async function promoteStaticPublish");
   const advanceBlock = orchestratorSource.slice(advanceStart, promoteStart);
+  const promoteBlock = orchestratorSource.slice(promoteStart);
   assert.match(advanceBlock, /readyForPromotion: true/u);
   assert.doesNotMatch(advanceBlock, /transitionStaticJob\([^\n]+"ARTIFACT_VERIFIED", "PUBLISH_REQUESTED"/u);
-  assert.match(orchestratorSource.slice(promoteStart), /transitionStaticJob\(job\.id, "ARTIFACT_VERIFIED", "PUBLISH_REQUESTED"/u);
+  assert.match(promoteBlock, /transitionStaticJob\(job\.id, "ARTIFACT_VERIFIED", "PUBLISH_REQUESTED"/u);
+  assert.match(promoteBlock, /restoreProvider = job\.status === "ARTIFACT_VERIFIED"/u);
+  assert.match(promoteBlock, /restoreProvider\s*\n?\s*\? await publishAndReadBackExistingDeploy[\s\S]+: await client\.getSite/u);
   assert.match(staticRouteSource, /body\.action === "promote"/u);
   const effectBlock = staticCardSource.slice(staticCardSource.indexOf("useEffect"), staticCardSource.indexOf("const size"));
   assert.doesNotMatch(effectBlock, /promote/u);
+  assert.match(staticCardSource, /PROMOTION_STATUSES/u);
   assert.match(staticCardSource, /action: "promote"/u);
 });
 

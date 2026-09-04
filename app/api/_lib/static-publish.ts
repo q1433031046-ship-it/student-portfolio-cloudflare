@@ -167,7 +167,7 @@ export async function advanceStaticPublish(jobId: string, actorEmail: string) {
  */
 export async function promoteStaticPublish(jobId: string, actorEmail: string) {
   let job = requireJob(await getStaticPublishJob(jobId));
-  if (job.status !== "ARTIFACT_VERIFIED") {
+  if (!["ARTIFACT_VERIFIED", "PUBLISH_REQUESTED", "PRODUCTION_READBACK_VERIFIED"].includes(job.status)) {
     throw new StaticPublishError("STATIC_PROMOTION_NOT_READY", "只有已核验制品才能由管理员明确提升", 409);
   }
   const binding = await getStaticSiteBinding();
@@ -177,44 +177,53 @@ export async function promoteStaticPublish(jobId: string, actorEmail: string) {
   // CAS is the promotion lease: concurrent or repeated clicks cannot both
   // reach the provider restore endpoint. A losing click is a read-only
   // observation, not a reason to mark the winner's job failed.
-  try {
-    job = requireJob(await transitionStaticJob(job.id, "ARTIFACT_VERIFIED", "PUBLISH_REQUESTED", "publish"));
-  } catch (error) {
-    if (error instanceof StaticStateConflictError) {
-      return { job: requireJob(await getStaticPublishJob(job.id)), waiting: true as const, reason: "NETLIFY_PROMOTION_IN_PROGRESS" };
+  const restoreProvider = job.status === "ARTIFACT_VERIFIED";
+  if (restoreProvider) {
+    try {
+      job = requireJob(await transitionStaticJob(job.id, "ARTIFACT_VERIFIED", "PUBLISH_REQUESTED", "publish"));
+    } catch (error) {
+      if (error instanceof StaticStateConflictError) {
+        return { job: requireJob(await getStaticPublishJob(job.id)), waiting: true as const, reason: "NETLIFY_PROMOTION_IN_PROGRESS" };
+      }
+      throw error;
     }
-    throw error;
   }
 
   try {
-    const deployId = requiredValue(job.deploy_id, "Deploy ID");
-    const artifactSha256 = requiredValue(job.artifact_sha256, "制品摘要");
-    const site = await publishAndReadBackExistingDeploy(client, binding.site_id, deployId);
-    if (site.published_deploy?.id !== deployId) return { job, waiting: true as const, reason: "NETLIFY_PUBLISH_READBACK_PENDING" };
-    const productionUrl = validatedProductionUrl(binding.production_url);
-    const marker = await readJsonEvidence<Record<string, unknown>>(productionUrl, "__static-release.json");
-    assertProductionReadback(marker.value, deployId, artifactSha256);
-    job = requireJob(await transitionStaticJob(job.id, "PUBLISH_REQUESTED", "PRODUCTION_READBACK_VERIFIED", "commit"));
+    if (job.status === "PUBLISH_REQUESTED") {
+      const deployId = requiredValue(job.deploy_id, "Deploy ID");
+      const artifactSha256 = requiredValue(job.artifact_sha256, "制品摘要");
+      const site = restoreProvider
+        ? await publishAndReadBackExistingDeploy(client, binding.site_id, deployId)
+        : await client.getSite(binding.site_id);
+      if (site.published_deploy?.id !== deployId) return { job, waiting: true as const, reason: "NETLIFY_PUBLISH_READBACK_PENDING" };
+      const productionUrl = validatedProductionUrl(binding.production_url);
+      const marker = await readJsonEvidence<Record<string, unknown>>(productionUrl, "__static-release.json");
+      assertProductionReadback(marker.value, deployId, artifactSha256);
+      job = requireJob(await transitionStaticJob(job.id, "PUBLISH_REQUESTED", "PRODUCTION_READBACK_VERIFIED", "commit"));
+    }
 
-    const manifest = parseArtifactManifest(job.artifact_manifest_json);
-    const mediaByPath = new Map(manifest.files.map((file) => [normalizePath(file.path), file]));
-    const verifiedMedia = (await getStaticJobMedia(job.id)).map((media) => {
-      const evidence = mediaByPath.get(normalizePath(media.public_path));
-      if (!evidence) throw new StaticArtifactError("STATIC_MEDIA_EVIDENCE_MISSING", "静态媒体制品证据不完整");
-      return { mediaId: media.media_id, sha256: evidence.sha256, providerSha1: evidence.providerSha1 };
-    });
-    job = requireJob(await commitStaticPublishSuccess({ jobId: job.id, expectedStatus: "PRODUCTION_READBACK_VERIFIED",
-      productionUrl: validatedProductionUrl(binding.production_url), deployId: requiredValue(job.deploy_id, "Deploy ID"),
-      artifactManifestJson: requiredValue(job.artifact_manifest_json, "制品清单"), artifactSha256: requiredValue(job.artifact_sha256, "制品摘要"),
-      artifactManifestFileSha256: requiredValue(job.artifact_manifest_file_sha256, "制品清单摘要"), verifiedMedia }));
-    await writeAuditLog({ actorEmail, action: "static_site.publish.completed", targetType: "static_publish_job", targetId: job.id,
-      summary: { publicRevision: job.public_revision, providerRequestKey: job.provider_request_key, deployIdHash: await shortHash(requiredValue(job.deploy_id, "Deploy ID")) } });
-    const current = await getPortfolioRecord();
-    if (current) {
-      try { await cleanupUnreferencedMedia(current.draft, current.revision); }
-      catch (error) {
-        await writeAuditLog({ actorEmail, action: "static_site.media_cleanup.warning", targetType: "static_publish_job", targetId: job.id,
-          summary: { code: errorCode(error) } });
+    if (job.status === "PRODUCTION_READBACK_VERIFIED") {
+      const manifest = parseArtifactManifest(job.artifact_manifest_json);
+      const mediaByPath = new Map(manifest.files.map((file) => [normalizePath(file.path), file]));
+      const verifiedMedia = (await getStaticJobMedia(job.id)).map((media) => {
+        const evidence = mediaByPath.get(normalizePath(media.public_path));
+        if (!evidence) throw new StaticArtifactError("STATIC_MEDIA_EVIDENCE_MISSING", "静态媒体制品证据不完整");
+        return { mediaId: media.media_id, sha256: evidence.sha256, providerSha1: evidence.providerSha1 };
+      });
+      job = requireJob(await commitStaticPublishSuccess({ jobId: job.id, expectedStatus: "PRODUCTION_READBACK_VERIFIED",
+        productionUrl: validatedProductionUrl(binding.production_url), deployId: requiredValue(job.deploy_id, "Deploy ID"),
+        artifactManifestJson: requiredValue(job.artifact_manifest_json, "制品清单"), artifactSha256: requiredValue(job.artifact_sha256, "制品摘要"),
+        artifactManifestFileSha256: requiredValue(job.artifact_manifest_file_sha256, "制品清单摘要"), verifiedMedia }));
+      await writeAuditLog({ actorEmail, action: "static_site.publish.completed", targetType: "static_publish_job", targetId: job.id,
+        summary: { publicRevision: job.public_revision, providerRequestKey: job.provider_request_key, deployIdHash: await shortHash(requiredValue(job.deploy_id, "Deploy ID")) } });
+      const current = await getPortfolioRecord();
+      if (current) {
+        try { await cleanupUnreferencedMedia(current.draft, current.revision); }
+        catch (error) {
+          await writeAuditLog({ actorEmail, action: "static_site.media_cleanup.warning", targetType: "static_publish_job", targetId: job.id,
+            summary: { code: errorCode(error) } });
+        }
       }
     }
     return { job, waiting: false as const };
