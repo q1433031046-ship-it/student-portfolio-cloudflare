@@ -24,6 +24,7 @@ import {
   insertFrozenStaticJob,
   noteStaticJobError,
   setStaticBindingStatus,
+  StaticStateConflictError,
   transitionStaticJob,
   type StaticPublishJobRow,
 } from "./static-site-store";
@@ -146,47 +147,80 @@ export async function advanceStaticPublish(jobId: string, actorEmail: string) {
     }
 
     if (job.status === "ARTIFACT_VERIFIED") {
-      job = requireJob(await transitionStaticJob(job.id, "ARTIFACT_VERIFIED", "PUBLISH_REQUESTED", "publish"));
+      return { job, waiting: false as const, readyForPromotion: true as const };
     }
-
-    if (job.status === "PUBLISH_REQUESTED") {
-      const deployId = requiredValue(job.deploy_id, "Deploy ID");
-      const artifactSha256 = requiredValue(job.artifact_sha256, "制品摘要");
-      const site = await publishAndReadBackExistingDeploy(client, binding.site_id, deployId);
-      if (site.published_deploy?.id !== deployId) return { job, waiting: true as const, reason: "NETLIFY_PUBLISH_READBACK_PENDING" };
-      const productionUrl = validatedProductionUrl(binding.production_url);
-      const marker = await readJsonEvidence<Record<string, unknown>>(productionUrl, "__static-release.json");
-      assertProductionReadback(marker.value, deployId, artifactSha256);
-      job = requireJob(await transitionStaticJob(job.id, "PUBLISH_REQUESTED", "PRODUCTION_READBACK_VERIFIED", "commit"));
-    }
-
-    if (job.status === "PRODUCTION_READBACK_VERIFIED") {
-      const manifest = parseArtifactManifest(job.artifact_manifest_json);
-      const mediaByPath = new Map(manifest.files.map((file) => [normalizePath(file.path), file]));
-      const verifiedMedia = (await getStaticJobMedia(job.id)).map((media) => {
-        const evidence = mediaByPath.get(normalizePath(media.public_path));
-        if (!evidence) throw new StaticArtifactError("STATIC_MEDIA_EVIDENCE_MISSING", "静态媒体制品证据不完整");
-        return { mediaId: media.media_id, sha256: evidence.sha256, providerSha1: evidence.providerSha1 };
-      });
-      job = requireJob(await commitStaticPublishSuccess({ jobId: job.id, expectedStatus: "PRODUCTION_READBACK_VERIFIED",
-        productionUrl: validatedProductionUrl(binding.production_url), deployId: requiredValue(job.deploy_id, "Deploy ID"),
-        artifactManifestJson: requiredValue(job.artifact_manifest_json, "制品清单"), artifactSha256: requiredValue(job.artifact_sha256, "制品摘要"),
-        artifactManifestFileSha256: requiredValue(job.artifact_manifest_file_sha256, "制品清单摘要"), verifiedMedia }));
-      await writeAuditLog({ actorEmail, action: "static_site.publish.completed", targetType: "static_publish_job", targetId: job.id,
-        summary: { publicRevision: job.public_revision, providerRequestKey: job.provider_request_key, deployIdHash: await shortHash(requiredValue(job.deploy_id, "Deploy ID")) } });
-      const current = await getPortfolioRecord();
-      if (current) {
-        try { await cleanupUnreferencedMedia(current.draft, current.revision); }
-        catch (error) {
-          await writeAuditLog({ actorEmail, action: "static_site.media_cleanup.warning", targetType: "static_publish_job", targetId: job.id,
-            summary: { code: errorCode(error) } });
-        }
-      }
+    if (job.status === "PUBLISH_REQUESTED" || job.status === "PRODUCTION_READBACK_VERIFIED") {
+      return { job, waiting: true as const, reason: "NETLIFY_PROMOTION_PENDING" };
     }
     return { job, waiting: false as const };
   } catch (error) {
     await failJob(job, error);
     await writeFailureAudit(actorEmail, job.id, job.phase, error);
+    throw normalizeError(error);
+  }
+}
+
+/**
+ * Promote an already verified draft Deploy. This function is intentionally
+ * separate from advanceStaticPublish: polling and page refresh may call the
+ * latter, but only an explicit user action may call this mutation path.
+ */
+export async function promoteStaticPublish(jobId: string, actorEmail: string) {
+  let job = requireJob(await getStaticPublishJob(jobId));
+  if (job.status !== "ARTIFACT_VERIFIED") {
+    throw new StaticPublishError("STATIC_PROMOTION_NOT_READY", "只有已核验制品才能由管理员明确提升", 409);
+  }
+  const binding = await getStaticSiteBinding();
+  assertUsableBinding(binding, true);
+  const client = await netlifyClientForBinding(binding);
+
+  // CAS is the promotion lease: concurrent or repeated clicks cannot both
+  // reach the provider restore endpoint. A losing click is a read-only
+  // observation, not a reason to mark the winner's job failed.
+  try {
+    job = requireJob(await transitionStaticJob(job.id, "ARTIFACT_VERIFIED", "PUBLISH_REQUESTED", "publish"));
+  } catch (error) {
+    if (error instanceof StaticStateConflictError) {
+      return { job: requireJob(await getStaticPublishJob(job.id)), waiting: true as const, reason: "NETLIFY_PROMOTION_IN_PROGRESS" };
+    }
+    throw error;
+  }
+
+  try {
+    const deployId = requiredValue(job.deploy_id, "Deploy ID");
+    const artifactSha256 = requiredValue(job.artifact_sha256, "制品摘要");
+    const site = await publishAndReadBackExistingDeploy(client, binding.site_id, deployId);
+    if (site.published_deploy?.id !== deployId) return { job, waiting: true as const, reason: "NETLIFY_PUBLISH_READBACK_PENDING" };
+    const productionUrl = validatedProductionUrl(binding.production_url);
+    const marker = await readJsonEvidence<Record<string, unknown>>(productionUrl, "__static-release.json");
+    assertProductionReadback(marker.value, deployId, artifactSha256);
+    job = requireJob(await transitionStaticJob(job.id, "PUBLISH_REQUESTED", "PRODUCTION_READBACK_VERIFIED", "commit"));
+
+    const manifest = parseArtifactManifest(job.artifact_manifest_json);
+    const mediaByPath = new Map(manifest.files.map((file) => [normalizePath(file.path), file]));
+    const verifiedMedia = (await getStaticJobMedia(job.id)).map((media) => {
+      const evidence = mediaByPath.get(normalizePath(media.public_path));
+      if (!evidence) throw new StaticArtifactError("STATIC_MEDIA_EVIDENCE_MISSING", "静态媒体制品证据不完整");
+      return { mediaId: media.media_id, sha256: evidence.sha256, providerSha1: evidence.providerSha1 };
+    });
+    job = requireJob(await commitStaticPublishSuccess({ jobId: job.id, expectedStatus: "PRODUCTION_READBACK_VERIFIED",
+      productionUrl: validatedProductionUrl(binding.production_url), deployId: requiredValue(job.deploy_id, "Deploy ID"),
+      artifactManifestJson: requiredValue(job.artifact_manifest_json, "制品清单"), artifactSha256: requiredValue(job.artifact_sha256, "制品摘要"),
+      artifactManifestFileSha256: requiredValue(job.artifact_manifest_file_sha256, "制品清单摘要"), verifiedMedia }));
+    await writeAuditLog({ actorEmail, action: "static_site.publish.completed", targetType: "static_publish_job", targetId: job.id,
+      summary: { publicRevision: job.public_revision, providerRequestKey: job.provider_request_key, deployIdHash: await shortHash(requiredValue(job.deploy_id, "Deploy ID")) } });
+    const current = await getPortfolioRecord();
+    if (current) {
+      try { await cleanupUnreferencedMedia(current.draft, current.revision); }
+      catch (error) {
+        await writeAuditLog({ actorEmail, action: "static_site.media_cleanup.warning", targetType: "static_publish_job", targetId: job.id,
+          summary: { code: errorCode(error) } });
+      }
+    }
+    return { job, waiting: false as const };
+  } catch (error) {
+    await failJob(job, error);
+    await writeFailureAudit(actorEmail, job.id, "publish", error);
     throw normalizeError(error);
   }
 }
@@ -379,7 +413,7 @@ async function failJob(job: StaticPublishJobRow, error: unknown) {
   const final = error instanceof StaticArtifactError
     || (error instanceof StaticPublishError && /IDENTITY|MISMATCH|INVALID|AMBIGUOUS|MISSING|DRAFT_DEPLOY_FAILED/u.test(error.code))
     || (error instanceof NetlifyClientError && ["NETLIFY_DEPLOY_AMBIGUOUS", "NETLIFY_DEPLOY_SITE_MISMATCH",
-      "NETLIFY_DEPLOY_PERMALINK_MISSING", "NETLIFY_DEPLOY_PERMALINK_INVALID"].includes(error.code));
+      "NETLIFY_DEPLOY_PERMALINK_MISSING", "NETLIFY_DEPLOY_PERMALINK_INVALID", "NETLIFY_DEPLOY_LOOKUP_INCOMPLETE"].includes(error.code));
   await transitionStaticJob(latest.id, latest.status, final ? "FAILED_FINAL" : "FAILED_RETRYABLE", latest.phase, {
     errorCode: errorCode(error), errorSummary: final ? "制品或身份核验失败，上一正式站保持不变" : "操作未完成，可在确认远端状态后重试",
   });

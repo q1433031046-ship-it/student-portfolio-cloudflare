@@ -17,6 +17,7 @@ export async function GET(request: Request) {
       { method: "PUT", endpoint: `${origin}/api/admin/media/{projectId}/{slot}?uploadId={uploadId}&chunk={index}`, purpose: "上传一个任务分片" },
       { method: "POST", endpoint: `${origin}/api/admin/media/{projectId}/{slot}?uploadId={uploadId}&complete=1`, purpose: "校验全部分片并完成媒体上传" },
       { method: "POST", endpoint: `${origin}/api/admin/portfolio/publish`, purpose: "把草稿发布为公开快照" },
+      { method: "POST", endpoint: `${origin}/api/admin/portfolio/dynamic-publish`, purpose: "校验媒体就绪后发布动态快照" },
       { method: "GET", endpoint: `${origin}/api/admin/events`, purpose: "读取访问与安全记录" },
       { method: "GET", endpoint: `${origin}/api/admin/audit`, purpose: "读取管理操作记录" },
     ],

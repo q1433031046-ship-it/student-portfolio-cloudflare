@@ -11,6 +11,10 @@ const { assertStaticJobTransition } = await import("../app/api/_lib/static-site-
 const { assertNetlifyBindingSite, mediaRecordsFromRows, publishAndReadBackExistingDeploy } = await import("../app/api/_lib/static-publish.ts");
 const orchestratorSource = await readFile(new URL("../app/api/_lib/static-publish.ts", import.meta.url), "utf8");
 const netlifyClientSource = await readFile(new URL("../app/api/_lib/netlify-client.ts", import.meta.url), "utf8");
+const staticRouteSource = await readFile(new URL("../app/api/admin/static-site/route.ts", import.meta.url), "utf8");
+const staticCardSource = await readFile(new URL("../app/admin/static-site-card.tsx", import.meta.url), "utf8");
+const portfolioStoreSource = await readFile(new URL("../app/api/_lib/portfolio-store.ts", import.meta.url), "utf8");
+const dynamicPublishRouteSource = await readFile(new URL("../app/api/admin/portfolio/dynamic-publish/route.ts", import.meta.url), "utf8");
 const followDirective = new RegExp(["redirect:", "\\s*", "[", "\"'", "]", "follow", "[", "\"'", "]"].join(""), "u");
 const restartedGenerationSymbol = ["restartStaticJob", "Generation"].join("");
 
@@ -210,4 +214,24 @@ test("same-Deploy publication, production readback, and rollback paths remain ex
   const rollbackBlock = orchestratorSource.slice(rollbackStart);
   assert.match(rollbackBlock, /publishAndReadBackExistingDeploy\(client, binding\.site_id, targetDeployId\)/u);
   assert.match(rollbackBlock, /assertProductionReadback\(marker\.value, targetDeployId/u);
+});
+
+test("polling stops at ARTIFACT_VERIFIED and only an explicit route action can promote", () => {
+  const advanceStart = orchestratorSource.indexOf("export async function advanceStaticPublish");
+  const promoteStart = orchestratorSource.indexOf("export async function promoteStaticPublish");
+  const advanceBlock = orchestratorSource.slice(advanceStart, promoteStart);
+  assert.match(advanceBlock, /readyForPromotion: true/u);
+  assert.doesNotMatch(advanceBlock, /transitionStaticJob\([^\n]+"ARTIFACT_VERIFIED", "PUBLISH_REQUESTED"/u);
+  assert.match(orchestratorSource.slice(promoteStart), /transitionStaticJob\(job\.id, "ARTIFACT_VERIFIED", "PUBLISH_REQUESTED"/u);
+  assert.match(staticRouteSource, /body\.action === "promote"/u);
+  const effectBlock = staticCardSource.slice(staticCardSource.indexOf("useEffect"), staticCardSource.indexOf("const size"));
+  assert.doesNotMatch(effectBlock, /promote/u);
+  assert.match(staticCardSource, /action: "promote"/u);
+});
+
+test("dynamic publish contract rejects missing or non-uploaded media in the CAS", () => {
+  assert.match(portfolioStoreSource, /FROM json_each\(\?\) AS referenced[\s\S]+LEFT JOIN portfolio_media AS media/u);
+  assert.match(portfolioStoreSource, /media\.id IS NULL OR media\.status != 'uploaded'/u);
+  assert.match(dynamicPublishRouteSource, /publishPortfolio/u);
+  assert.match(dynamicPublishRouteSource, /PortfolioPublishError/u);
 });

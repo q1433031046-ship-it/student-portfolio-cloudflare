@@ -1,4 +1,4 @@
-import { advanceStaticPublish, freezeAndTriggerStaticPublish, retryStaticPublish, rollbackStaticPublish, StaticPublishError } from "../../_lib/static-publish";
+import { advanceStaticPublish, freezeAndTriggerStaticPublish, promoteStaticPublish, retryStaticPublish, rollbackStaticPublish, StaticPublishError } from "../../_lib/static-publish";
 import { getActiveStaticPublishJob, getStaticSiteView } from "../../_lib/static-site-store";
 import { isRequestBodyError, readJsonBody } from "../../_lib/request-body";
 import { requirePortfolioManager } from "../../_lib/site-ownership";
@@ -33,6 +33,12 @@ export async function POST(request: Request) {
       const active = await getActiveStaticPublishJob();
       if (!active) return Response.json({ code: "STATIC_JOB_NOT_ACTIVE", error: "当前没有待核验的静态发布任务" }, { status: 409, headers: noStore });
       const result = await advanceStaticPublish(active.id, access.identity.user);
+      return Response.json({ ok: true, waiting: result.waiting, reason: "reason" in result ? result.reason : null,
+        job: { id: result.job?.id, status: result.job?.status } }, { status: result.waiting ? 202 : 200, headers: noStore });
+    }
+    if (body.action === "promote") {
+      if (typeof body.jobId !== "string" || !/^job_[a-f0-9]{32}$/u.test(body.jobId)) return Response.json({ code: "STATIC_JOB_INVALID", error: "静态发布任务无效" }, { status: 400, headers: noStore });
+      const result = await promoteStaticPublish(body.jobId, access.identity.user);
       return Response.json({ ok: true, waiting: result.waiting, reason: "reason" in result ? result.reason : null,
         job: { id: result.job?.id, status: result.job?.status } }, { status: result.waiting ? 202 : 200, headers: noStore });
     }

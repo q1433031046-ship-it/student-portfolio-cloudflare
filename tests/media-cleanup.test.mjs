@@ -7,7 +7,7 @@ register(new URL("./cloudflare-workers-loader.mjs", import.meta.url));
 
 const { env } = await import("cloudflare:workers");
 const { cleanupUnreferencedMedia } = await import("../app/api/_lib/media-cleanup.ts");
-const { getPortfolioRecord, savePortfolioDraft } = await import("../app/api/_lib/portfolio-store.ts");
+const { getPortfolioRecord, publishPortfolio, savePortfolioDraft, PortfolioPublishError } = await import("../app/api/_lib/portfolio-store.ts");
 const { createDefaultPortfolioDocument } = await import("../app/portfolio/default-document.ts");
 
 test("a first publish after schema 1 normalization retains archived media during cleanup", async () => {
@@ -156,6 +156,31 @@ test("draft saving also rejects a key whose media row is already deleted", async
   delete env.DB;
 });
 
+test("dynamic publish rejects a missing media row and a non-uploaded row", async () => {
+  const key = "portfolio/project-one/dynamic-missing.webp";
+  const original = createDefaultPortfolioDocument();
+  env.DB = cleanupD1(cleanupRows(withCoverKey(original, key), []));
+  await assert.rejects(publishPortfolio(1), (error) => error instanceof PortfolioPublishError && error.code === "PORTFOLIO_MEDIA_NOT_READY");
+  delete env.DB;
+
+  const pending = cleanupRows(withCoverKey(original, key), [{ object_key: key, storage_backend: "kv", chunk_count: 1 }]);
+  pending.media[0].status = "deleting";
+  env.DB = cleanupD1(pending);
+  await assert.rejects(publishPortfolio(1), (error) => error instanceof PortfolioPublishError && error.code === "PORTFOLIO_MEDIA_NOT_READY");
+  delete env.DB;
+});
+
+test("dynamic publish succeeds only when every referenced media row is uploaded", async () => {
+  const key = "portfolio/project-one/dynamic-ready.webp";
+  const original = createDefaultPortfolioDocument();
+  const rows = cleanupRows(withCoverKey(original, key), [{ object_key: key, storage_backend: "kv", chunk_count: 1 }]);
+  env.DB = cleanupD1(rows);
+  const published = await publishPortfolio(1);
+  assert.equal(published?.revision, 2);
+  assert.equal(rows.portfolio.published_json, rows.portfolio.draft_json);
+  delete env.DB;
+});
+
 test("a failed physical delete remains deleting and retries idempotently", async () => {
   const key = "portfolio/project-one/delete-retry.webp";
   const original = createDefaultPortfolioDocument();
@@ -290,6 +315,17 @@ function cleanupD1(rows) {
             const invalidReference = rows.media.some((row) => row.status !== "uploaded" && referenced.has(row.object_key));
             if (documentId !== rows.portfolio.id || rows.portfolio.revision !== expectedRevision || invalidReference) return { meta: { changes: 0 } };
             Object.assign(rows.portfolio, { draft_json: draftJson, revision: nextRevision, updated_at: updatedAt });
+            return { meta: { changes: 1 } };
+          }
+          if (sql.includes("UPDATE portfolio_documents SET published_json")) {
+            const [nextRevision, updatedAt, publishedAt, documentId, expectedRevision, referencedJson] = bindings;
+            const referenced = new Set(JSON.parse(referencedJson));
+            const invalidReference = [...referenced].some((key) => {
+              const media = rows.media.find((row) => row.object_key === key);
+              return !media || media.status !== "uploaded";
+            });
+            if (documentId !== rows.portfolio.id || rows.portfolio.revision !== expectedRevision || invalidReference) return { meta: { changes: 0 } };
+            Object.assign(rows.portfolio, { published_json: rows.portfolio.draft_json, revision: nextRevision, updated_at: updatedAt, published_at: publishedAt });
             return { meta: { changes: 1 } };
           }
           if (sql.includes("SET status = 'deleting'")) {

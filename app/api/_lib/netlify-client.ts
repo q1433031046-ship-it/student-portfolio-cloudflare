@@ -73,6 +73,7 @@ const SAFE_MESSAGES: Record<string, string> = Object.freeze({
   NETLIFY_API_FAILED: "Netlify 操作暂时失败",
   NETLIFY_RESPONSE_INVALID: "Netlify 响应无法解析",
   NETLIFY_DEPLOY_AMBIGUOUS: "同一发布请求匹配到多个 Deploy",
+  NETLIFY_DEPLOY_LOOKUP_INCOMPLETE: "Netlify Deploy 列表未完整读回，无法确认唯一结果",
   NETLIFY_DEPLOY_SITE_MISMATCH: "Deploy 不属于已绑定 Site",
   NETLIFY_DEPLOY_PERMALINK_MISSING: "Deploy 缺少不可变地址",
   NETLIFY_DEPLOY_PERMALINK_INVALID: "Deploy 不可变地址无效",
@@ -292,9 +293,18 @@ export class NetlifyClient {
   }
 
   async listDeploys(siteId: string) {
-    const deployments = await this.request<NetlifyDeploy[]>(`/sites/${encodeURIComponent(siteId)}/deploys?per_page=100`);
-    if (!Array.isArray(deployments)) throw new NetlifyClientError("NETLIFY_RESPONSE_INVALID", "");
-    return deployments;
+    const pageSize = 100;
+    const maxPages = 10;
+    const deployments: NetlifyDeploy[] = [];
+    for (let page = 1; page <= maxPages; page += 1) {
+      const current = await this.request<NetlifyDeploy[]>(`/sites/${encodeURIComponent(siteId)}/deploys?per_page=${pageSize}&page=${page}`);
+      if (!Array.isArray(current)) throw new NetlifyClientError("NETLIFY_RESPONSE_INVALID", "");
+      deployments.push(...current);
+      if (current.length < pageSize) return deployments;
+    }
+    // A full final page is not evidence that no later page exists. Refuse to
+    // bind a Deploy until the bounded lookup has an explicit terminating page.
+    throw new NetlifyClientError("NETLIFY_DEPLOY_LOOKUP_INCOMPLETE", "");
   }
 
   async getSite(siteId: string) {
@@ -315,6 +325,7 @@ export class NetlifyClient {
     const earliest = triggerTime - 2 * 60_000;
     const latest = triggerTime + windowMinutes * 60_000;
     const deployments = await this.listDeploys(siteId);
+    if (deployments.some((deploy) => !isRecord(deploy))) throw new NetlifyClientError("NETLIFY_RESPONSE_INVALID", "");
     const matches = deployments.filter((deploy) => {
       if (!isRecord(deploy)) return false;
       const created = Date.parse(deploy.created_at ?? "");

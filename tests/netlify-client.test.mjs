@@ -324,6 +324,35 @@ test("zero, unique, and multiple Deploy outcomes are explicit and never trigger 
   assert.equal((await unique.findDeployByRequestKey("site-1", requestKey, new Date("2026-09-01T00:00:00Z")))?.id, "one");
 });
 
+test("Deploy lookup paginates until an explicit short page before binding", async () => {
+  const pages = [];
+  const first = Array.from({ length: 100 }, (_, index) => ({ id: `noise-${index}`, site_id: "site-1", branch: "main" }));
+  const target = { id: "page-2", site_id: "site-1", branch: "static-build/v1.3.1-b", title: requestKey, created_at: "2026-09-01T00:05:00.000Z" };
+  const client = new NetlifyClient("token-that-is-long-enough", "https://example.test", async (url) => {
+    const page = new URL(String(url)).searchParams.get("page"); pages.push(page);
+    return jsonResponse(page === "1" ? first : [target]);
+  });
+  assert.equal((await client.findDeployByRequestKey("site-1", requestKey, new Date("2026-09-01T00:00:00Z")))?.id, "page-2");
+  assert.deepEqual(pages, ["1", "2"]);
+});
+
+test("a full bounded page window is an explicit incomplete lookup failure", async () => {
+  const page = Array.from({ length: 100 }, (_, index) => ({ id: `noise-${index}`, site_id: "site-1", branch: "main" }));
+  const client = new NetlifyClient("token-that-is-long-enough", "https://example.test", async () => jsonResponse(page));
+  await assert.rejects(client.listDeploys("site-1"), (error) => {
+    assert.equal(error.code, "NETLIFY_DEPLOY_LOOKUP_INCOMPLETE");
+    return true;
+  });
+});
+
+test("an invalid Deploy entry is not silently treated as no match", async () => {
+  const client = new NetlifyClient("token-that-is-long-enough", "https://example.test", async () => jsonResponse([null]));
+  await assert.rejects(client.findDeployByRequestKey("site-1", requestKey, new Date("2026-09-01T00:00:00Z")), (error) => {
+    assert.equal(error.code, "NETLIFY_RESPONSE_INVALID");
+    return true;
+  });
+});
+
 test("API status and exception errors are stable and do not expose provider body", async () => {
   for (const [status, code] of [[401, "NETLIFY_REAUTHORIZATION_REQUIRED"], [403, "NETLIFY_REAUTHORIZATION_REQUIRED"],
     [429, "NETLIFY_RATE_LIMITED"], [404, "NETLIFY_API_CLIENT_ERROR"], [502, "NETLIFY_API_SERVER_ERROR"]]) {
