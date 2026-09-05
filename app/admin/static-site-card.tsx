@@ -9,13 +9,15 @@ type StaticSiteState = {
   status: string;
   productionUrl: string | null;
   publicRevision: number;
-  activeJob: { id: string; status: string; phase: string } | null;
+  activeJob: { id: string; status: string; phase: string; previewUrl?: string | null } | null;
   retryableJob: { id: string; status: string; phase: string } | null;
   lastSuccessAt: string | null;
   lastError: { code: string; summary: string | null } | null;
   mediaTotalBytes: number;
   qrAvailable: boolean;
 };
+
+const PROMOTION_STATUSES = new Set(["ARTIFACT_VERIFIED", "PUBLISH_REQUESTED", "PRODUCTION_READBACK_VERIFIED"]);
 
 export function StaticSiteCard({ revision, disabled, publish }: { revision: number; disabled: boolean; publish: () => Promise<void> }) {
   const [state, setState] = useState<StaticSiteState | null>(null);
@@ -81,6 +83,12 @@ export function StaticSiteCard({ revision, disabled, publish }: { revision: numb
         || state?.status === "reauthorization_required" || state?.status === "reverification_required"
         || state?.status === "rollback_in_progress"} onClick={() => void startPublish()}>发布静态网站 →</button>
       {state?.activeJob && <button type="button" onClick={() => void submit({ action: "verify" })}>重新核验</button>}
+      {state?.activeJob && PROMOTION_STATUSES.has(state.activeJob.status) && <>
+        {state.activeJob.previewUrl && <a href={state.activeJob.previewUrl} target="_blank" rel="noreferrer">查看已核验草稿 ↗</a>}
+        <button type="button" onClick={() => void submit({ action: "promote", jobId: state.activeJob!.id })}>
+          {state.activeJob.status === "ARTIFACT_VERIFIED" ? "明确发布到固定网址 →" : "继续核验并完成发布 →"}
+        </button>
+      </>}
       {state?.retryableJob && <button type="button" onClick={() => void submit({ action: "retry", jobId: state.retryableJob!.id })}>重试原发布任务</button>}
       {state?.qrAvailable && state.productionUrl && <>
         <a href={state.productionUrl} target="_blank" rel="noreferrer">查看静态网站 ↗</a>

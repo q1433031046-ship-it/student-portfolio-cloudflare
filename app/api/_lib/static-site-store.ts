@@ -331,8 +331,18 @@ function sanitizeJob(job: StaticPublishJobRow) {
   return {
     id: job.id, sourceDocumentRevision: job.source_document_revision, publicRevision: job.public_revision,
     status: job.status, phase: job.phase, deployBound: Boolean(job.deploy_id), createdAt: job.created_at, updatedAt: job.updated_at,
+    previewUrl: job.status === "ARTIFACT_VERIFIED" ? safePreviewUrl(job.deploy_permalink) : null,
     error: job.error_code ? { code: job.error_code, summary: job.error_summary } : null,
   };
+}
+
+function safePreviewUrl(value: string | null) {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" || !url.hostname.endsWith(".netlify.app") || url.pathname !== "/" || url.search || url.hash) return null;
+    return url.toString();
+  } catch { return null; }
 }
 
 async function shortHash(value: string) {

@@ -4,7 +4,7 @@ import { mediaAssetsInDocument } from "../../app/portfolio/model";
 
 type StaticState = {
   configured: boolean; status: string; productionUrl: string | null; publicRevision: number;
-  activeJob: { id: string; status: string; phase: string } | null;
+  activeJob: { id: string; status: string; phase: string; previewUrl?: string | null } | null;
   retryableJob: { id: string; status: string; phase: string } | null;
   lastSuccessAt: string | null; lastError: { code: string; summary: string | null } | null;
   mediaTotalBytes: number; qrAvailable: boolean;
@@ -49,6 +49,19 @@ test("active and retryable jobs expose verify/retry actions without creating ano
   await page.getByRole("button", { name: "重试原发布任务" }).dispatchEvent("click");
   await expect.poll(() => actions.at(-1)?.action).toBe("retry");
   expect(actions.at(-1)?.jobId).toBe(`job_${"b".repeat(32)}`);
+});
+
+test("verified draft waits for an explicit promote click after refresh", async ({ page }) => {
+  const actions: Array<Record<string, unknown>> = [];
+  const job = { id: `job_${"c".repeat(32)}`, status: "ARTIFACT_VERIFIED", phase: "publish", previewUrl: "https://draft-preview.netlify.app/" };
+  await mockAdmin(page, { ...configured, activeJob: job }, actions);
+  await openPublish(page);
+  await expect(page.getByRole("link", { name: /查看已核验草稿/u })).toHaveAttribute("href", job.previewUrl);
+  await expect(page.getByRole("button", { name: /明确发布到固定网址/u })).toBeVisible();
+  expect(actions).toHaveLength(0);
+  await page.getByRole("button", { name: /明确发布到固定网址/u }).dispatchEvent("click");
+  await expect.poll(() => actions.at(-1)?.action).toBe("promote");
+  expect(actions.at(-1)?.jobId).toBe(job.id);
 });
 
 test("first success renders the fixed URL QR while reauthorization and rollback remain explicit", async ({ page }) => {

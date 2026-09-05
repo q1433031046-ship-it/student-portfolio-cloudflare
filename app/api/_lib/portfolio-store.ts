@@ -23,6 +23,12 @@ export type PortfolioRecord = {
   publishedAt: string | null;
 };
 
+export class PortfolioPublishError extends Error {
+  readonly code = "PORTFOLIO_MEDIA_NOT_READY";
+  readonly status = 409;
+  constructor() { super("草稿引用的媒体尚未上传完成或不存在，已停止动态发布"); }
+}
+
 export function getPortfolioDb(): D1Database {
   const db = (env as unknown as { DB?: D1Database }).DB;
   if (!db) throw new Error("作品集数据库不可用");
@@ -40,15 +46,14 @@ export async function getPortfolioRecord(): Promise<PortfolioRecord | null> {
 export async function savePortfolioDraft(document: PortfolioDocument, expectedRevision: number): Promise<PortfolioRecord | null> {
   const nextRevision = expectedRevision + 1;
   const updatedAt = new Date().toISOString();
-  const referencedMediaKeys = Array.from(new Set(mediaAssetsInDocument(document).flatMap((asset) => asset.key ? [asset.key] : [])));
+  const referencedMediaKeys = referencedMediaKeysInDocument(document);
   const result = await getPortfolioDb()
     .prepare(`UPDATE portfolio_documents SET draft_json = ?, revision = ?, updated_at = ?
       WHERE id = ? AND revision = ?
         AND NOT EXISTS (
-          SELECT 1
-          FROM portfolio_media AS media
-          INNER JOIN json_each(?) AS referenced ON referenced.value = media.object_key
-          WHERE media.status != 'uploaded'
+          SELECT 1 FROM json_each(?) AS referenced
+          LEFT JOIN portfolio_media AS media ON media.object_key = referenced.value
+          WHERE media.id IS NULL OR media.status != 'uploaded'
         )`)
     .bind(JSON.stringify(document), nextRevision, updatedAt, DOCUMENT_ID, expectedRevision, JSON.stringify(referencedMediaKeys))
     .run();
@@ -59,12 +64,33 @@ export async function savePortfolioDraft(document: PortfolioDocument, expectedRe
 export async function publishPortfolio(expectedRevision: number): Promise<PortfolioRecord | null> {
   const nextRevision = expectedRevision + 1;
   const now = new Date().toISOString();
+  // Read the exact revision whose draft is about to be published, then repeat
+  // the media identity/readiness check inside the CAS UPDATE. If the draft
+  // changes between these statements, the revision predicate makes the
+  // update fail instead of publishing a stale document.
+  const current = await getPortfolioRecord();
+  if (!current || current.revision !== expectedRevision) return null;
+  const referencedMediaKeys = referencedMediaKeysInDocument(current.draft);
   const result = await getPortfolioDb()
-    .prepare("UPDATE portfolio_documents SET published_json = draft_json, revision = ?, updated_at = ?, published_at = ? WHERE id = ? AND revision = ?")
-    .bind(nextRevision, now, now, DOCUMENT_ID, expectedRevision)
+    .prepare(`UPDATE portfolio_documents SET published_json = draft_json, revision = ?, updated_at = ?, published_at = ?
+      WHERE id = ? AND revision = ?
+        AND NOT EXISTS (
+          SELECT 1 FROM json_each(?) AS referenced
+          LEFT JOIN portfolio_media AS media ON media.object_key = referenced.value
+          WHERE media.id IS NULL OR media.status != 'uploaded'
+        )`)
+    .bind(nextRevision, now, now, DOCUMENT_ID, expectedRevision, JSON.stringify(referencedMediaKeys))
     .run();
-  if (Number(result.meta.changes ?? 0) !== 1) return null;
+  if (Number(result.meta.changes ?? 0) !== 1) {
+    const latest = await getPortfolioRecord();
+    if (latest?.revision === expectedRevision) throw new PortfolioPublishError();
+    return null;
+  }
   return getPortfolioRecord();
+}
+
+export function referencedMediaKeysInDocument(document: PortfolioDocument) {
+  return Array.from(new Set(mediaAssetsInDocument(document).flatMap((asset) => asset.key ? [asset.key] : [])));
 }
 
 export async function getPublishedPortfolio(): Promise<{ document: PortfolioDocument | null; revision: number; publishedAt: string | null }> {
