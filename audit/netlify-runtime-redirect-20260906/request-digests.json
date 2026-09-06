@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "kind": "private-request-digest-binding",
+  "metadata": {
+    "bytes": 1885,
+    "sha256": "a774bfcf2d6abd59b01140a7feb992d0584b12c565b325f806efbfde3670f232"
+  },
+  "multipart": {
+    "bytes": 2488370,
+    "sha256": "53c50d70a5bab37cccdffd0e2690364691f9fa3cd22b8676277541af36ed3eff"
+  },
+  "privateRequestManifest": {
+    "bytes": 1897,
+    "sha256": "58848f3fec13fbf952e4475d1a8083266d1527599c5fdb53d912a17634a1726e"
+  },
+  "module": {
+    "bytes": 2485824,
+    "sha256": "dc46ce87f68ef1c91411c8f8efc265f8ac931ca63882ecdcf534457b8eb97f97"
+  },
+  "headers": {
+    "bytes": 125,
+    "sha256": "9e55124bccd40b43dbc6e002daa777fa8f32a230420152910784ca65501d9e0f"
+  },
+  "verification": {
+    "multipartRoundTrip": "PASS",
+    "jwtAbsent": true,
+    "placementAbsent": true,
+    "exactInheritedBindings": 8,
+    "assetConfigHeadersExact": true
+  },
+  "requiredTransport": {
+    "maxProductionPut": 1,
+    "automaticRetries": 0,
+    "followRedirects": false,
+    "officialHostOnly": true,
+    "clientVerified": false
+  },
+  "state": "PREPARED_LOCAL_NOT_SENT"
+}

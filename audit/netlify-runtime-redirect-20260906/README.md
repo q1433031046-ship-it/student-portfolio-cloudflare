@@ -1,0 +1,11 @@
+# Runtime redirect compatibility hotfix
+
+The Worker runtime rejects redirect: "error" during Request construction, before outbound traffic. This patch changes exactly two values to "manual" in triggerDraftBuild and readJsonEvidence. Existing non-success response checks, payload/query values and timeout behavior remain intact. Redirect responses fail without following another destination.
+
+manifest.json identifies the exact original and patched runtime bytes and the two original byte offsets. runtime-redirect.patch contains only those two edits. patch-runtime.cjs reproduces the byte patch from the exact private original module and auxiliary _headers inputs; it rejects any mismatched source. Run it only in a private working directory because its output includes the complete module and source paths.
+
+Twenty-two cases passed using workerd 1.20260828.1, compatibility date 2026-08-28 and nodejs_compat. Actual functions were extracted from the complete original and patched modules. The complete patched module loaded successfully. All outbound traffic was intercepted locally. runtime-verification.json records these results; provenance.json identifies the exact executed tools, including the locally retained verifier and request preparer.
+
+request-digests.json binds the private metadata and raw multipart byte files. Their round-trip parse verified every part. Metadata preserves eight exact-version inherited bindings, compatibility and observed settings, and the existing asset configuration. The private body contains no new asset upload token. The full modules, private request files and original resource identifiers remain outside this public carrier.
+
+This commit is a review carrier for a runtime artifact; its source tree is not claimed to reproduce the downloaded module from historical TypeScript. Applying the carrier commit alone does not install the hotfix. Exact Head/Tree and the proposed PR are recorded in the accompanying local handoff. The production client still requires verification of its single-attempt, no-redirect behavior and current baseline checks. No production upload or real Netlify Hook was performed, and successful static publication remains unverified.

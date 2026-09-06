@@ -1,0 +1,188 @@
+{
+  "runtime": "workerd 1.20260828.1",
+  "compatibilityDate": "2026-08-28",
+  "compatibilityFlags": [
+    "nodejs_compat"
+  ],
+  "originalSha256": "8d0fc2b08777af56d43139412327c0a8702b469919bb7428d54cfeca7f3351d8",
+  "patchedSha256": "dc46ce87f68ef1c91411c8f8efc265f8ac931ca63882ecdcf534457b8eb97f97",
+  "actualFunctionsExtracted": true,
+  "unchangedWrapperAndProviderError": true,
+  "wholeModuleLoaded": true,
+  "externalNetworkUsed": false,
+  "results": [
+    {
+      "version": "original",
+      "route": "/valid-hook",
+      "status": 200,
+      "ok": false,
+      "errorCode": "NETLIFY_NETWORK_UNAVAILABLE",
+      "outboundCalls": 0
+    },
+    {
+      "version": "original",
+      "route": "/read",
+      "status": 200,
+      "ok": false,
+      "errorCode": "NETLIFY_NETWORK_UNAVAILABLE",
+      "outboundCalls": 0
+    },
+    {
+      "version": "patched",
+      "route": "/valid-hook",
+      "status": 200,
+      "ok": true,
+      "errorCode": null,
+      "outboundCalls": 1
+    },
+    {
+      "version": "patched",
+      "route": "/valid-hook",
+      "status": 204,
+      "ok": true,
+      "errorCode": null,
+      "outboundCalls": 1
+    },
+    {
+      "version": "patched",
+      "route": "/valid-hook",
+      "status": 301,
+      "ok": false,
+      "errorCode": "NETLIFY_BUILD_TRIGGER_FAILED",
+      "outboundCalls": 1
+    },
+    {
+      "version": "patched",
+      "route": "/valid-hook",
+      "status": 302,
+      "ok": false,
+      "errorCode": "NETLIFY_BUILD_TRIGGER_FAILED",
+      "outboundCalls": 1
+    },
+    {
+      "version": "patched",
+      "route": "/valid-hook",
+      "status": 307,
+      "ok": false,
+      "errorCode": "NETLIFY_BUILD_TRIGGER_FAILED",
+      "outboundCalls": 1
+    },
+    {
+      "version": "patched",
+      "route": "/valid-hook",
+      "status": 308,
+      "ok": false,
+      "errorCode": "NETLIFY_BUILD_TRIGGER_FAILED",
+      "outboundCalls": 1
+    },
+    {
+      "version": "patched",
+      "route": "/valid-hook",
+      "status": 401,
+      "ok": false,
+      "errorCode": "NETLIFY_REAUTHORIZATION_REQUIRED",
+      "outboundCalls": 1
+    },
+    {
+      "version": "patched",
+      "route": "/valid-hook",
+      "status": 403,
+      "ok": false,
+      "errorCode": "NETLIFY_REAUTHORIZATION_REQUIRED",
+      "outboundCalls": 1
+    },
+    {
+      "version": "patched",
+      "route": "/valid-hook",
+      "status": 429,
+      "ok": false,
+      "errorCode": "NETLIFY_RATE_LIMITED",
+      "outboundCalls": 1
+    },
+    {
+      "version": "patched",
+      "route": "/valid-hook",
+      "status": 400,
+      "ok": false,
+      "errorCode": "NETLIFY_BUILD_TRIGGER_FAILED",
+      "outboundCalls": 1
+    },
+    {
+      "version": "patched",
+      "route": "/valid-hook",
+      "status": 500,
+      "ok": false,
+      "errorCode": "NETLIFY_BUILD_TRIGGER_FAILED",
+      "outboundCalls": 1
+    },
+    {
+      "version": "patched",
+      "route": "/read",
+      "status": 200,
+      "ok": true,
+      "errorCode": null,
+      "outboundCalls": 1
+    },
+    {
+      "version": "patched",
+      "route": "/read",
+      "status": 301,
+      "ok": false,
+      "errorCode": "STATIC_ARTIFACT_READBACK_FAILED",
+      "outboundCalls": 1
+    },
+    {
+      "version": "patched",
+      "route": "/read",
+      "status": 302,
+      "ok": false,
+      "errorCode": "STATIC_ARTIFACT_READBACK_FAILED",
+      "outboundCalls": 1
+    },
+    {
+      "version": "patched",
+      "route": "/read",
+      "status": 307,
+      "ok": false,
+      "errorCode": "STATIC_ARTIFACT_READBACK_FAILED",
+      "outboundCalls": 1
+    },
+    {
+      "version": "patched",
+      "route": "/read",
+      "status": 308,
+      "ok": false,
+      "errorCode": "STATIC_ARTIFACT_READBACK_FAILED",
+      "outboundCalls": 1
+    },
+    {
+      "version": "patched",
+      "route": "/read",
+      "status": 403,
+      "ok": false,
+      "errorCode": "STATIC_ARTIFACT_READBACK_FAILED",
+      "outboundCalls": 1
+    },
+    {
+      "version": "patched",
+      "route": "/read",
+      "status": 500,
+      "ok": false,
+      "errorCode": "STATIC_ARTIFACT_READBACK_FAILED",
+      "outboundCalls": 1
+    },
+    {
+      "check": "timeout",
+      "ok": false,
+      "code": "NETLIFY_NETWORK_TIMEOUT",
+      "status": 503,
+      "aborted": true
+    },
+    {
+      "check": "timer-cleanup",
+      "ok": true,
+      "aborted": false
+    }
+  ],
+  "assertions": "PASS"
+}

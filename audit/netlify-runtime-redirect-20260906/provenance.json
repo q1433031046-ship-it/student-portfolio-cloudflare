@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "source": "Official exact-version module GET; full runtime artifacts are retained in the private local review bundle.",
+  "runtimeSourceIsHistoricalGitTree": false,
+  "files": {
+    "patch-runtime.cjs": {
+      "bytes": 4251,
+      "sha256": "986ad5fcec5fa24f95c8a83be0a0b560ebc6c752d37ce0ce40143e1fe746c24d"
+    },
+    "verify-runtime.cjs": {
+      "bytes": 8506,
+      "sha256": "357a0f303eea9c236fcc976995f96b32b505fb6e505a7bbce251dc3bd9893995"
+    },
+    "prepare-request.cjs": {
+      "bytes": 5131,
+      "sha256": "e1dc435183ead5a1362f178fc807e1c5f53ad58435e1e491ff615df6f9ce3d6a"
+    },
+    "runtime-verification.json": {
+      "bytes": 4344,
+      "sha256": "fe6b72126ca4633ecb4bfca9c8355cd346c94d2c1138e4e6589d10f0730f62b5"
+    }
+  },
+  "limits": [
+    "The existing sourceMappingURL reference has no retrieved map; the two replacements may shift diagnostic columns.",
+    "Production transport, current provider baseline and exact remote PR audit remain release gates."
+  ]
+}

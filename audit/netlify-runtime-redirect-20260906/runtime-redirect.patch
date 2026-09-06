@@ -1,0 +1,22 @@
+diff --git a/worker-entry.js b/worker-entry.js
+index f090ea0..f56a713 100644
+--- a/worker-entry.js
++++ b/worker-entry.js
+@@ -39137,7 +39137,7 @@ function validatedProductionUrl(value) {
+ async function readJsonEvidence(baseUrl, file) {
+   const url = new URL(file, baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`);
+   const response = await fetchNetlifyWithTimeout(fetch, url, {
+-    redirect: "error",
++    redirect: "manual",
+     cache: "no-store",
+     headers: { Accept: "application/json" }
+   }, DEFAULT_NETLIFY_REQUEST_TIMEOUT_MS);
+@@ -47197,7 +47197,7 @@ var init_server = __esm({
+           method: "POST",
+           headers: { "Content-Type": "application/json" },
+           body: JSON.stringify(input),
+-          redirect: "error"
++          redirect: "manual"
+         });
+         if (!response.ok) throw await this.providerError(response, "NETLIFY_BUILD_TRIGGER_FAILED");
+         return safeOptionalJson(response);
