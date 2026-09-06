@@ -1,0 +1,59 @@
+name: Pages publish
+run-name: pages/${{ inputs.jobId }}/${{ inputs.phase }}/${{ inputs.marker }}
+on:
+  workflow_dispatch:
+    inputs:
+      jobId:
+        required: true
+        type: string
+      phase:
+        required: true
+        type: choice
+        options: [preview, production]
+      marker:
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: pages-${{ inputs.jobId }}-${{ inputs.phase }}
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.repository == 'q1433031046-ship-it/student-portfolio-cloudflare'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Fetch exact workflow source
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_SHA" =~ ^[a-f0-9]{40}$ ]]
+          git init .
+          git remote add origin https://github.com/q1433031046-ship-it/student-portfolio-cloudflare.git
+          git fetch --depth=1 origin "$GITHUB_SHA"
+          git checkout --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          node -e 'const [a,b]=process.versions.node.split(".").map(Number); if(a<22||(a===22&&b<13))process.exit(1)'
+      - name: Fix Node version
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22.13.0
+      - name: Install frozen dependencies and runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+          node scripts/build-pages-runner.mjs
+      - name: Build preview template
+        if: inputs.phase == 'preview'
+        run: node scripts/build-pages-template.mjs
+      - name: Execute the authorized job
+        env:
+          PAGES_JOB_ID: ${{ inputs.jobId }}
+          PAGES_PHASE: ${{ inputs.phase }}
+          PAGES_WORKER_ORIGIN: ${{ vars.PAGES_WORKER_ORIGIN }}
+          PAGES_ACCOUNT_ID: ${{ vars.PAGES_ACCOUNT_ID }}
+          PAGES_RUNNER_HMAC_KEY: ${{ secrets.PAGES_RUNNER_HMAC_KEY }}
+          PAGES_API_TOKEN: ${{ secrets.PAGES_API_TOKEN }}
+        run: node scripts/pages-runner.mjs

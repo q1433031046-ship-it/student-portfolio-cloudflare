@@ -1,0 +1,83 @@
+name: Freeze minimum preview package
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: minimum-preview-package-5db224b
+  cancel-in-progress: false
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      WRANGLER_SEND_METRICS: 'false'
+      CI: 'true'
+    steps:
+      - name: Fetch exact reviewed source
+        uses: actions/checkout@v6
+        with:
+          ref: 5db224bdb1fa53743487bb3be66d80939f3627c8
+          persist-credentials: false
+      - name: Fix Node version
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22.13.0
+      - name: Build and freeze without tests or provider credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = 5db224bdb1fa53743487bb3be66d80939f3627c8
+          test "$(git rev-parse 'HEAD^{tree}')" = 940e2ef3068d4467d8bb2f07a57b6c0a70d7e86e
+          test "$(node --version)" = v22.13.0
+          npm ci
+          npm run build
+          node node_modules/wrangler/bin/wrangler.js deploy --dry-run --keep-vars --config wrangler.jsonc --outdir .preview-package/worker
+          mkdir -p .preview-package/site .preview-package/template .preview-package/source
+          cp -a dist/client .preview-package/site/client
+          cp app/api/_generated/pages-template.json .preview-package/template/pages-template.json
+          cp package.json package-lock.json wrangler.jsonc .preview-package/source/
+          cp -a drizzle .preview-package/source/drizzle
+          node --input-type=module <<'NODE'
+          import { readFile, readdir, writeFile } from 'node:fs/promises';
+          import { createHash } from 'node:crypto';
+          import { execFileSync } from 'node:child_process';
+          import os from 'node:os';
+          const sha = b => createHash('sha256').update(b).digest('hex');
+          const root = '.preview-package', files = [];
+          async function walk(directory, prefix = '') {
+            for (const entry of await readdir(directory, { withFileTypes: true })) {
+              const path = prefix + entry.name;
+              if (entry.isDirectory()) await walk(directory + '/' + entry.name, path + '/');
+              else {
+                if (!entry.isFile()) throw new Error('Unexpected package entry');
+                const bytes = await readFile(directory + '/' + entry.name);
+                files.push({ path, bytes: bytes.length, sha256: sha(bytes) });
+              }
+            }
+          }
+          await walk(root); files.sort((a,b) => a.path.localeCompare(b.path, 'en'));
+          const template = JSON.parse(await readFile(root + '/template/pages-template.json', 'utf8'));
+          const templateFiles = template.files.map(({path,bytes,sha256}) => ({path,bytes,sha256}));
+          if (sha(JSON.stringify(templateFiles)) !== template.identity) throw new Error('Template identity mismatch');
+          for (const file of template.files) {
+            const bytes = Buffer.from(file.base64, 'base64');
+            if (bytes.length !== file.bytes || sha(bytes) !== file.sha256) throw new Error('Template bytes mismatch');
+          }
+          const manifest = { sourceHead: execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(), sourceTree: execFileSync('git',['rev-parse','HEAD^{tree}'],{encoding:'utf8'}).trim(), workflowSha: process.env.GITHUB_WORKFLOW_SHA, workflowRef: process.env.GITHUB_WORKFLOW_REF, node: process.version, platform: process.platform, arch: process.arch, osRelease: os.release(), runnerImage: process.env.ImageVersion, templateIdentity: template.identity, templateFiles, files };
+          await writeFile(root + '/manifest.json', JSON.stringify(manifest,null,2));
+          console.log(JSON.stringify({sourceHead:manifest.sourceHead,sourceTree:manifest.sourceTree,templateIdentity:template.identity,templateFiles,files:files.length}));
+          NODE
+          tar -czf minimum-preview-5db224b.tar.gz -C .preview-package .
+          sha256sum minimum-preview-5db224b.tar.gz > minimum-preview-5db224b.tar.gz.sha256
+          cp .preview-package/manifest.json minimum-preview-5db224b.manifest.json
+      - name: Retain exact package and manifest
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: minimum-preview-5db224b
+          path: |
+            minimum-preview-5db224b.tar.gz
+            minimum-preview-5db224b.tar.gz.sha256
+            minimum-preview-5db224b.manifest.json
+          if-no-files-found: error
+          retention-days: 7
