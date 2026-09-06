@@ -1,17 +1,17 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "kind": "private-request-digest-binding",
   "metadata": {
-    "bytes": 1885,
-    "sha256": "a774bfcf2d6abd59b01140a7feb992d0584b12c565b325f806efbfde3670f232"
+    "bytes": 1855,
+    "sha256": "be08cc1b79d08caa8cbb93b610a7021664a1a8a01e06724c72f2753ec3753e89"
   },
   "multipart": {
-    "bytes": 2488370,
-    "sha256": "53c50d70a5bab37cccdffd0e2690364691f9fa3cd22b8676277541af36ed3eff"
+    "bytes": 2488340,
+    "sha256": "0d41e36406c835eb1a00e3e83ea51edea0633d0fba7ab4deea358effb2025704"
   },
   "privateRequestManifest": {
-    "bytes": 1897,
-    "sha256": "58848f3fec13fbf952e4475d1a8083266d1527599c5fdb53d912a17634a1726e"
+    "bytes": 3231,
+    "sha256": "7400aafbf1ec7a8190ced1b4a6548919e227ed6627c0dbf5bc2dd95ed6dfe03d"
   },
   "module": {
     "bytes": 2485824,
@@ -21,12 +21,46 @@
     "bytes": 125,
     "sha256": "9e55124bccd40b43dbc6e002daa777fa8f32a230420152910784ca65501d9e0f"
   },
-  "verification": {
-    "multipartRoundTrip": "PASS",
-    "jwtAbsent": true,
-    "placementAbsent": true,
-    "exactInheritedBindings": 8,
-    "assetConfigHeadersExact": true
+  "sendOnceScript": {
+    "bytes": 5899,
+    "sha256": "45a4a9a1107e7e7e3cd7326e32efd031592172844b39814c303d1ca749cb800e"
+  },
+  "priorAttempt": {
+    "body": {
+      "bytes": 2488370,
+      "sha256": "53c50d70a5bab37cccdffd0e2690364691f9fa3cd22b8676277541af36ed3eff"
+    },
+    "manifest": {
+      "bytes": 1897,
+      "sha256": "58848f3fec13fbf952e4475d1a8083266d1527599c5fdb53d912a17634a1726e"
+    },
+    "consumed": true,
+    "httpStatus": 400,
+    "errorCode": 10021
+  },
+  "correction": {
+    "removedProperty": "assets.config.serve_directly",
+    "runWorkerFirst": false,
+    "metadataRemovedBytes": 30,
+    "unchangedProduct": true
+  },
+  "rollback": {
+    "body": {
+      "bytes": 109,
+      "sha256": "67c5d6d25f97aaff106dfad04ab8df7f77734fee48e9a125e8b44f254ae92780"
+    },
+    "manifest": {
+      "bytes": 792,
+      "sha256": "6638509d5d0ea787d3d68398dbb1492bbbb828783f6145a29da3bb73f2545508"
+    },
+    "script": {
+      "bytes": 5958,
+      "sha256": "bd9176fa15656c87b281c66ef90ce292cf4d9663246557b3e421cdea590d1efc"
+    },
+    "appliesToPrimaryBodySha256": "0d41e36406c835eb1a00e3e83ea51edea0633d0fba7ab4deea358effb2025704",
+    "originalManifestPrimaryHashesAreHistoricalSourceOnly": true,
+    "sharedExistingOnceOnlyBudget": true,
+    "newRollbackBudgetCreated": false
   },
   "requiredTransport": {
     "maxProductionPut": 1,
@@ -35,5 +69,10 @@
     "officialHostOnly": true,
     "clientVerified": false
   },
-  "state": "PREPARED_LOCAL_NOT_SENT"
+  "requiredSwitches": [
+    "ExecuteApproved",
+    "NewAttemptApproved"
+  ],
+  "newUserSingleAttemptApprovalRequired": true,
+  "state": "PREPARED_V2_AWAITING_NEW_SINGLE_ATTEMPT_APPROVAL"
 }

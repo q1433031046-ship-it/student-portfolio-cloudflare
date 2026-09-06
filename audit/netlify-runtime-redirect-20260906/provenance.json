@@ -18,10 +18,24 @@
     "runtime-verification.json": {
       "bytes": 4344,
       "sha256": "fe6b72126ca4633ecb4bfca9c8355cd346c94d2c1138e4e6589d10f0730f62b5"
+    },
+    "prepare-request-v2.cjs": {
+      "bytes": 8132,
+      "sha256": "19c6b9e81e3be49593b857b7476bcb1519e513b08533744ad6cd300e5e94f265"
+    },
+    "send-once-v2.ps1": {
+      "bytes": 5899,
+      "sha256": "45a4a9a1107e7e7e3cd7326e32efd031592172844b39814c303d1ca749cb800e"
+    },
+    "metadata-correction-plan.md": {
+      "bytes": 5996,
+      "sha256": "6326d6942a9574ca532cc072529d08e8d1fe59c25fc165317a3d2e2e8d3cf864"
     }
   },
   "limits": [
     "The existing sourceMappingURL reference has no retrieved map; the two replacements may shift diagnostic columns.",
     "Production transport, current provider baseline and exact remote PR audit remain release gates."
-  ]
+  ],
+  "currentRequestRevision": 2,
+  "requestPreparationSource": "prepare-request.cjs identifies the original rejected attempt; prepare-request-v2.cjs identifies the revised local preparation. The new request-digests.json binds the current body."
 }

@@ -50,5 +50,7 @@
     "base": "d59825a25bce70b090aa613ea708adaa1362d113",
     "branch": "role3/netlify-runtime-redirect-fix-20260906",
     "identityRecord": "Exact Head and Tree are recorded outside the commit to avoid self-reference."
-  }
+  },
+  "metadataCorrectionPlanVersion": "1.2",
+  "currentRequestRevision": 2
 }
