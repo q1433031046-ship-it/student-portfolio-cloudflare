@@ -1,7 +1,7 @@
 import { advanceStaticPublish, freezeAndTriggerStaticPublish, promoteStaticPublish, retryStaticPublish, StaticPublishError } from "../../_lib/pages-publish";
 import { getActivePagesJob, pagesView } from "../../_lib/pages-store";
 import { isRequestBodyError, readJsonBody } from "../../_lib/request-body";
-import { requirePortfolioManager } from "../../_lib/site-ownership";
+import { requirePagesManager as requirePortfolioManager } from "../../_lib/pages-admin-auth";
 
 const noStore = { "Cache-Control": "no-store, max-age=0", Pragma: "no-cache" };
 

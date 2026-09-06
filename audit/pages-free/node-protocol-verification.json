@@ -1,0 +1,43 @@
+{
+  "runtime": "v24.18.0",
+  "results": [
+    {
+      "bytes": 0,
+      "rawSourceBlockBytes": 4194304,
+      "sha256AndBase64Exact": true,
+      "uploadAttempts": 1
+    },
+    {
+      "bytes": 1,
+      "rawSourceBlockBytes": 4194304,
+      "sha256AndBase64Exact": true,
+      "uploadAttempts": 1
+    },
+    {
+      "bytes": 2,
+      "rawSourceBlockBytes": 4194304,
+      "sha256AndBase64Exact": true,
+      "uploadAttempts": 1
+    },
+    {
+      "bytes": 3,
+      "rawSourceBlockBytes": 4194304,
+      "sha256AndBase64Exact": true,
+      "uploadAttempts": 1
+    },
+    {
+      "bytes": 1293044,
+      "rawSourceBlockBytes": 4194304,
+      "sha256AndBase64Exact": true,
+      "uploadAttempts": 1
+    },
+    {
+      "bytes": 26214400,
+      "rawSourceBlockBytes": 4194304,
+      "sha256AndBase64Exact": true,
+      "uploadAttempts": 1
+    }
+  ],
+  "over25MiBRejectedBeforeSend": true,
+  "failedDeploymentNotRetried": true
+}

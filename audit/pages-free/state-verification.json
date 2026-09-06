@@ -1,0 +1,46 @@
+{
+  "runtime": "real local workerd/D1/KV; provider fixture only",
+  "results": [
+    {
+      "safeSnapshot": true,
+      "archivedAndKeysExcludedBeforeCI": true
+    },
+    {
+      "realGitHubReadbackRequired": true,
+      "invalidSignatureRejected": true,
+      "replayRejected": true,
+      "crossJobRejected": true,
+      "rawKv4MiB": true,
+      "dispatchResponseLostPosts": 1
+    },
+    {
+      "deploymentPermitOnce": true,
+      "concurrentPermitCASOneWinner": true,
+      "canceledLeaseExpiredRerunRecoverOnly": true,
+      "sameReceiptIdempotent": true,
+      "changedReceiptRejected": true
+    },
+    {
+      "nodeRunnerActualWorkerRpc": true,
+      "previewAndProductionSameManifestAndControls": true,
+      "productionDoesNotBuildTemplate": true,
+      "wrongPreviewBytesStopBeforeProductionAttempt": true,
+      "deploymentLostResponseCreates": 2,
+      "callbackLostResponseIdempotent": true,
+      "dynamicIndependent": true
+    },
+    {
+      "control60KiBAccepted66KiBRejected": true,
+      "productionWithoutAdminPhaseRejected": true,
+      "largeUnicodeSnapshotPaged": true,
+      "largeSnapshotBytes": 849110,
+      "readLeaseCannotDeployRegisterOrReceive": true,
+      "canceledRun201RerunOnce": true,
+      "privateFieldRejectedBeforeCIAndTransactionRolledBack": true
+    },
+    {
+      "lightweightAdminManagerAuthorization": true,
+      "anonymousWrongOwnerAndCrossOriginDenied": true
+    }
+  ]
+}

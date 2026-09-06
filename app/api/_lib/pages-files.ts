@@ -3,7 +3,7 @@ import { getBucket, getMediaKv, kvChunkKey, KV_UPLOAD_CHUNK_SIZE } from "./stora
 import { PagesError } from "./pages-client";
 import type { PagesFileRow } from "./pages-store";
 export { template };
-export const PAGES_HEADERS = "/*\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: strict-origin-when-cross-origin\n  Content-Security-Policy: default-src 'self'; img-src 'self' data:; media-src 'self'; font-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'\n/assets/*\n  Cache-Control: public, max-age=31536000, immutable\n/media/*\n  Cache-Control: public, max-age=31536000, immutable\n/data/*\n  Cache-Control: public, max-age=0, must-revalidate\n/index.html\n  Cache-Control: public, max-age=0, must-revalidate\n";
+export { PAGES_HEADERS } from './pages-control';
 export function encodeText(text: string) { const b = new TextEncoder().encode(text); let s=""; for(let at=0;at<b.length;at+=4096)s+=String.fromCharCode(...b.subarray(at,at+4096));return btoa(s); }
 export function inlineBytes(value: string) { return Uint8Array.from(atob(value), c=>c.charCodeAt(0)); }
 export async function openPagesFile(file: PagesFileRow): Promise<ReadableStream<Uint8Array>> {

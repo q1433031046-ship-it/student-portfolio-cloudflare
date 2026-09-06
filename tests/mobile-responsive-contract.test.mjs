@@ -22,7 +22,7 @@ const [layoutSource, globalsCss, portfolioSource, heroSource, endCoverSource, ca
   readFile(new URL("../app/demo/portfolio-demo.module.css", import.meta.url), "utf8"),
 ]);
 
-test("keeps document schema five while adding forward-only Pages migrations through 0010", async () => {
+test("keeps document schema five while adding forward-only Pages migrations through 0011", async () => {
   assert.equal(templateVersion.portfolioDocumentSchemaVersion, 5);
   assert.match(modelSource, /export type PortfolioDocument = \{\s*schemaVersion: 5;/u);
   for (const persistedField of ["mobileCrop", "mobileLayout", "mobileLayers"]) {
@@ -32,8 +32,8 @@ test("keeps document schema five while adding forward-only Pages migrations thro
   const sqlMigrations = (await readdir(new URL("../drizzle/", import.meta.url)))
     .filter((name) => /^\d{4}_.+\.sql$/u.test(name))
     .sort();
-  assert.equal(sqlMigrations.at(-1), "0010_pages_readback_progress.sql");
-  assert.equal(migrationJournal.entries.at(-1)?.tag, "0010_pages_readback_progress");
+  assert.equal(sqlMigrations.at(-1), "0011_pages_runner.sql");
+  assert.equal(migrationJournal.entries.at(-1)?.tag, "0011_pages_runner");
 });
 
 test("keeps the public Worker template on one D1 and one media KV binding", () => {

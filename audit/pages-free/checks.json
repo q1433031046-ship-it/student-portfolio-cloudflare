@@ -1,0 +1,81 @@
+{
+  "status": "LOCAL_IMPLEMENTED / RELEASE_HOLD",
+  "baseCandidate": "618638872086fcee6e230351085eb4b922aa585a",
+  "runtime": "v24.18.0",
+  "build": {
+    "vinext": "pass",
+    "wrangler": "4.127.1",
+    "dryRun": "pass",
+    "assetFiles": 32,
+    "uploadKiB": 2385.54,
+    "gzipKiB": 460.58
+  },
+  "typescript": "pass",
+  "eslint": {
+    "errors": 0,
+    "warnings": 0
+  },
+  "drizzle": {
+    "tables": 24,
+    "schemaChangesAfterGenerate": 0
+  },
+  "unit": {
+    "total": 246,
+    "pass": 206,
+    "fail": 37,
+    "skipped": 3,
+    "failures": [
+      "✖ platform-provisioned new deployment applies migrations before one deploy",
+      "✖ CI Worker-name override cannot misclassify an existing deployment as new",
+      "✖ matching CI Worker-name override remains a valid new-deployment path",
+      "✖ invalid CI Worker-name override fails before any remote call",
+      "✖ generic local new deployment without platform-injected ids fails before mutation",
+      "✖ existing upgrade captures and strictly rechecks the live fingerprint before mutation",
+      "✖ isolated tag tooling works from a foreign cwd with absolute original-site paths",
+      "✖ explicit upgrade fails closed when no baseline fingerprint is provided",
+      "✖ pure v1.0 R2-only configuration is explicitly unsupported before any remote action",
+      "✖ an existing site without MEDIA_KV cannot create or guess one during upgrade",
+      "✖ an existing MEDIA_KV binding without a fixed id fails closed",
+      "✖ auto mode also refuses to mutate an existing Worker without a baseline",
+      "✖ first-deploy mode refuses an existing Worker before migration",
+      "✖ changed baseline fingerprint blocks upgrade before migration",
+      "✖ upgrade rejects a fingerprint file readable by other users",
+      "✖ fingerprint capture never overwrites an existing upgrade baseline",
+      "✖ an optional secret name removed after capture blocks before migration without exposing values",
+      "✖ an optional secret name added after capture also blocks before mutation",
+      "✖ a local workers_dev configuration change is rejected against the saved baseline",
+      "✖ configured AUTH_PLATFORM mismatch blocks before migration and stores only a hash",
+      "✖ an extra preserved runtime variable changed after capture blocks before migration",
+      "✖ optional legacy R2 binding is part of the strict resource fingerprint",
+      "✖ an unconfigured live R2 binding blocks before migration to prevent data detachment",
+      "✖ existing upgrade refuses a changed D1 or KV target before migration",
+      "✖ existing upgrade requires the configured secret binding without exposing its value",
+      "✖ active Worker versions with different resource bindings fail before migration",
+      "✖ active Worker versions with different optional secret names fail before migration",
+      "✖ D1 migrations list permission failure always fails closed before deploy",
+      "✖ D1 permission failure may deploy only when every pending migration is runtime-safe",
+      "✖ unknown pending migration fails closed on a D1 permission error",
+      "✖ a runtime-safe migration with a changed contract digest fails closed",
+      "✖ non-permission migration errors fail closed even for runtime-safe migrations",
+      "✖ a concurrent release tag succeeds only when its peeled target is the verified SHA",
+      "✖ the owner command resolves only GitHub-supplied release and main SHAs",
+      "✖ the owner command preserves an exact SemVer prerelease identity",
+      "✖ a non-owner or malformed command fails before reading pull-request data",
+      "✖ forks, wrong branches and draft release pull requests fail closed"
+    ]
+  },
+  "workerHeavyDependencies": [],
+  "unchangedUi": [
+    "app/portfolio",
+    "static-site",
+    "app/admin/static-site-card.tsx"
+  ],
+  "stateEvidence": "state-verification.json",
+  "nodeEvidence": "node-protocol-verification.json",
+  "cpuEvidence": "cpu-profile.json",
+  "nativeLinux": "prepared_not_run",
+  "macOSWebKit": "not_verified",
+  "onlineFreeCpu": "not_verified",
+  "remoteGitWrites": 0,
+  "providerWrites": 0
+}

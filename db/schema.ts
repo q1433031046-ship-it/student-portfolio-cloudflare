@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { check, foreignKey, index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const works = sqliteTable(
   "works",
@@ -361,3 +361,15 @@ export const pagesFiles = sqliteTable("pages_files", {
   sha256: text("sha256"), assetKey: text("asset_key"), uploaded: integer("uploaded").notNull().default(0), uploadAttempts: integer("upload_attempts").notNull().default(0),
   previewVerified: integer("preview_verified").notNull().default(0), productionVerified: integer("production_verified").notNull().default(0), canonicalVerified: integer("canonical_verified").notNull().default(0),
 }, t => [primaryKey({ columns: [t.jobId, t.path] }), index("pages_files_media_reference").on(t.objectKey)]);
+
+export const pagesRunnerPhases = sqliteTable('pages_runner_phases', {
+  jobId: text('job_id').notNull().references(() => pagesJobs.id, { onDelete: 'restrict' }),
+  phase: text('phase').notNull(), version: integer('version').notNull().default(0), stateJson: text('state_json').notNull(),
+}, t => [primaryKey({ columns: [t.jobId, t.phase] }), check('pages_runner_phase_valid', sql`${t.phase} IN ('preview','production')`), check('pages_runner_state_bounded', sql`length(${t.stateJson})<=8192`)]);
+export const pagesRunnerNonces = sqliteTable('pages_runner_nonces', {
+  jobId: text('job_id').notNull(), phase: text('phase').notNull(), nonce: text('nonce').notNull(),
+}, t => [primaryKey({ columns: [t.jobId, t.phase, t.nonce] }), foreignKey({ columns: [t.jobId, t.phase], foreignColumns: [pagesRunnerPhases.jobId, pagesRunnerPhases.phase] }).onDelete('restrict')]);
+export const pagesRunnerSources = sqliteTable('pages_runner_sources', {
+  jobId: text('job_id').primaryKey().notNull().references(() => pagesJobs.id, { onDelete: 'restrict' }), head: text('head').notNull(), ref: text('ref').notNull(), template: text('template').notNull(),
+  manifestCount: integer('manifest_count').notNull().default(0), manifestFinal: integer('manifest_final').notNull().default(0), safeReady: integer('safe_ready').notNull().default(0),
+});

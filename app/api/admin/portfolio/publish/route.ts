@@ -1,7 +1,7 @@
 import { writeAuditLog } from "../../../_lib/audit";
 import { freezeAndTriggerStaticPublish, StaticPublishError } from "../../../_lib/pages-publish";
 import { isRequestBodyError, readJsonBody } from "../../../_lib/request-body";
-import { requirePortfolioManager } from "../../../_lib/site-ownership";
+import { requirePagesManager as requirePortfolioManager } from "../../../_lib/pages-admin-auth";
 
 export async function POST(request: Request) {
   try {

@@ -1,0 +1,10 @@
+# 已审v1.1实施顺序
+
+依据外部方案69d29770cf7ec5598fc00ac472faf954ea3e621a587ba82290170e9718ead8d9和独立PASS 6dd3fcdb65c6c5e169b93f9ea3ae9ccb654e17842697e924a0e25622bf9ac66b。基线618638872086fcee6e230351085eb4b922aa585a。
+
+1. HMAC有界消息、固定GitHub身份读回、D1持久CAS与不可重置deployment许可；真实workerd回归。
+2. D1安全快照、冻结媒体引用和分页原始块出口；静态管理员接口移除整文档解析。
+3. Node装配/Pages协议/同包生产和workflow_dispatch入口；本地provider夹具完整恢复测试。
+4. 构建、类型、增量检查、CPU剖析与准确新Candidate及外部接入对象。
+
+保留完整UI和旧证据，旧37失败/3跳过及原生Linux/macOS缺口明确继承。只在隔离目录实施，不远端启用，不生成真实密钥。

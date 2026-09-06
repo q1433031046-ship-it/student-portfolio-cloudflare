@@ -1,0 +1,784 @@
+{
+  "method": "V8 CPU Profiler, 100us requested sampling; active samples exclude idle/root; profile wall duration is reported separately. Includes runtime/native callback samples and profiler overhead. Local measurements are not provider-billed CPU.",
+  "conclusion": "INCONCLUSIVE: sparse Windows samples and multi-millisecond scheduling gaps do not establish Free 10ms headroom; no PASS is claimed.",
+  "onlineFree10msVerified": false,
+  "maximumSampledActiveMs": 23.36,
+  "requests": [
+    {
+      "operation": "claim",
+      "sampledActiveMs": 15.232,
+      "profileDurationMs": 20.095,
+      "samples": 14,
+      "hotFunctions": [
+        {
+          "name": "fetch",
+          "ms": 8.797
+        },
+        {
+          "name": "request",
+          "ms": 2.718
+        },
+        {
+          "name": "importKey",
+          "ms": 1.04
+        },
+        {
+          "name": "digest",
+          "ms": 1.034
+        },
+        {
+          "name": "authenticateControl",
+          "ms": 0.554
+        }
+      ]
+    },
+    {
+      "operation": "claim",
+      "sampledActiveMs": 2.334,
+      "profileDurationMs": 5.736,
+      "samples": 3,
+      "hotFunctions": [
+        {
+          "name": "authenticateControl",
+          "ms": 2.334
+        }
+      ]
+    },
+    {
+      "operation": "claim",
+      "sampledActiveMs": 23.36,
+      "profileDurationMs": 27.822,
+      "samples": 7,
+      "hotFunctions": [
+        {
+          "name": "runnerRequest",
+          "ms": 6.591
+        },
+        {
+          "name": "enterSpan",
+          "ms": 6.534
+        },
+        {
+          "name": "request",
+          "ms": 4.192
+        },
+        {
+          "name": "toJson",
+          "ms": 3.272
+        },
+        {
+          "name": "readControl",
+          "ms": 2.771
+        }
+      ]
+    },
+    {
+      "operation": "claim",
+      "sampledActiveMs": 12.235,
+      "profileDurationMs": 16.117,
+      "samples": 6,
+      "hotFunctions": [
+        {
+          "name": "verifyRun",
+          "ms": 3.903
+        },
+        {
+          "name": "fetch",
+          "ms": 3.325
+        },
+        {
+          "name": "_wrappedFetch",
+          "ms": 3.259
+        },
+        {
+          "name": "read",
+          "ms": 1.748
+        }
+      ]
+    },
+    {
+      "operation": "snapshot",
+      "sampledActiveMs": 11.672,
+      "profileDurationMs": 17.055,
+      "samples": 4,
+      "hotFunctions": [
+        {
+          "name": "",
+          "ms": 9.353
+        },
+        {
+          "name": "runnerRequest",
+          "ms": 2.319
+        }
+      ]
+    },
+    {
+      "operation": "snapshot",
+      "sampledActiveMs": 2.818,
+      "profileDurationMs": 10.469,
+      "samples": 3,
+      "hotFunctions": [
+        {
+          "name": "digest",
+          "ms": 2.818
+        }
+      ]
+    },
+    {
+      "operation": "block",
+      "sampledActiveMs": 12.644,
+      "profileDurationMs": 46.551,
+      "samples": 4,
+      "hotFunctions": [
+        {
+          "name": "get",
+          "ms": 10.749
+        },
+        {
+          "name": "getReader",
+          "ms": 1.895
+        }
+      ]
+    },
+    {
+      "operation": "block",
+      "sampledActiveMs": 12.216,
+      "profileDurationMs": 20.392,
+      "samples": 4,
+      "hotFunctions": [
+        {
+          "name": "rawFrozenBlock",
+          "ms": 12.216
+        }
+      ]
+    },
+    {
+      "operation": "snapshot",
+      "sampledActiveMs": 3.602,
+      "profileDurationMs": 11.851,
+      "samples": 4,
+      "hotFunctions": [
+        {
+          "name": "read",
+          "ms": 3.038
+        },
+        {
+          "name": "fetch",
+          "ms": 0.564
+        }
+      ]
+    },
+    {
+      "operation": "deployment-permit",
+      "sampledActiveMs": 14.767,
+      "profileDurationMs": 19.787,
+      "samples": 6,
+      "hotFunctions": [
+        {
+          "name": "deploymentPermit",
+          "ms": 6.638
+        },
+        {
+          "name": "toJson",
+          "ms": 3.054
+        },
+        {
+          "name": "",
+          "ms": 2.795
+        },
+        {
+          "name": "(garbage collector)",
+          "ms": 2.28
+        }
+      ]
+    },
+    {
+      "operation": "deployment-permit",
+      "sampledActiveMs": 6.461,
+      "profileDurationMs": 10.07,
+      "samples": 4,
+      "hotFunctions": [
+        {
+          "name": "jsonError",
+          "ms": 4.007
+        },
+        {
+          "name": "",
+          "ms": 2.454
+        }
+      ]
+    },
+    {
+      "operation": "claim",
+      "sampledActiveMs": 14.15,
+      "profileDurationMs": 26.339,
+      "samples": 5,
+      "hotFunctions": [
+        {
+          "name": "toJson",
+          "ms": 11.71
+        },
+        {
+          "name": "Headers",
+          "ms": 1.884
+        },
+        {
+          "name": "set",
+          "ms": 0.556
+        }
+      ]
+    },
+    {
+      "operation": "deployment-permit",
+      "sampledActiveMs": 1.9,
+      "profileDurationMs": 7.283,
+      "samples": 3,
+      "hotFunctions": [
+        {
+          "name": "fetch",
+          "ms": 1.9
+        }
+      ]
+    },
+    {
+      "operation": "receipt",
+      "sampledActiveMs": 16.735,
+      "profileDurationMs": 24.853,
+      "samples": 5,
+      "hotFunctions": [
+        {
+          "name": "_wrappedFetch",
+          "ms": 8.616
+        },
+        {
+          "name": "get",
+          "ms": 5.569
+        },
+        {
+          "name": "runnerRequest",
+          "ms": 2.55
+        }
+      ]
+    },
+    {
+      "operation": "receipt",
+      "sampledActiveMs": 0,
+      "profileDurationMs": 9.236,
+      "samples": 2,
+      "hotFunctions": []
+    },
+    {
+      "operation": "receipt",
+      "sampledActiveMs": 5.516,
+      "profileDurationMs": 9.687,
+      "samples": 4,
+      "hotFunctions": [
+        {
+          "name": "PagesError",
+          "ms": 3.428
+        },
+        {
+          "name": "fetch",
+          "ms": 2.088
+        }
+      ]
+    },
+    {
+      "operation": "claim",
+      "sampledActiveMs": 21.061,
+      "profileDurationMs": 28.57,
+      "samples": 6,
+      "hotFunctions": [
+        {
+          "name": "_sendOrThrow",
+          "ms": 8.516
+        },
+        {
+          "name": "setAttributes",
+          "ms": 6.444
+        },
+        {
+          "name": "text",
+          "ms": 3.714
+        },
+        {
+          "name": "readControl",
+          "ms": 2.387
+        }
+      ]
+    },
+    {
+      "operation": "status",
+      "sampledActiveMs": 17.809,
+      "profileDurationMs": 22.322,
+      "samples": 3,
+      "hotFunctions": [
+        {
+          "name": "text",
+          "ms": 17.809
+        }
+      ]
+    },
+    {
+      "operation": "snapshot",
+      "sampledActiveMs": 3.031,
+      "profileDurationMs": 17.988,
+      "samples": 4,
+      "hotFunctions": [
+        {
+          "name": "runnerRequest",
+          "ms": 2.462
+        },
+        {
+          "name": "URL",
+          "ms": 0.569
+        }
+      ]
+    },
+    {
+      "operation": "snapshot",
+      "sampledActiveMs": 9.083,
+      "profileDurationMs": 17.91,
+      "samples": 4,
+      "hotFunctions": [
+        {
+          "name": "(program)",
+          "ms": 6.426
+        },
+        {
+          "name": "readControl",
+          "ms": 2.657
+        }
+      ]
+    },
+    {
+      "operation": "media",
+      "sampledActiveMs": 9.23,
+      "profileDurationMs": 18.696,
+      "samples": 5,
+      "hotFunctions": [
+        {
+          "name": "runnerRequest",
+          "ms": 6.491
+        },
+        {
+          "name": "readControl",
+          "ms": 2.189
+        },
+        {
+          "name": "(program)",
+          "ms": 0.55
+        }
+      ]
+    },
+    {
+      "operation": "block",
+      "sampledActiveMs": 14.085,
+      "profileDurationMs": 44.092,
+      "samples": 7,
+      "hotFunctions": [
+        {
+          "name": "text",
+          "ms": 3.93
+        },
+        {
+          "name": "fetch",
+          "ms": 3.818
+        },
+        {
+          "name": "_sendOrThrow",
+          "ms": 3.811
+        },
+        {
+          "name": "bodyDigest",
+          "ms": 2.526
+        }
+      ]
+    },
+    {
+      "operation": "manifest",
+      "sampledActiveMs": 3.058,
+      "profileDurationMs": 16.762,
+      "samples": 3,
+      "hotFunctions": [
+        {
+          "name": "getReader",
+          "ms": 3.058
+        }
+      ]
+    },
+    {
+      "operation": "manifest-register",
+      "sampledActiveMs": 11.297,
+      "profileDurationMs": 21.152,
+      "samples": 7,
+      "hotFunctions": [
+        {
+          "name": "(program)",
+          "ms": 8.329
+        },
+        {
+          "name": "fetch",
+          "ms": 1.842
+        },
+        {
+          "name": "consume",
+          "ms": 0.581
+        },
+        {
+          "name": "manifestRow",
+          "ms": 0.545
+        }
+      ]
+    },
+    {
+      "operation": "manifest-finalize",
+      "sampledActiveMs": 12.409,
+      "profileDurationMs": 20.476,
+      "samples": 5,
+      "hotFunctions": [
+        {
+          "name": "fetch",
+          "ms": 7.389
+        },
+        {
+          "name": "(program)",
+          "ms": 3.225
+        },
+        {
+          "name": "readControl",
+          "ms": 1.795
+        }
+      ]
+    },
+    {
+      "operation": "asset-permit",
+      "sampledActiveMs": 1.768,
+      "profileDurationMs": 17.337,
+      "samples": 3,
+      "hotFunctions": [
+        {
+          "name": "readControl",
+          "ms": 1.768
+        }
+      ]
+    },
+    {
+      "operation": "asset-permit",
+      "sampledActiveMs": 3.194,
+      "profileDurationMs": 17.569,
+      "samples": 3,
+      "hotFunctions": [
+        {
+          "name": "hex",
+          "ms": 3.194
+        }
+      ]
+    },
+    {
+      "operation": "asset-permit",
+      "sampledActiveMs": 5.853,
+      "profileDurationMs": 15.815,
+      "samples": 4,
+      "hotFunctions": [
+        {
+          "name": "toArrayOfObjects",
+          "ms": 5.853
+        }
+      ]
+    },
+    {
+      "operation": "asset-permit",
+      "sampledActiveMs": 4.943,
+      "profileDurationMs": 17.339,
+      "samples": 4,
+      "hotFunctions": [
+        {
+          "name": "setAttributes",
+          "ms": 3.131
+        },
+        {
+          "name": "cancel",
+          "ms": 1.812
+        }
+      ]
+    },
+    {
+      "operation": "asset-permit",
+      "sampledActiveMs": 7.736,
+      "profileDurationMs": 15.916,
+      "samples": 5,
+      "hotFunctions": [
+        {
+          "name": "",
+          "ms": 5.984
+        },
+        {
+          "name": "fetch",
+          "ms": 1.752
+        }
+      ]
+    },
+    {
+      "operation": "deployment-permit",
+      "sampledActiveMs": 1.996,
+      "profileDurationMs": 20.953,
+      "samples": 3,
+      "hotFunctions": [
+        {
+          "name": "encode",
+          "ms": 1.996
+        }
+      ]
+    },
+    {
+      "operation": "receipt",
+      "sampledActiveMs": 11.171,
+      "profileDurationMs": 21.655,
+      "samples": 6,
+      "hotFunctions": [
+        {
+          "name": "fetch",
+          "ms": 6.06
+        },
+        {
+          "name": "text",
+          "ms": 2.668
+        },
+        {
+          "name": "readControl",
+          "ms": 2.443
+        }
+      ]
+    },
+    {
+      "operation": "receipt",
+      "sampledActiveMs": 2.504,
+      "profileDurationMs": 11.207,
+      "samples": 3,
+      "hotFunctions": [
+        {
+          "name": "TextDecoder",
+          "ms": 2.504
+        }
+      ]
+    },
+    {
+      "operation": "claim",
+      "sampledActiveMs": 15.894,
+      "profileDurationMs": 23.173,
+      "samples": 3,
+      "hotFunctions": [
+        {
+          "name": "URL",
+          "ms": 15.894
+        }
+      ]
+    },
+    {
+      "operation": "status",
+      "sampledActiveMs": 10.563,
+      "profileDurationMs": 26.2,
+      "samples": 5,
+      "hotFunctions": [
+        {
+          "name": "read",
+          "ms": 8.135
+        },
+        {
+          "name": "readControl",
+          "ms": 2.428
+        }
+      ]
+    },
+    {
+      "operation": "manifest",
+      "sampledActiveMs": 14.772,
+      "profileDurationMs": 19.632,
+      "samples": 4,
+      "hotFunctions": [
+        {
+          "name": "toJson",
+          "ms": 12.26
+        },
+        {
+          "name": "digest",
+          "ms": 2.512
+        }
+      ]
+    },
+    {
+      "operation": "deployment-permit",
+      "sampledActiveMs": 10.347,
+      "profileDurationMs": 22.282,
+      "samples": 4,
+      "hotFunctions": [
+        {
+          "name": "_wrappedFetch",
+          "ms": 7.989
+        },
+        {
+          "name": "authenticateControl",
+          "ms": 2.358
+        }
+      ]
+    },
+    {
+      "operation": "receipt",
+      "sampledActiveMs": 12.007,
+      "profileDurationMs": 23.355,
+      "samples": 4,
+      "hotFunctions": [
+        {
+          "name": "fetch",
+          "ms": 9.461
+        },
+        {
+          "name": "authenticateControl",
+          "ms": 2.546
+        }
+      ]
+    },
+    {
+      "operation": "receipt",
+      "sampledActiveMs": 2.349,
+      "profileDurationMs": 10.399,
+      "samples": 3,
+      "hotFunctions": [
+        {
+          "name": "digest",
+          "ms": 2.349
+        }
+      ]
+    }
+  ],
+  "fixtureRequests": [
+    {
+      "operation": "fixture",
+      "sampledActiveMs": 8.97,
+      "profileDurationMs": 23.407,
+      "samples": 5,
+      "hotFunctions": [
+        {
+          "name": "(program)",
+          "ms": 7.767
+        },
+        {
+          "name": "fetch",
+          "ms": 0.648
+        },
+        {
+          "name": "",
+          "ms": 0.555
+        }
+      ]
+    },
+    {
+      "operation": "fixture",
+      "sampledActiveMs": 21.448,
+      "profileDurationMs": 25.689,
+      "samples": 19,
+      "hotFunctions": [
+        {
+          "name": "(program)",
+          "ms": 8.591
+        },
+        {
+          "name": "freezeSafeSnapshot",
+          "ms": 7.639
+        },
+        {
+          "name": "validateSource",
+          "ms": 4.121
+        },
+        {
+          "name": "fetch",
+          "ms": 0.554
+        },
+        {
+          "name": "bind",
+          "ms": 0.543
+        }
+      ]
+    },
+    {
+      "operation": "fixture",
+      "sampledActiveMs": 13.76,
+      "profileDurationMs": 19.998,
+      "samples": 7,
+      "hotFunctions": [
+        {
+          "name": "",
+          "ms": 10.432
+        },
+        {
+          "name": "createPhase",
+          "ms": 2.247
+        },
+        {
+          "name": "fetch",
+          "ms": 0.544
+        },
+        {
+          "name": "timeout",
+          "ms": 0.537
+        }
+      ]
+    },
+    {
+      "operation": "fixture",
+      "sampledActiveMs": 0,
+      "profileDurationMs": 9.389,
+      "samples": 2,
+      "hotFunctions": []
+    },
+    {
+      "operation": "fixture",
+      "sampledActiveMs": 7.592,
+      "profileDurationMs": 12.535,
+      "samples": 4,
+      "hotFunctions": [
+        {
+          "name": "toJson",
+          "ms": 4.6
+        },
+        {
+          "name": "fetch",
+          "ms": 2.992
+        }
+      ]
+    },
+    {
+      "operation": "fixture",
+      "sampledActiveMs": 9.342,
+      "profileDurationMs": 21.306,
+      "samples": 5,
+      "hotFunctions": [
+        {
+          "name": "text",
+          "ms": 5.451
+        },
+        {
+          "name": "(program)",
+          "ms": 3.339
+        },
+        {
+          "name": "fetch",
+          "ms": 0.552
+        }
+      ]
+    },
+    {
+      "operation": "fixture",
+      "sampledActiveMs": 1.941,
+      "profileDurationMs": 21.691,
+      "samples": 3,
+      "hotFunctions": [
+        {
+          "name": "createPhase",
+          "ms": 1.941
+        }
+      ]
+    }
+  ]
+}

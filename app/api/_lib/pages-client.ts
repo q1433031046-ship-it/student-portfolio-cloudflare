@@ -7,9 +7,8 @@ export const PAGES_MAX_FILES = 20_000;
 export const PAGES_STEP_FILES = 1;
 export type PagesFile = { path: string; byteSize: number; contentType: string; sha256: string; key: string };
 export type PagesDeployment = { id: string; url: string; environment: "preview" | "production"; latest_stage: { status: string }; deployment_trigger?: { metadata?: { commit_message?: string; branch?: string } } };
-export class PagesError extends Error {
-  constructor(public code: string, message: string, public status = 409) { super(message); }
-}
+import { PagesError } from './pages-errors';
+export { PagesError } from './pages-errors';
 export function assertPagesPath(path: string) {
   if (!/^[A-Za-z0-9_./-]+$/u.test(path) || path.startsWith("/") || path.split("/").some(x => !x || x === "." || x === "..")) throw new PagesError("PAGES_PATH_INVALID", "静态文件路径无效");
 }
@@ -115,11 +114,12 @@ export class PagesClient {
     await this.request("/pages/assets/upload", { method: "POST", headers: { "Content-Type": "application/json" }, body, duplex: "half" } as RequestInit, jwt);
   }
   upsert(keys: string[], jwt: string) { return this.request("/pages/assets/upsert-hashes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ hashes: keys }) }, jwt); }
-  createDeployment(files: PagesFile[], branch: string, marker: string, headers: string) {
+  createDeployment(files: PagesFile[], branch: string, marker: string, headers: string, redirects?: string) {
     if (!branch || !marker) throw new PagesError("PAGES_DEPLOY_IDENTITY", "部署分支和快照标记不能为空");
-    const form = new FormData(); form.set("manifest", JSON.stringify(Object.fromEntries(files.filter(f => f.path !== "_headers").map(f => [`/${f.path}`, f.key]))));
+    const form = new FormData(); form.set("manifest", JSON.stringify(Object.fromEntries(files.filter(f => !['_headers','_redirects'].includes(f.path)).map(f => [`/${f.path}`, f.key]))));
     form.set("branch", branch); form.set("commit_message", marker); form.set("commit_dirty", "true");
     form.set("_headers", new File([headers], "_headers"));
+    if (redirects !== undefined) form.set('_redirects', new File([redirects], '_redirects'));
     return this.request<PagesDeployment>(`${this.projectPath()}/deployments`, { method: "POST", body: form });
   }
   getDeployment(id: string) { return this.request<PagesDeployment>(`${this.projectPath()}/deployments/${encodeURIComponent(id)}`); }

@@ -1,12 +1,15 @@
 import { getPortfolioDb } from "./portfolio-store";
-import { PagesError, type PagesFile } from "./pages-client";
+import type { PagesFile } from "./pages-client";
+import { PagesError } from "./pages-errors";
 
 export type PagesSite = { id: string; project: string; production_branch: string; production_url: string; current_job: string | null; previous_job: string | null; current_deploy: string | null; previous_deploy: string | null; public_revision: number; last_success_at: string | null };
 export type PagesJob = { id: string; source_revision: number; candidate_json: string; candidate_hash: string; template_hash: string; artifact_hash: string | null; status: string; lock_token: string | null; lock_until: number; preview_attempted: number; production_attempted: number; preview_id: string | null; preview_url: string | null; production_id: string | null; production_url: string | null; lookup_count: number; error_code: string | null; error_summary: string | null; created_at: string; completed_at: string | null };
 export type PagesFileRow = { job_id: string; path: string; byte_size: number; content_type: string; inline_base64: string | null; object_key: string | null; storage_backend: string | null; source_etag: string | null; sha256: string | null; asset_key: string | null; uploaded: number; upload_attempts: number; preview_verified:number; production_verified:number; canonical_verified:number };
 export const getPagesSite = () => getPortfolioDb().prepare("SELECT * FROM pages_site WHERE id='default'").first<PagesSite>();
 export const getPagesJob = (id: string) => getPortfolioDb().prepare("SELECT * FROM pages_jobs WHERE id=?").bind(id).first<PagesJob>();
-export const getActivePagesJob = () => getPortfolioDb().prepare("SELECT * FROM pages_jobs WHERE status NOT IN ('PUBLISHED','FAILED_FINAL') ORDER BY created_at DESC LIMIT 1").first<PagesJob>();
+type JobSummary = Pick<PagesJob, 'id' | 'status' | 'preview_url' | 'error_code' | 'error_summary'>;
+export const getPagesJobSummary = (id: string) => getPortfolioDb().prepare("SELECT id,status,preview_url,error_code,error_summary FROM pages_jobs WHERE id=?").bind(id).first<JobSummary>();
+export const getActivePagesJob = () => getPortfolioDb().prepare("SELECT id,status,preview_url,error_code,error_summary FROM pages_jobs WHERE status NOT IN ('PUBLISHED','FAILED_FINAL') ORDER BY created_at DESC LIMIT 1").first<JobSummary>();
 export async function getPagesFiles(id: string) { return (await getPortfolioDb().prepare("SELECT * FROM pages_files WHERE job_id=? ORDER BY path").bind(id).all<PagesFileRow>()).results; }
 export function asPagesFile(row: PagesFileRow): PagesFile { if (!row.sha256 || !row.asset_key) throw new PagesError("PAGES_FILE_UNHASHED", "静态文件尚未核验"); return { path: row.path, byteSize: row.byte_size, contentType: row.content_type, sha256: row.sha256, key: row.asset_key }; }
 export async function pagesView() {
