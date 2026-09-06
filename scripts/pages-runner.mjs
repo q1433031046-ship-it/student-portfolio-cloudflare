@@ -10,6 +10,7 @@ import { PagesClient, digestPagesFile, preflightPagesFiles, signControl, CONTROL
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 const streamFile = path => Readable.toWeb(createReadStream(path));
 const controls = new Set(['_headers', '_redirects']);
+const httpAssetPath = path => path === 'index.html' ? '/' : `/${path}`;
 const fail = code => { const error = new Error(code); error.code = code; throw error; };
 export class RunnerRpc {
   constructor(config, send = fetch) { this.config = config; this.send = send; this.lease = ''; this.seq = 0; }
@@ -97,7 +98,7 @@ async function downloadFrozen(rpc, status, directory, send) {
   if (artifactHash(files) !== status.job.artifact_hash) fail('RUNNER_ARTIFACT_MISMATCH');
   const origin = immutableOrigin(status.job.preview_url);
   for (const f of files) {
-    const bytes = controls.has(f.path) ? Buffer.from(f.control ?? fail('RUNNER_CONTROL_MISSING'), 'base64') : await boundedBytes(await send(`${origin}/${f.path}`, { redirect: 'manual', cache: 'no-store', signal: AbortSignal.timeout(30_000) }), f.byteSize);
+    const bytes = controls.has(f.path) ? Buffer.from(f.control ?? fail('RUNNER_CONTROL_MISSING'), 'base64') : await boundedBytes(await send(`${origin}${httpAssetPath(f.path)}`, { redirect: 'manual', cache: 'no-store', signal: AbortSignal.timeout(30_000) }), f.byteSize);
     if (bytes.length !== f.byteSize || sha(bytes) !== f.sha256) fail('RUNNER_PREVIEW_BYTES_CHANGED');
     const verified = await storeFile(directory, f.path, bytes, f.contentType); if (verified.key !== f.key) fail('RUNNER_ASSET_KEY_MISMATCH');
   }
@@ -112,11 +113,11 @@ async function verifyBytes(origin, files, send) {
   if (!control?.control) fail('RUNNER_CONTROL_MISSING');
   const lines = Buffer.from(control.control, 'base64').toString('utf8').split('\n');
   for (const f of files) if (!controls.has(f.path)) {
-    const response = await send(`${origin}/${f.path}`, { redirect: 'manual', cache: 'no-store', signal: AbortSignal.timeout(30_000) });
+    const response = await send(`${origin}${httpAssetPath(f.path)}`, { redirect: 'manual', cache: 'no-store', signal: AbortSignal.timeout(30_000) });
     let matches = false; const expected = new Map();
     for (const line of lines) {
       if (!line.trim()) continue;
-      if (!line.startsWith(' ')) { const path = `/${f.path}`; matches = line.endsWith('*') ? path.startsWith(line.slice(0, -1)) : path === line; }
+      if (!line.startsWith(' ')) { const path = httpAssetPath(f.path); matches = line.endsWith('*') ? path.startsWith(line.slice(0, -1)) : path === line; }
       else if (matches) { const colon = line.indexOf(':'); if (colon < 0) fail('RUNNER_CONTROL_SYNTAX'); expected.set(line.slice(0, colon).trim(), line.slice(colon + 1).trim()); }
     }
     for (const [key, value] of expected) if (response.headers.get(key) !== value) fail('RUNNER_HEADERS_MISMATCH');

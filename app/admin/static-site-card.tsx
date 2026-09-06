@@ -27,7 +27,6 @@ export function StaticSiteCard({ revision, disabled, publish }: { revision: numb
   const [loading, setLoading] = useState(true);
   const [operationMessage, setOperationMessage] = useState("");
   const operationInFlightRef = useRef(false);
-  const promotionRequestedRef = useRef(false);
   const loadState = useCallback(async (): Promise<StaticSiteState> => {
     const response = await fetchAdmin("/api/admin/static-site");
     const body = await response.json() as StaticSiteState;
@@ -40,7 +39,6 @@ export function StaticSiteCard({ revision, disabled, publish }: { revision: numb
     if (operationInFlightRef.current) return;
     operationInFlightRef.current = true;
     const isPromotion = action.action === "promote";
-    if (isPromotion) promotionRequestedRef.current = true;
     setOperationMessage(action.action === "retry" ? "正在恢复原静态发布任务…"
       : isPromotion ? "正在发布到静态网站固定网址…" : "正在自动核验静态制品…");
     try {
@@ -50,7 +48,7 @@ export function StaticSiteCard({ revision, disabled, publish }: { revision: numb
       if (!response.ok) throw new Error(body.error ?? "静态发布操作失败");
       if (isPromotion) {
         if (body.waiting) setOperationMessage("正式发布已请求，正在核验固定网址当前版本。");
-        else { promotionRequestedRef.current = false; setOperationMessage("静态网站已发布到固定网址。动态前台仍可单独发布。 "); }
+        else setOperationMessage("静态网站已发布到固定网址。动态前台仍可单独发布。 ");
       } else if (action.action === "retry") {
         setOperationMessage("已恢复原静态任务，正在自动核验…");
       } else if (body.waiting) {
@@ -58,9 +56,9 @@ export function StaticSiteCard({ revision, disabled, publish }: { revision: numb
       } else {
         setOperationMessage("静态制品已核验，可以先打开预览测试。");
       }
-      await loadState();
+      const next = await loadState();
+      if (action.action === "verify" && !body.waiting && next.status === "published") setOperationMessage("静态网站已发布到固定网址。动态前台仍可单独发布。");
     } catch (error) {
-      if (isPromotion) promotionRequestedRef.current = false;
       setOperationMessage(error instanceof Error ? error.message : "静态发布操作失败");
     } finally {
       operationInFlightRef.current = false;
@@ -70,11 +68,8 @@ export function StaticSiteCard({ revision, disabled, publish }: { revision: numb
   const autoAdvance = useCallback(async (next: StaticSiteState | null) => {
     const activeJob = next?.activeJob;
     if (!activeJob || operationInFlightRef.current || next?.lastError) return;
-    if (AUTO_VERIFY_STATUSES.has(activeJob.status)) {
+    if (AUTO_VERIFY_STATUSES.has(activeJob.status) || PROMOTION_RESUME_STATUSES.has(activeJob.status)) {
       await submit({ action: "verify", jobId: activeJob.id });
-    } else if ((promotionRequestedRef.current && PROMOTION_STATUSES.has(activeJob.status))
-      || PROMOTION_RESUME_STATUSES.has(activeJob.status)) {
-      await submit({ action: "promote", jobId: activeJob.id });
     }
   }, [submit]);
 
@@ -132,7 +127,7 @@ export function StaticSiteCard({ revision, disabled, publish }: { revision: numb
         || state?.status === "reauthorization_required" || state?.status === "reverification_required"
         || state?.status === "rollback_in_progress"} onClick={() => void startPublish()}>生成静态预览 →</button>
       {state?.activeJob && AUTO_VERIFY_STATUSES.has(state.activeJob.status) && <button type="button" onClick={() => void submit({ action: "verify", jobId: state.activeJob!.id })}>重新核验</button>}
-      {state?.activeJob && PROMOTION_STATUSES.has(state.activeJob.status) && <button type="button" onClick={() => void submit({ action: "promote", jobId: state.activeJob!.id })}>{state.activeJob.status === "ARTIFACT_VERIFIED" ? "发布到固定网址 →" : "核验正式发布状态"}</button>}
+      {state?.activeJob && PROMOTION_STATUSES.has(state.activeJob.status) && <button type="button" onClick={() => void submit({ action: state.activeJob!.status === "ARTIFACT_VERIFIED" ? "promote" : "verify", jobId: state.activeJob!.id })}>{state.activeJob.status === "ARTIFACT_VERIFIED" ? "发布到固定网址 →" : "核验正式发布状态"}</button>}
       {state?.retryableJob && <button type="button" onClick={() => void submit({ action: "retry", jobId: state.retryableJob!.id })}>重试原发布任务</button>}
       {state?.qrAvailable && state.productionUrl && <>
         <a href={state.productionUrl} target="_blank" rel="noreferrer">查看静态网站 ↗</a>

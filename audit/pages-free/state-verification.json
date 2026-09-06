@@ -27,7 +27,11 @@
       "wrongPreviewBytesStopBeforeProductionAttempt": true,
       "deploymentLostResponseCreates": 2,
       "callbackLostResponseIdempotent": true,
-      "dynamicIndependent": true
+      "dynamicIndependent": true,
+      "pagesIndex308Fixture": true,
+      "runnerIndexRequests": 0,
+      "canonicalHomeReads": 4,
+      "canonicalHomeBytesAndHeadersVerified": true
     },
     {
       "control60KiBAccepted66KiBRejected": true,

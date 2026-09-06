@@ -88,6 +88,64 @@ async function openPublish(page: Page) {
   await expect(page.getByRole("heading", { name: "固定静态作品网站" })).toBeVisible();
 }
 
+for (const outcome of ['processing', 'failure', 'cancelled', 'lost-response'] as const) {
+  test(`production ${outcome} uses verify after refresh without another promotion`, async ({ page }) => {
+    const id = `job_${'c'.repeat(32)}`, actions: string[] = [];
+    const counters = { dispatch: 1, deployment: 1, runReads: 0 };
+    let current: StaticState = { ...configured, activeJob: { id, status: outcome === 'processing' ? 'PRODUCTION_READBACK_VERIFIED' : 'PUBLISH_REQUESTED', phase: 'production' } };
+    let lose = outcome === 'lost-response';
+    await mockAdmin(page, current);
+    await page.unroute(/\/api\/admin\/static-site(?:\?.*)?$/u);
+    await page.route(/\/api\/admin\/static-site(?:\?.*)?$/u, async route => {
+      if (route.request().method() !== 'POST') { await json(route, current); return; }
+      const action = route.request().postDataJSON(); actions.push(action.action);
+      if (action.action === 'promote') { counters.dispatch++; await json(route, { error: 'PAGES_PROMOTION_USED' }, 409); return; }
+      expect(action).toEqual({ action: 'verify', jobId: id }); counters.runReads++;
+      if (outcome === 'failure' || outcome === 'cancelled') current = { ...current, activeJob: null, retryableJob: { id, status: 'FAILED_RETRYABLE', phase: 'production' }, lastError: { code: 'RUNNER_STOPPED', summary: `原执行${outcome}，保留原部署尝试` } };
+      if (lose) { lose = false; await route.abort('failed'); return; }
+      await json(route, { ok: true, waiting: true });
+    });
+    await openPublish(page);
+    await expect.poll(() => counters.runReads).toBeGreaterThan(0);
+    if (outcome === 'processing' || outcome === 'lost-response') {
+      await page.getByRole('button', { name: '核验正式发布状态' }).dispatchEvent('click');
+      await expect.poll(() => counters.runReads).toBeGreaterThan(1);
+    } else await expect(page.getByRole('button', { name: '重试原发布任务' })).toBeVisible();
+    const reads = counters.runReads;
+    await page.reload(); await openPublish(page);
+    if (outcome === 'processing' || outcome === 'lost-response') await expect.poll(() => counters.runReads).toBeGreaterThan(reads);
+    else await expect(page.getByRole('button', { name: '重试原发布任务' })).toBeVisible();
+    expect(actions.every(action => action === 'verify')).toBe(true);
+    expect(counters.dispatch).toBe(1); expect(counters.deployment).toBe(1);
+  });
+}
+
+test('lost first promotion response is recovered by verify after reload', async ({ page }) => {
+  const id = `job_${'d'.repeat(32)}`, actions: string[] = [];
+  let current: StaticState = { ...configured, activeJob: { id, status: 'ARTIFACT_VERIFIED', phase: 'preview', previewUrl: 'https://1234abcd.student-work.pages.dev' } };
+  let dispatches = 0, deployments = 0;
+  await mockAdmin(page, current);
+  await page.unroute(/\/api\/admin\/static-site(?:\?.*)?$/u);
+  await page.route(/\/api\/admin\/static-site(?:\?.*)?$/u, async route => {
+    if (route.request().method() !== 'POST') { await json(route, current); return; }
+    const action = route.request().postDataJSON(); actions.push(action.action);
+    if (action.action === 'promote') {
+      dispatches++; deployments++; current = { ...current, activeJob: { id, status: 'PUBLISH_REQUESTED', phase: 'production' } };
+      await route.abort('failed'); return;
+    }
+    expect(action).toEqual({ action: 'verify', jobId: id });
+    await json(route, { ok: true, waiting: true });
+  });
+  await openPublish(page);
+  expect(actions).toEqual([]);
+  await page.getByRole('button', { name: '发布到固定网址' }).dispatchEvent('click');
+  await expect.poll(() => dispatches).toBe(1);
+  await page.reload(); await openPublish(page);
+  await expect.poll(() => actions.at(-1)).toBe('verify');
+  expect(actions.filter(action => action === 'promote')).toHaveLength(1);
+  expect(dispatches).toBe(1); expect(deployments).toBe(1);
+});
+
 async function mockAdmin(page: Page, staticState: StaticState, actions: Array<Record<string, unknown>> = []) {
   let currentState = staticState;
   const portfolio = createDefaultPortfolioDocument();

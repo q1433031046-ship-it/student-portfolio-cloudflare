@@ -6,6 +6,7 @@ export async function verifyNodeRunner(mf, db, fixture) {
   const { id } = await fixture({ op: 'freeze' });
   await fixture({ op: 'dispatch', id, phase: 'preview' });
   const assets = new Map(), deployments = []; let canonical, creates = 0, loseReceipt = true, loseDeployment = true, corruptRead = false;
+  let indexRequests = 0, homeReads = 0;
   const send = async (input, init) => {
     const url = new URL(String(input));
     if (url.hostname === 'worker.example.test') {
@@ -14,14 +15,18 @@ export async function verifyNodeRunner(mf, db, fixture) {
       return result;
     }
     if (url.hostname.endsWith('.pages.dev')) {
+      assert.equal(init?.redirect, 'manual');
+      if (url.pathname === '/index.html') { indexRequests++; return new Response(null, { status: 308, headers: { Location: '/' } }); }
       const deployment = url.hostname === 'zkyl-student-showcase.pages.dev' ? canonical : deployments.find(d => new URL(d.url).hostname === url.hostname);
-      const bytes = deployment && assets.get(deployment.manifest[url.pathname]);
+      const bytes = deployment && assets.get(deployment.manifest[url.pathname === '/' ? '/index.html' : url.pathname]);
+      if (url.pathname === '/') homeReads++;
       const headers = {}; let matches = false;
       for (const line of (deployment?.headers ?? '').split('\n')) {
         if (!line.trim()) continue;
         if (!line.startsWith(' ')) matches = line.endsWith('*') ? url.pathname.startsWith(line.slice(0, -1)) : url.pathname === line;
         else if (matches) { const at = line.indexOf(':'); headers[line.slice(0, at).trim()] = line.slice(at + 1).trim(); }
       }
+      if (url.pathname === '/') assert.equal(headers['Cache-Control'], 'public, max-age=0, must-revalidate');
       if (bytes && corruptRead) { corruptRead = false; const changed = Buffer.from(bytes); changed[0] ^= 1; return new Response(changed, { headers }); }
       return new Response(bytes ?? null, { status: bytes ? 200 : 404, headers });
     }
@@ -55,7 +60,9 @@ export async function verifyNodeRunner(mf, db, fixture) {
   assert.deepEqual(deployments[0].manifest, deployments[1].manifest); assert.equal(deployments[0].headers, deployments[1].headers);
   assert.equal((await db.prepare("SELECT public_revision FROM pages_site WHERE id='default'").first()).public_revision, 1);
   assert.equal(JSON.parse((await db.prepare("SELECT published_json FROM portfolio_documents WHERE id='default'").first()).published_json).hero.name, 'Dynamic independent');
-  return { nodeRunnerActualWorkerRpc: true, previewAndProductionSameManifestAndControls: true, productionDoesNotBuildTemplate: true, wrongPreviewBytesStopBeforeProductionAttempt: true, deploymentLostResponseCreates: 2, callbackLostResponseIdempotent: true, dynamicIndependent: true };
+  assert.equal(indexRequests, 0); assert.equal(homeReads >= 4, true);
+  const redirect = await send('https://zkyl-student-showcase.pages.dev/index.html', { redirect: 'manual' }); assert.equal(redirect.status, 308); assert.equal(redirect.headers.get('Location'), '/');
+  return { nodeRunnerActualWorkerRpc: true, previewAndProductionSameManifestAndControls: true, productionDoesNotBuildTemplate: true, wrongPreviewBytesStopBeforeProductionAttempt: true, deploymentLostResponseCreates: 2, callbackLostResponseIdempotent: true, dynamicIndependent: true, pagesIndex308Fixture: true, runnerIndexRequests: 0, canonicalHomeReads: homeReads, canonicalHomeBytesAndHeadersVerified: true };
 }
 
 export async function verifyAdditionalBoundaries(mf, db, fixture) {
