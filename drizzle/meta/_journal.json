@@ -57,6 +57,27 @@
       "when": 1788077802779,
       "tag": "0007_legacy_media_and_access_state",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1788220800000,
+      "tag": "0008_static_site_publish",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1788692289742,
+      "tag": "0009_pages_dual_publish",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1788692587093,
+      "tag": "0010_pages_readback_progress",
+      "breakpoints": true
     }
   ]
 }

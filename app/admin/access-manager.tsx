@@ -21,6 +21,7 @@ export type AdminAccessPass = {
 };
 
 export type AccessPayload = {
+  featureStatus: "paused";
   restrictionEnabled: boolean;
   updatedAt: string | null;
   passes: AdminAccessPass[];
@@ -88,6 +89,8 @@ export function AccessManager({ access, onChange, setMessage }: { access: Access
 
   return (
     <section className={styles.accessManager} aria-labelledby="access-manager-title">
+      <aside className={styles.warning} role="status"><strong>限制访问功能暂时暂停</strong><p>既有访问码、次数和到期设置均已保留，但它们不控制新的静态公开网站。</p></aside>
+      <fieldset disabled aria-disabled="true">
       <div className={styles.accessHeading}>
         <div>
           <span>QR ACCESS</span>
@@ -139,6 +142,7 @@ export function AccessManager({ access, onChange, setMessage }: { access: Access
           ))}
         </div>
       )}
+      </fieldset>
     </section>
   );
 }

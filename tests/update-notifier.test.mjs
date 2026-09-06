@@ -41,7 +41,7 @@ test("version metadata publishes the authenticated v1.3.0 upgrade contract", asy
   assert.equal(agentManifest.databaseMigrationPolicy.runtimeBootstrapRoute, "/admin");
   assert.equal(
     agentManifest.databaseMigrationPolicy.migrationSha256["0007_legacy_media_and_access_state.sql"],
-    createHash("sha256").update(migration0007, "utf8").digest("hex"),
+    createHash("sha256").update(migration0007.replaceAll("\r\n", "\n"), "utf8").digest("hex"),
   );
   assert.match(agentManifest.resourceFingerprint.automaticFields.join("\n"), /configuredWorkersDevEnabled/);
   assert.match(agentManifest.resourceFingerprint.remoteWorkersDevState, /manual/u);
@@ -104,7 +104,8 @@ test("version endpoint reads future metadata from main but accepts prompts only 
   assert.match(route, /upgradePromptCheckSucceeded/);
   assert.match(route, /latestUpgradePromptManifestUrl/);
   assert.match(route, /updateAvailable/);
-  assert.match(route, /compareVersions/);
+  assert.match(route, /compareSemanticVersion/);
+  assert.match(route, /candidate\.status === "unreleased"/);
 });
 
 test("all admin upgrade entry points copy the synchronized prompt", async () => {
@@ -127,7 +128,7 @@ test("all admin upgrade entry points copy the synchronized prompt", async () => 
 
   assert.match(content, /deployment\/upgrade-prompt\.json/);
   assert.match(content, /UPGRADE_PROMPT_SYNC_EVENT/);
-  assert.match(content, /compareVersions\(promptVersion, activeUpgradePromptVersion\) < 0/);
+  assert.match(content, /compareSemanticVersion\(promptVersion, activeUpgradePromptVersion\) < 0/);
   assert.match(guide, /addEventListener\(UPGRADE_PROMPT_SYNC_EVENT/);
   assert.match(guide, /<pre>\{upgradePrompt\}<\/pre>/);
 
@@ -194,7 +195,7 @@ test("all admin upgrade entry points copy the synchronized prompt", async () => 
   assert.match(promptManifest.prompt, /list 自身失败或无法证明完整 pending/u);
   assert.match(promptManifest.prompt, /全部块最终复验.*CAS/su);
 
-  const readmePrompt = readme.match(/复制给 GPT：\s*```text\n([\s\S]*?)\n```/u);
+  const readmePrompt = readme.replaceAll("\r\n", "\n").match(/复制给 GPT：\s*```text\n([\s\S]*?)\n```/u);
   assert.ok(readmePrompt, "README must contain the copyable upgrade prompt");
   assert.equal(readmePrompt[1], promptManifest.prompt, "README and prompt manifest must stay synchronized");
 });

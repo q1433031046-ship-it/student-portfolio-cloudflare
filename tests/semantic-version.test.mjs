@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import test from "node:test";
+import vm from "node:vm";
 
 import {
   compareSemanticVersion,
@@ -71,6 +73,12 @@ test("orders prerelease versions below their stable release", () => {
   const versions = ["1.3.1", "1.3.0", "1.3.1-b"];
   versions.sort(compareSemanticVersion);
   assert.deepEqual(versions, ["1.3.0", "1.3.1-b", "1.3.1"]);
+});
+
+test("module evaluation stays browser-safe when a process shim has no argv", async () => {
+  const source = await readFile(new URL("../shared/semantic-version.mjs", import.meta.url), "utf8");
+  const browserSource = source.replaceAll(/^export /gmu, "");
+  assert.doesNotThrow(() => vm.runInNewContext(browserSource, { process: {}, console }));
 });
 
 test("the controlled CLI returns only the canonical version", async () => {

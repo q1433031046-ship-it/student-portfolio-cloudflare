@@ -1,0 +1,1287 @@
+{
+  "base": "d59825a25bce70b090aa613ea708adaa1362d113",
+  "sourceHead": "5aae394eecae5fb1d86daa36fc172b8d00b47854",
+  "sourceFiles": [
+    {
+      "file": ".dev.vars.example",
+      "bytes": 21,
+      "sha256": "e0d5a55da72987bbcc6186ab6267534c33773e67fc9d228645f4cf03a5cfa3d7",
+      "tracked": true
+    },
+    {
+      "file": "app/access/access-actions.tsx",
+      "bytes": 1165,
+      "sha256": "c1ea759bff1fa194213669d1c16e3da1e0c32a45627618a775803601cb184682",
+      "tracked": true
+    },
+    {
+      "file": "app/access/access-page.module.css",
+      "bytes": 4386,
+      "sha256": "c11f8bd875e555825bff55da1879cc3843a771b8d90dcc694aa9ef7bc0857042",
+      "tracked": true
+    },
+    {
+      "file": "app/access/page.tsx",
+      "bytes": 5582,
+      "sha256": "cb6cb3d7488323ca0ed5b72a36005dd9e49df3b35ae8effc91e87956b77930ff",
+      "tracked": true
+    },
+    {
+      "file": "app/access/redeem/route.ts",
+      "bytes": 2547,
+      "sha256": "cb538b6a1454d74c3773a938b7f12aa7fc3ea24f119a50edfde450ee99ae54fe",
+      "tracked": true
+    },
+    {
+      "file": "app/admin/access-manager.tsx",
+      "bytes": 12520,
+      "sha256": "a30416741cca71e6172f599820555f984965df53f5bc7e32fd72833161294ee0",
+      "tracked": true
+    },
+    {
+      "file": "app/admin/admin-client.tsx",
+      "bytes": 133070,
+      "sha256": "71b0fa9ac66e1650a0d5dbaaaceaa2e49146efd1106a0cdf638434bf4645c69d",
+      "tracked": true
+    },
+    {
+      "file": "app/admin/admin-guide-center.tsx",
+      "bytes": 48532,
+      "sha256": "d023d6a701651c828b41c2592add74dadd7561181aa040f78ffa5fc7be416e57",
+      "tracked": true
+    },
+    {
+      "file": "app/admin/admin-guide-ui-audit.tsx",
+      "bytes": 8130,
+      "sha256": "b8a31bbeba608a0f56b362900797ae26a16a067025ec2bc520a6ee2b59658f51",
+      "tracked": true
+    },
+    {
+      "file": "app/admin/admin-interaction-enhancements.tsx",
+      "bytes": 10508,
+      "sha256": "dbc30d235bbccedb59fda52d9d9c2da14fb2e3747c7c3df610a96b2ae31acbbd",
+      "tracked": true
+    },
+    {
+      "file": "app/admin/admin-update-notifier.tsx",
+      "bytes": 9474,
+      "sha256": "0e790338576f7d7a142207df596f4549c4ec603e51c8e5cd09b889efb0eb507a",
+      "tracked": true
+    },
+    {
+      "file": "app/admin/admin-upgrade-center.tsx",
+      "bytes": 10435,
+      "sha256": "0e417a78410addaf4f83a0fa58365828bc73a80d9f66e04beac131dbf9988992",
+      "tracked": true
+    },
+    {
+      "file": "app/admin/admin-upgrade-content.ts",
+      "bytes": 1643,
+      "sha256": "9cff192c5dc16e10b89d3163e50f78a4a97f1fcd2ac8e3ff5d9cf8464dd360f4",
+      "tracked": true
+    },
+    {
+      "file": "app/admin/admin.module.css",
+      "bytes": 65566,
+      "sha256": "a16eb7e09a0ece85103c6effc490765f4d2c2517dc705e0ee55af4c69b971eee",
+      "tracked": true
+    },
+    {
+      "file": "app/admin/end-cover-layout-editor.tsx",
+      "bytes": 9845,
+      "sha256": "797643ff80ef516cefd9803a01a54dfbb9f637c1d1aa06cc54e8b6b703302abd",
+      "tracked": true
+    },
+    {
+      "file": "app/admin/grapheme.ts",
+      "bytes": 433,
+      "sha256": "a9d3543fc4610b4e5ac5701d8ea341af64964712ca18afe10282fb6ab4faf893",
+      "tracked": true
+    },
+    {
+      "file": "app/admin/hero-layout-editor.tsx",
+      "bytes": 9636,
+      "sha256": "9ed0ce6ea6c1339d1f8cf94ea70ef8bc4fab5389596e199408d6ebb3cab1aec0",
+      "tracked": true
+    },
+    {
+      "file": "app/admin/inline-editing.ts",
+      "bytes": 505,
+      "sha256": "06fec2afd4236ec66599f91e2579b3738db701b122210f36aabbe5b170fd326f",
+      "tracked": true
+    },
+    {
+      "file": "app/admin/legacy-media-migration.ts",
+      "bytes": 1366,
+      "sha256": "e462bef15de9da2db97b1a1a7e6adb8c6ea0bc5a7705dbbb3552054ed8a8c510",
+      "tracked": true
+    },
+    {
+      "file": "app/admin/media-crop-editor.tsx",
+      "bytes": 13324,
+      "sha256": "8d8f66d37e5fb97fc1fe72049ee0174faa0aacf7b2d11b36849583c211f5f738",
+      "tracked": true
+    },
+    {
+      "file": "app/admin/media-upload-policy.ts",
+      "bytes": 157,
+      "sha256": "7152ef32aa8e7c7809e9e9bdebbf6c702732b8fbc72dd098840bab100d2e107d",
+      "tracked": true
+    },
+    {
+      "file": "app/admin/mobile-editor-sheet.tsx",
+      "bytes": 3319,
+      "sha256": "1c7e368034e109a3e5611a6f82c346999cbc968960f24589c6da9ea3eec1e1dc",
+      "tracked": true
+    },
+    {
+      "file": "app/admin/mobile-more-contract.ts",
+      "bytes": 222,
+      "sha256": "653eefda03e39afd38470c726d56db6dc1bbd1317901063aa7128c66076ab13d",
+      "tracked": true
+    },
+    {
+      "file": "app/admin/mobile-portfolio-preview.tsx",
+      "bytes": 3426,
+      "sha256": "6eb81f67efdb88076ec8bd78b25fcf0323b68c431c31d2b39f9465d7377eaef0",
+      "tracked": true
+    },
+    {
+      "file": "app/admin/page.tsx",
+      "bytes": 1204,
+      "sha256": "31151d5aef2445735de1a2194bb254280c1a92caedeca015208656b5e81d0eb7",
+      "tracked": true
+    },
+    {
+      "file": "app/admin/recovery-download.ts",
+      "bytes": 1090,
+      "sha256": "33e8d16e91af84e8f62cc302b09b93c01fc2ea936d28297bc2da85f246b9db50",
+      "tracked": true
+    },
+    {
+      "file": "app/admin/static-site-card.tsx",
+      "bytes": 9775,
+      "sha256": "b2ad05516fd06946400225a87e63ad1f7c88191501fe1e3a9aec5dfaf6b572f1",
+      "tracked": true
+    },
+    {
+      "file": "app/admin/upload-state.ts",
+      "bytes": 1775,
+      "sha256": "4a402eed1c8c84cd815426ec28b136efb5f838fa14abb62d127261064bb4daf2",
+      "tracked": true
+    },
+    {
+      "file": "app/admin/validation-location.ts",
+      "bytes": 1331,
+      "sha256": "2b6500cd45f84895a1703dc16c9a0bd94438c69c37d2bc9f5d35bddefe2693dd",
+      "tracked": true
+    },
+    {
+      "file": "app/admin/validation-message.ts",
+      "bytes": 2271,
+      "sha256": "268b24b43b0a364b1884f51aaef34645eaace2691cfcf2afefaa2c9eaf20e6a4",
+      "tracked": true
+    },
+    {
+      "file": "app/api/_lib/admin-auth.ts",
+      "bytes": 23793,
+      "sha256": "533beefeafd6c395face4cafc3634a09950a0565dce2609dc87c3fdc6fd3ee6e",
+      "tracked": true
+    },
+    {
+      "file": "app/api/_lib/app-secret.ts",
+      "bytes": 2078,
+      "sha256": "550e562ed09d4d5b1aa5ab54482a86db0dfffe496b56aa6a686086481c9d7f78",
+      "tracked": true
+    },
+    {
+      "file": "app/api/_lib/audit.ts",
+      "bytes": 974,
+      "sha256": "231d62aa625f9fb6fa82bb8fb06dfd5c928b8ffa2414df6ceca58b4f373b132c",
+      "tracked": true
+    },
+    {
+      "file": "app/api/_lib/auth.ts",
+      "bytes": 2806,
+      "sha256": "12cc89e422934fb93bda452e66622513abf4a8b034b7239dbe1a43642a38932f",
+      "tracked": true
+    },
+    {
+      "file": "app/api/_lib/events.ts",
+      "bytes": 2907,
+      "sha256": "e5773ccd2a8505fbd34369834b33437522224084c5d699a06cb2dc8b8bc8724a",
+      "tracked": true
+    },
+    {
+      "file": "app/api/_lib/legacy-media.ts",
+      "bytes": 26945,
+      "sha256": "e2ce8cd4c8b93d249f5e83df96ef19e89dd1c2b9cd825e4c7074c78810c3d3fb",
+      "tracked": true
+    },
+    {
+      "file": "app/api/_lib/media-cleanup.ts",
+      "bytes": 2700,
+      "sha256": "08d552ca4829d708d8d1ca5601e683f7c837b876074a744bb57e3538dd004a13",
+      "tracked": true
+    },
+    {
+      "file": "app/api/_lib/media-replacement.ts",
+      "bytes": 1724,
+      "sha256": "d912298efe6b3d8070624ee36b19430f5b012261bc76f13963a7f5c8f3fc2c07",
+      "tracked": true
+    },
+    {
+      "file": "app/api/_lib/media-security.ts",
+      "bytes": 1927,
+      "sha256": "83e029943e38d89ec868cae8fd560675621610d106cb8906e0021688492242d6",
+      "tracked": true
+    },
+    {
+      "file": "app/api/_lib/netlify-client.ts",
+      "bytes": 11112,
+      "sha256": "d3bdd4415b5c2ac380512bea386bd8e75e1a1a272414ff8e2ab0978201708f3d",
+      "tracked": true
+    },
+    {
+      "file": "app/api/_lib/portfolio-access-security.ts",
+      "bytes": 5476,
+      "sha256": "e96d0a8c203ac014a9dd7bfa64d6966b05d39d85519d7d6bee268b3c398dd7b2",
+      "tracked": true
+    },
+    {
+      "file": "app/api/_lib/portfolio-access.ts",
+      "bytes": 20053,
+      "sha256": "2f1973c5c6b5750e6040294f94128bca577e7da5ff3acfd3aa4d530504d0f485",
+      "tracked": true
+    },
+    {
+      "file": "app/api/_lib/portfolio-store.ts",
+      "bytes": 4110,
+      "sha256": "0192b0cf9706b761b4e4e8c78a07d1f4d40424dc89cfe67d1f09071cf997a79f",
+      "tracked": true
+    },
+    {
+      "file": "app/api/_lib/request-body.ts",
+      "bytes": 1786,
+      "sha256": "4c1635315a992942fb2e8d2ef25f7343b668fd72a0419629ca4042748a4687f5",
+      "tracked": true
+    },
+    {
+      "file": "app/api/_lib/request-context.ts",
+      "bytes": 4060,
+      "sha256": "2bf38aa22c6b742c7001122d457ae4b65287578157f3f26926de3b343b712294",
+      "tracked": true
+    },
+    {
+      "file": "app/api/_lib/site-ownership.ts",
+      "bytes": 5777,
+      "sha256": "31a26301003c0d91ef1620bb24cbf1517948e55abbf5f30b0a55bd4ec192ccba",
+      "tracked": true
+    },
+    {
+      "file": "app/api/_lib/static-publish-verify.ts",
+      "bytes": 4748,
+      "sha256": "ea9ff1d4b1f13118c6f4b79d20c0fa3ea60b45929d9a48678e4f5fbd4752bef6",
+      "tracked": true
+    },
+    {
+      "file": "app/api/_lib/static-publish.ts",
+      "bytes": 28364,
+      "sha256": "4f5aed856fd678aefd1253932775e03df56415ee743c447f181cd00d0e933784",
+      "tracked": true
+    },
+    {
+      "file": "app/api/_lib/static-site-contract.ts",
+      "bytes": 7485,
+      "sha256": "a80703cd41ab8c50527ca2e6daed5f51c7c6a7b91a04861ced2d4e8af4805ece",
+      "tracked": true
+    },
+    {
+      "file": "app/api/_lib/static-site-export.ts",
+      "bytes": 5421,
+      "sha256": "bde2a1f844a90ae210356af4ae2481ffe287b3748765746480b1c9d557ba74bf",
+      "tracked": true
+    },
+    {
+      "file": "app/api/_lib/static-site-store.ts",
+      "bytes": 23782,
+      "sha256": "d73cad0cda3889f11aa354b4bfbb319daa523de7df841daccdd48c440282dbf8",
+      "tracked": true
+    },
+    {
+      "file": "app/api/_lib/storage.ts",
+      "bytes": 2484,
+      "sha256": "77fab1cc5d18ddaa4002f2a4f3b5ddc400f0259699d1e4e6ba1f9d2296d1eb3c",
+      "tracked": true
+    },
+    {
+      "file": "app/api/admin/access/route.ts",
+      "bytes": 1561,
+      "sha256": "ec77793d79f901603c366e326b6e6beac01dc43a703d180c2fa30413a5cb2062",
+      "tracked": true
+    },
+    {
+      "file": "app/api/admin/audit/route.ts",
+      "bytes": 1623,
+      "sha256": "b14be10d23d4d5eeecd3dff83dcd1718ce916cedfac044d7a996f6ba0277d5b2",
+      "tracked": true
+    },
+    {
+      "file": "app/api/admin/events/route.ts",
+      "bytes": 3280,
+      "sha256": "d8ee2b553f5bcfb7d50d85f528fe6e647ec0894341b2d3942cd777fe1002d2c4",
+      "tracked": true
+    },
+    {
+      "file": "app/api/admin/login/route.ts",
+      "bytes": 1335,
+      "sha256": "abeff50320c04c46f766c94b21d03a14526435849e4ea187cc3064cbe5d604df",
+      "tracked": true
+    },
+    {
+      "file": "app/api/admin/logout/route.ts",
+      "bytes": 371,
+      "sha256": "bbca168cfb442b1615b27037c64b833d1c949893a7acde9bbd5ecf2643599c51",
+      "tracked": true
+    },
+    {
+      "file": "app/api/admin/media/[projectId]/[slot]/route.ts",
+      "bytes": 33080,
+      "sha256": "fd6f0f60e9d6854660964657a8578d7c93c5c75ffee37da5053f4c181f47c991",
+      "tracked": true
+    },
+    {
+      "file": "app/api/admin/portfolio/publish/route.ts",
+      "bytes": 1930,
+      "sha256": "95441177a5183b2c2ffaa179cbb2f8c9aa93772ae45ed5eb82c31555de73a8bf",
+      "tracked": true
+    },
+    {
+      "file": "app/api/admin/portfolio/route.ts",
+      "bytes": 3293,
+      "sha256": "f132842fbd49c7c408777cb8273db14fcc608aa78dd880a58bcf773f4806bd08",
+      "tracked": true
+    },
+    {
+      "file": "app/api/admin/recover/route.ts",
+      "bytes": 1536,
+      "sha256": "730ef7545e6a7c4fd928ae0f6d87926bb0c500920a95f7365cb10a63611cd39c",
+      "tracked": true
+    },
+    {
+      "file": "app/api/admin/setup/route.ts",
+      "bytes": 3763,
+      "sha256": "3bf8ee7900f13fdc78b5f9ac3f5e3e5b9cdd9aa93317c53403f028782e02e239",
+      "tracked": true
+    },
+    {
+      "file": "app/api/admin/static-site/route.ts",
+      "bytes": 5132,
+      "sha256": "65a4af64728b7330b9daa58d27f2022646cdd38cd2817f7e9d0f9ab749dc357a",
+      "tracked": true
+    },
+    {
+      "file": "app/api/admin/storage/migrate/route.ts",
+      "bytes": 1644,
+      "sha256": "b5fe68ad47dcc3fc0117eefcfc59f155f5674c6a01192ba5d7cc48327db3115e",
+      "tracked": true
+    },
+    {
+      "file": "app/api/admin/storage/route.ts",
+      "bytes": 2281,
+      "sha256": "6737450747d3b26a45990192bb040dc71a8150161d152360889954e653bd921b",
+      "tracked": true
+    },
+    {
+      "file": "app/api/events/route.ts",
+      "bytes": 2158,
+      "sha256": "e6266d242a75b3fd12bfcdb884466864204e22b3263a96649924cfadb3ac5884",
+      "tracked": true
+    },
+    {
+      "file": "app/api/media/[...path]/route.ts",
+      "bytes": 8950,
+      "sha256": "f6ad45ecf3d1ebea247ae65b4b434b185180b8aa95148b540024869c5aa2684d",
+      "tracked": true
+    },
+    {
+      "file": "app/api/playback/route.ts",
+      "bytes": 4056,
+      "sha256": "c2319426553f560710203bb3442fc7da5adb50eb4d2fc218a3fef12dd36b8b26",
+      "tracked": true
+    },
+    {
+      "file": "app/api/portfolio/route.ts",
+      "bytes": 1273,
+      "sha256": "d3542333c65ff564926fe36b29bd8cc92f7bf7a2069a24aab1e5732597034733",
+      "tracked": true
+    },
+    {
+      "file": "app/api/route.ts",
+      "bytes": 1987,
+      "sha256": "8a1b56913e1ae2fb2c662640503a9affcd0485a7f176a74dfc386001e49fbfb0",
+      "tracked": true
+    },
+    {
+      "file": "app/api/static-export/[jobId]/manifest/route.ts",
+      "bytes": 2689,
+      "sha256": "7737ea8dcd8881ad0d6fc702c448897ba335c58e820e23826b705c42be149737",
+      "tracked": true
+    },
+    {
+      "file": "app/api/static-export/[jobId]/media/[mediaId]/route.ts",
+      "bytes": 5730,
+      "sha256": "0c2c02f3453dc062109e8599c16afdc3e3b992c02de6932be46e729ef4a0f425",
+      "tracked": true
+    },
+    {
+      "file": "app/api/static-export/[jobId]/session/route.ts",
+      "bytes": 1809,
+      "sha256": "f4dba2c4ba2fcd591669ec2af967289f840093ced625ede43cb9759b412d30c1",
+      "tracked": true
+    },
+    {
+      "file": "app/api/version/route.ts",
+      "bytes": 7551,
+      "sha256": "d297f67c9cec7fde769a291255b37f0b4e31dec94449a4d6bbb08a2696833b45",
+      "tracked": true
+    },
+    {
+      "file": "app/chatgpt-auth.ts",
+      "bytes": 2490,
+      "sha256": "1407f614cc83d7049fdb08cd713d2516866ba58e24e820f7f4fd9d718b9d3007",
+      "tracked": true
+    },
+    {
+      "file": "app/demo/page.tsx",
+      "bytes": 475,
+      "sha256": "11945ea5cf4357168e386732db8d771ce06c8912412a2027cd7f067d2a32ebcd",
+      "tracked": true
+    },
+    {
+      "file": "app/demo/portfolio-data.ts",
+      "bytes": 10643,
+      "sha256": "333b499bdc92817ceede7a2e8f6171abdc90efda0511ed414275616ff754abf8",
+      "tracked": true
+    },
+    {
+      "file": "app/demo/portfolio-demo.module.css",
+      "bytes": 57429,
+      "sha256": "f06c60b71951fa289fa99a8d6a8328d342ab28724e24e8dd7c91033e0976d189",
+      "tracked": true
+    },
+    {
+      "file": "app/globals.css",
+      "bytes": 755,
+      "sha256": "e4ec25d8e328f234e0900ef1466d5a90e41d0df1096d79f921d64cf50d319cab",
+      "tracked": true
+    },
+    {
+      "file": "app/layout.tsx",
+      "bytes": 1975,
+      "sha256": "3954c3b7f2c685e16ca6d7ed460142a6d816d3c24d5ee70fac5bee0a29fcfa7c",
+      "tracked": true
+    },
+    {
+      "file": "app/lib/client-id.ts",
+      "bytes": 270,
+      "sha256": "79f55c74a7f9952c635de9fbbd6e34bfc378bbe09416753374b083438f275c0c",
+      "tracked": true
+    },
+    {
+      "file": "app/lib/program-version.ts",
+      "bytes": 152,
+      "sha256": "49e491aa96d54ce29829444c5c2988771ee6ac86efaa0b7e9dc83260993b226e",
+      "tracked": true
+    },
+    {
+      "file": "app/lib/qr-code.ts",
+      "bytes": 8642,
+      "sha256": "67a920ed8ef0aed773aeba5e8491605516d208f5452e965f58f915d08c7e734b",
+      "tracked": true
+    },
+    {
+      "file": "app/lib/text-visibility.ts",
+      "bytes": 103,
+      "sha256": "45045b38a6eb7c59e778fc6f7ed3cdb78167f7ecf9a17a8feb497eeb5675c61c",
+      "tracked": true
+    },
+    {
+      "file": "app/lib/use-scroll-lock.ts",
+      "bytes": 1778,
+      "sha256": "2a92aaaac0c4eb04e3e3456ef6c14afdc21da8c52ca142089ddb469f86b6e95a",
+      "tracked": true
+    },
+    {
+      "file": "app/lib/use-visual-viewport.ts",
+      "bytes": 1881,
+      "sha256": "11a9dfa7d2632c295d2dbc7e80115a6348a792a6640193fc662a356bc55ceceb",
+      "tracked": true
+    },
+    {
+      "file": "app/lib/user-facing-error.ts",
+      "bytes": 1523,
+      "sha256": "63fe5efc6ab17c224a1b09f379049fbcf2d4bc7a27cf4daefa19ef6775ec70cb",
+      "tracked": true
+    },
+    {
+      "file": "app/lib/video-duration.ts",
+      "bytes": 394,
+      "sha256": "34c0c8a333c98eae6c11f7d649b4f4ebf7c65bb53b566dcbf8c34e852493a1aa",
+      "tracked": true
+    },
+    {
+      "file": "app/page.tsx",
+      "bytes": 2596,
+      "sha256": "415b43071ea618a1546cff886ddaa18fe5a65ddf40351d5ddeeaf65bd439f59c",
+      "tracked": true
+    },
+    {
+      "file": "app/portfolio/access-gate.module.css",
+      "bytes": 2212,
+      "sha256": "ff2ea09251ba21d4bbca7449721fff3c1adcb8b8be77f7b02e05365e935b55a4",
+      "tracked": true
+    },
+    {
+      "file": "app/portfolio/access-gate.tsx",
+      "bytes": 795,
+      "sha256": "7976d1ca867b2f2c8b4fdfcbc1401100a7382264638ad6e8858143f9180d0138",
+      "tracked": true
+    },
+    {
+      "file": "app/portfolio/category-transition.tsx",
+      "bytes": 2080,
+      "sha256": "276153c04602898adb69b106a8629378ae607250765550ab422ecdbc53516500",
+      "tracked": true
+    },
+    {
+      "file": "app/portfolio/contact-availability.ts",
+      "bytes": 544,
+      "sha256": "cfbfdb5c4e93b094cac1cc469ca223d8ec13759f6ab6f24c17788ce64d808d1b",
+      "tracked": true
+    },
+    {
+      "file": "app/portfolio/default-document.ts",
+      "bytes": 2376,
+      "sha256": "78fd3f346e5cb9a4817b0380064bd24740ac672a186be59c7f49744b5efa02f3",
+      "tracked": true
+    },
+    {
+      "file": "app/portfolio/end-cover-sequence.tsx",
+      "bytes": 2733,
+      "sha256": "a9790bc626a6cf26d113eb26eec372cfd68eaed4526cda2c88528e9292a40dcb",
+      "tracked": true
+    },
+    {
+      "file": "app/portfolio/hero-layer-content.ts",
+      "bytes": 456,
+      "sha256": "0ad303f2c70a0603ec1b56d9a3d87ed6651d3e90a805d6fffef2a6982c69a69e",
+      "tracked": true
+    },
+    {
+      "file": "app/portfolio/hero-layer-style.ts",
+      "bytes": 560,
+      "sha256": "ae28202e2411a3d3ef104d9f4e9ad76dca341061bcdad5ab0dfb0cd5009526c0",
+      "tracked": true
+    },
+    {
+      "file": "app/portfolio/hero-layout.ts",
+      "bytes": 1255,
+      "sha256": "efaa2b8e7e383059db895961537c1f851a46649226a114fecd96415d3edff3f6",
+      "tracked": true
+    },
+    {
+      "file": "app/portfolio/hero-sequence.tsx",
+      "bytes": 8689,
+      "sha256": "8368aabf7f5bfb70b6538606d23326de452a6510ee68ad32fe460c202e83380c",
+      "tracked": true
+    },
+    {
+      "file": "app/portfolio/live-portfolio.tsx",
+      "bytes": 3064,
+      "sha256": "f2e4c8831a3b04c8b0d74c2b7c9181268e9786490604c512cf73f7d87a661e51",
+      "tracked": true
+    },
+    {
+      "file": "app/portfolio/media-crop.ts",
+      "bytes": 3472,
+      "sha256": "af142158f80f5804d13c1033b5e484493eda4bca2d1aca82a07db2ca9089ab34",
+      "tracked": true
+    },
+    {
+      "file": "app/portfolio/model.ts",
+      "bytes": 50055,
+      "sha256": "b4b8e14e1295248e3af7b148b92d73cbf07581a1e94fb5cfd570b50c9664abbe",
+      "tracked": true
+    },
+    {
+      "file": "app/portfolio/portfolio-experience.tsx",
+      "bytes": 32160,
+      "sha256": "523110ad66d4a5126b324800f33d4e733b56fd1f6b9d70597c3e41e55154d4cd",
+      "tracked": true
+    },
+    {
+      "file": "app/portfolio/preview-target.ts",
+      "bytes": 193,
+      "sha256": "db498cd9e9f34d876f50aeadf65284ca404a48c5a89e4af44c9cd7f14b26de29",
+      "tracked": true
+    },
+    {
+      "file": "app/portfolio/project-cover-text.module.css",
+      "bytes": 3886,
+      "sha256": "174de736418145fd506175aa3cf654a880841d6fae86579e3e631dd32c23636b",
+      "tracked": true
+    },
+    {
+      "file": "app/portfolio/project-cover-text.tsx",
+      "bytes": 3777,
+      "sha256": "39ec2312b12e1cb6d12fca85c7e22231f33b288d1e58699477b21b1ff27462b9",
+      "tracked": true
+    },
+    {
+      "file": "app/portfolio/project-cover.tsx",
+      "bytes": 2779,
+      "sha256": "9b2aa87b4607fa06b712a1e5fc6b02811c702dae769b7300e25b7824b1e664b2",
+      "tracked": true
+    },
+    {
+      "file": "app/portfolio/unpublished-state.tsx",
+      "bytes": 1137,
+      "sha256": "d5a64fe347a7e9872fbc59f113eeb4d84c4f91e8caad3d6bc88f72d233fd5d0b",
+      "tracked": true
+    },
+    {
+      "file": "app/portfolio/video-availability.ts",
+      "bytes": 569,
+      "sha256": "f1500768f9eff7ca33c0c5d63ae9d005d54fa2a7f18c2031cf30b28e98c095ff",
+      "tracked": true
+    },
+    {
+      "file": "app/portfolio/video-watermark.tsx",
+      "bytes": 762,
+      "sha256": "ca366c8b02090cdbcbe30ddb4a3fa2f698322c52415474d36972171aa47e5e45",
+      "tracked": true
+    },
+    {
+      "file": "app/portfolio/watermark.ts",
+      "bytes": 146,
+      "sha256": "5f0d00c831c95761c15fa15cb91f0194fab363d737c615a81e60d6d3cc2db85a",
+      "tracked": true
+    },
+    {
+      "file": "app/preview/draft-preview.tsx",
+      "bytes": 2355,
+      "sha256": "6ab822ef2c8b55e536996ff65bddf30393c04dc08988a0000c61947a07c7e3f0",
+      "tracked": true
+    },
+    {
+      "file": "app/preview/page.tsx",
+      "bytes": 172,
+      "sha256": "2d2db2335e4677f6eeeb9c4395229768f147a622f8bacf618194896237053f7d",
+      "tracked": true
+    },
+    {
+      "file": "build/sites-vite-plugin.ts",
+      "bytes": 1299,
+      "sha256": "abd6bc3a592961e978ab72fceb8ee7647824d9a2321ee5b5777b2a05d69526cc",
+      "tracked": true
+    },
+    {
+      "file": "cloudflare-demo/index.html",
+      "bytes": 483,
+      "sha256": "94dc1b82ff1e79cab1f93b0d102a84afad24a25d6f824129f354057ee153a7dd",
+      "tracked": true
+    },
+    {
+      "file": "cloudflare-demo/main.tsx",
+      "bytes": 551,
+      "sha256": "5079b15ec29279d2011f0c9587a5e343605e7766601e081bc289eeb69070ff00",
+      "tracked": true
+    },
+    {
+      "file": "cloudflare-demo/reset.css",
+      "bytes": 375,
+      "sha256": "21760bf347ed8487b9707e8cf14d1e5c4118d04b893f2c68bda97b8061efcc90",
+      "tracked": true
+    },
+    {
+      "file": "cloudflare/worker-entry.js",
+      "bytes": 1657,
+      "sha256": "bb4c93a246e40eaaf7b078d396d12db50a6b9697d7279ae8b201626fae5ce547",
+      "tracked": true
+    },
+    {
+      "file": "db/index.ts",
+      "bytes": 462,
+      "sha256": "582eaa46d96c09d287840122c3834c606f70e6234faa9d84410e25de6e4a78b2",
+      "tracked": true
+    },
+    {
+      "file": "db/schema.ts",
+      "bytes": 15222,
+      "sha256": "41a1376dad56b3ccec971d52e1e5d38957e2e3d8380ecfe67e438ba218963a78",
+      "tracked": true
+    },
+    {
+      "file": "drizzle.config.ts",
+      "bytes": 155,
+      "sha256": "73d0807c58e541dc3eaf175909fb5acc966faed61f74ff659d9d55027bf3e25b",
+      "tracked": true
+    },
+    {
+      "file": "drizzle/0000_bumpy_ultimo.sql",
+      "bytes": 723,
+      "sha256": "4f65d00391ea731fb71621f094efd01f23daad383455aad60849b6267e02f210",
+      "tracked": true
+    },
+    {
+      "file": "drizzle/0001_perpetual_firestar.sql",
+      "bytes": 2522,
+      "sha256": "ab7d684135b2de4e4658c74d9ab6c732b8298692c20882a61616aa1729821782",
+      "tracked": true
+    },
+    {
+      "file": "drizzle/0002_nosy_silhouette.sql",
+      "bytes": 349,
+      "sha256": "f2c38b1f22c3dcb27fba5276e057fd56be2f81ad20a991d17a96bb9f7562c1e1",
+      "tracked": true
+    },
+    {
+      "file": "drizzle/0003_careful_justice.sql",
+      "bytes": 898,
+      "sha256": "31fec44cba03fded31af7e530a84a376244be4c92fe44a08151fefa4d191b391",
+      "tracked": true
+    },
+    {
+      "file": "drizzle/0004_owner_email_onboarding.sql",
+      "bytes": 647,
+      "sha256": "6280cd794aa8e04ecb444ce17f16faf527030f367c51432d21988391a304733c",
+      "tracked": true
+    },
+    {
+      "file": "drizzle/0005_password_auth_kv_media.sql",
+      "bytes": 2093,
+      "sha256": "3e30d9d1271684e1b68ab817844e00cb7e47e16ec3da364746156988f0827cbb",
+      "tracked": true
+    },
+    {
+      "file": "drizzle/0006_auth_v2.sql",
+      "bytes": 320,
+      "sha256": "756c0e0489453ac09f21dc537b7aa2b6d909853d2073ec05e08b9d6804dc3719",
+      "tracked": true
+    },
+    {
+      "file": "drizzle/0007_legacy_media_and_access_state.sql",
+      "bytes": 1563,
+      "sha256": "9c948b024a462450f391bb43c26c94b70ce4763cccc50a50926b7986f23c5306",
+      "tracked": true
+    },
+    {
+      "file": "drizzle/0008_static_site_publish.sql",
+      "bytes": 3095,
+      "sha256": "732d2d71bed07cfbd567688d1729b6324c5185300bc59329e3b73273173a2a1b",
+      "tracked": true
+    },
+    {
+      "file": "drizzle/meta/0000_snapshot.json",
+      "bytes": 3953,
+      "sha256": "66f975380940b3a5062b2cfbc6e7b38660843c9778acdd5d5ae86853db92d971",
+      "tracked": true
+    },
+    {
+      "file": "drizzle/meta/0001_snapshot.json",
+      "bytes": 15167,
+      "sha256": "abbfc2b77b67d78127c760bb939e9f2ef2a5f2b5ebd6fc674a77b1b66eca3ad6",
+      "tracked": true
+    },
+    {
+      "file": "drizzle/meta/0002_snapshot.json",
+      "bytes": 15972,
+      "sha256": "f198e899c613b45795dba4a7410c629fe19fb0a6f9f3aa82c2f29b5ad06bb8fd",
+      "tracked": true
+    },
+    {
+      "file": "drizzle/meta/0003_snapshot.json",
+      "bytes": 19815,
+      "sha256": "8f30cbb5265aab50b87844255271311085055d0dac7a17dbc9239489a35956b0",
+      "tracked": true
+    },
+    {
+      "file": "drizzle/meta/0004_snapshot.json",
+      "bytes": 21685,
+      "sha256": "9d399c0c82c047f0c6362aff17c26ff1e12b416211d2aa926a0e46223d5a2883",
+      "tracked": true
+    },
+    {
+      "file": "drizzle/meta/0005_snapshot.json",
+      "bytes": 30302,
+      "sha256": "8b60520897cfee8842b1f72f5ca69cfabc9836aa78a3cd104ed51ffb028f8128",
+      "tracked": true
+    },
+    {
+      "file": "drizzle/meta/0006_snapshot.json",
+      "bytes": 31816,
+      "sha256": "b9488eb437ac9779fc139981718b1689a74fed0ac6d128d3e930045b92ebd709",
+      "tracked": true
+    },
+    {
+      "file": "drizzle/meta/0007_snapshot.json",
+      "bytes": 38247,
+      "sha256": "af511d1dbc6e5d2528eaee28d6a3db8810f18573d1a97191989cabf945af0fb3",
+      "tracked": true
+    },
+    {
+      "file": "drizzle/meta/0008_snapshot.json",
+      "bytes": 53151,
+      "sha256": "b4adc3712df9fe0fbd00a489dca4ab00774f52219c2928c41547b60714e290a6",
+      "tracked": true
+    },
+    {
+      "file": "drizzle/meta/_journal.json",
+      "bytes": 1443,
+      "sha256": "0ec87968c0037997696745c67ad5dd434acb67d0dbd49b0988ee7ffffe429010",
+      "tracked": true
+    },
+    {
+      "file": "eslint.config.mjs",
+      "bytes": 619,
+      "sha256": "86137144156ac370494246379441c5b7926261af9acf5cbf75d0b08851533ccc",
+      "tracked": true
+    },
+    {
+      "file": "netlify.toml",
+      "bytes": 379,
+      "sha256": "c6958a3e397e1291ae005e65d262b1544316a61616f149d40aa759c53ce208de",
+      "tracked": true
+    },
+    {
+      "file": "next.config.ts",
+      "bytes": 219,
+      "sha256": "8322f6731aae735de11815d73747a969e7b3f92024141fde9c58b1b6cfbd7cb3",
+      "tracked": true
+    },
+    {
+      "file": "package-lock.json",
+      "bytes": 398857,
+      "sha256": "6ce6fcfb178b92e39af4ba344a396393358f3f020b8abddb7b695b7472159e2c",
+      "tracked": true
+    },
+    {
+      "file": "package.json",
+      "bytes": 3583,
+      "sha256": "1e3d250eefe375caf5ca43179645982ea3511531b3c3184820da70d8a78d0551",
+      "tracked": true
+    },
+    {
+      "file": "playwright.config.ts",
+      "bytes": 1595,
+      "sha256": "d2892a5397f69b4eab02821d979a16410387ceb41acd6412cc5de443acf847c7",
+      "tracked": true
+    },
+    {
+      "file": "postcss.config.mjs",
+      "bytes": 101,
+      "sha256": "7b299d3d3b16699ddda397c0b2373b3af4f25f8fc9ccc9b3d9e64ef083bc1c21",
+      "tracked": true
+    },
+    {
+      "file": "public/favicon.svg",
+      "bytes": 718,
+      "sha256": "3e8863288c2d43dd33d2a71de317dcf9198f09932ea8d61e0def1b846a865435",
+      "tracked": true
+    },
+    {
+      "file": "public/file.svg",
+      "bytes": 393,
+      "sha256": "81a9ce5ca9bc60870c1d72c0fd5b98b2bc5c8c02b0e04fefeab9efcc11277228",
+      "tracked": true
+    },
+    {
+      "file": "public/globe.svg",
+      "bytes": 1037,
+      "sha256": "13187c071b4d369df3a7a179f69a927165bf624e1a524ee6c93b7d3be75d6fc8",
+      "tracked": true
+    },
+    {
+      "file": "public/og.png",
+      "bytes": 1916294,
+      "sha256": "1f5dbda0ca569f9e6d172a61df8e31e43ad7f6f3b4f221488900d867e041a99a",
+      "tracked": true
+    },
+    {
+      "file": "public/window.svg",
+      "bytes": 387,
+      "sha256": "d3cd4bf0c1123258fcc266409856e28c93d4fc1cf8476702225e17842900ca63",
+      "tracked": true
+    },
+    {
+      "file": "scripts/build-cloudflare-static.mjs",
+      "bytes": 2527,
+      "sha256": "b7e156df1b6cf8ebae02ab11278389c71390d30a8af88f8f6957f978f8c6ed45",
+      "tracked": true
+    },
+    {
+      "file": "scripts/build-netlify-static.mjs",
+      "bytes": 10523,
+      "sha256": "c4344d040b60857c5a192e74687d6791a3b7b70cde44c4b71cda7c1e1f061f5b",
+      "tracked": true
+    },
+    {
+      "file": "scripts/build-verified.sh",
+      "bytes": 4428,
+      "sha256": "fb3060e0111e134127fbdab01e73156c0b4968b966c2d040754d4e66fa8998ef",
+      "tracked": true
+    },
+    {
+      "file": "scripts/install-ci.sh",
+      "bytes": 6515,
+      "sha256": "388931f5ba7c5de359f39ed6a7d2e5bed199f488b1acf2889f7bb513cc11ac6f",
+      "tracked": true
+    },
+    {
+      "file": "scripts/run-playwright-suite.mjs",
+      "bytes": 857,
+      "sha256": "57c76fb8a3d3c8bdad32d1780409d80a2c0ceb1dd5e7c6ed3bb265b1bd1b0ae0",
+      "tracked": true
+    },
+    {
+      "file": "scripts/sites-env.sh",
+      "bytes": 1582,
+      "sha256": "29bc00ff806de5fe25039b869e32e9a458e273555b139a09b4f9c1ed8f59df73",
+      "tracked": true
+    },
+    {
+      "file": "shared/semantic-version.d.ts",
+      "bytes": 349,
+      "sha256": "45abbdc18e7fc88deb64dfb4baf122fbb69332c7ef835454ec6f21f1742c3e2e",
+      "tracked": true
+    },
+    {
+      "file": "shared/semantic-version.mjs",
+      "bytes": 3520,
+      "sha256": "2c70f0ea54505ad89a33afb6d9e28770188ebe16c2cfc4c9f9a74caa9ee8d8b8",
+      "tracked": true
+    },
+    {
+      "file": "static-site/index.html",
+      "bytes": 445,
+      "sha256": "24cfef8c88122b2e465d228e9a8d69c1861ead1321d1e6f84a4af290b86f1b3d",
+      "tracked": true
+    },
+    {
+      "file": "static-site/main.tsx",
+      "bytes": 1015,
+      "sha256": "0b5089fc2b6fdcd47a38216bf7c5f50f54ad92ddec3f2cc628a73eeae3fdbb91",
+      "tracked": true
+    },
+    {
+      "file": "static-site/static-portfolio.tsx",
+      "bytes": 6164,
+      "sha256": "39a0e74992fd0beb1ac286802dcf8ca0c0c627a29fc356d698c61fec45e17545",
+      "tracked": true
+    },
+    {
+      "file": "static-site/styles.css",
+      "bytes": 4048,
+      "sha256": "afc71f661abfe47bd8e7921dd075c787e36759ea3b43f56db1a9fe0c55a81e86",
+      "tracked": true
+    },
+    {
+      "file": "tests/admin-mobile-foundation.test.mjs",
+      "bytes": 8322,
+      "sha256": "7b5585b3f8ce92c602716d8effdf8c95c62ebe47c2353ac553ac0c92111dfb20",
+      "tracked": true
+    },
+    {
+      "file": "tests/admin-regressions.test.mjs",
+      "bytes": 6024,
+      "sha256": "16527df9dfd05d0e6f2d33cae86189e520f0c908033993115f49098e021aadae",
+      "tracked": true
+    },
+    {
+      "file": "tests/agent-deployment-package.test.mjs",
+      "bytes": 19394,
+      "sha256": "9090e885b6559bb575951c7dc09a54330b12943dcfe1ff2f674b9ee59863c116",
+      "tracked": true
+    },
+    {
+      "file": "tests/auth-v2.test.mjs",
+      "bytes": 22774,
+      "sha256": "d76d350de8f5c5eb76838c6127b213e6f5c2f152ba57b975318615d04cb937c7",
+      "tracked": true
+    },
+    {
+      "file": "tests/cloudflare-build-config.test.mjs",
+      "bytes": 1803,
+      "sha256": "59fb3590f8b9a63302d49344861d1e88f3da579cea2ad7407e2d1ae3a6815472",
+      "tracked": true
+    },
+    {
+      "file": "tests/cloudflare-deploy-script.test.mjs",
+      "bytes": 35160,
+      "sha256": "281ec70fc8425da23b02e0036a64eb89823b5ca292627395bd87d9ebb9b3f497",
+      "tracked": true
+    },
+    {
+      "file": "tests/cloudflare-workers-loader.mjs",
+      "bytes": 468,
+      "sha256": "5fbfcf22b1fe0e52005ad78f47e9b84df27b86e685ac41f056abd03718fdc690",
+      "tracked": true
+    },
+    {
+      "file": "tests/desktop-convergence.test.mjs",
+      "bytes": 14010,
+      "sha256": "ddcfc7f6ea471155331d61b4772c415e75a58aa8b7f4cdd502a3efc5a4b9d9d7",
+      "tracked": true
+    },
+    {
+      "file": "tests/e2e/admin-mobile.spec.ts",
+      "bytes": 7329,
+      "sha256": "44a859ca4a9624e5c37c907ceca119762a847a166151f03bde04dc42463c94e0",
+      "tracked": true
+    },
+    {
+      "file": "tests/e2e/codec.spec.ts",
+      "bytes": 1695,
+      "sha256": "8f32a7f14089a7852cd2486753e3f3d9a0d1b7cdb96662403f85e10809e00e17",
+      "tracked": true
+    },
+    {
+      "file": "tests/e2e/mobile-portfolio.spec.ts",
+      "bytes": 3615,
+      "sha256": "20f2c85f78dd0698c75f030b5de24b34800a0ad561313ef40dbe578faef81e1f",
+      "tracked": true
+    },
+    {
+      "file": "tests/e2e/static-site-admin.spec.ts",
+      "bytes": 8460,
+      "sha256": "dfbf35e1728d4a538422d84c346f5db58b4afa363c11865fe6253c5a4be77958",
+      "tracked": true
+    },
+    {
+      "file": "tests/e2e/static-site-public.spec.ts",
+      "bytes": 3597,
+      "sha256": "250d5d3a63a05067f66f50eeb042aa3b198d6b7203524e32d03c3fcf2ed0e7b7",
+      "tracked": true
+    },
+    {
+      "file": "tests/fixtures/codec-sample.mp4.base64",
+      "bytes": 3318,
+      "sha256": "cb21814594799fe15d4b1fa68af405a98119c74870fce49fa713dc1448ca0215",
+      "tracked": true
+    },
+    {
+      "file": "tests/governance-contract.test.mjs",
+      "bytes": 89332,
+      "sha256": "952079e669712a62801e7ff30946ba1508900ca3b4241c26534c1f4ce6fd5ec9",
+      "tracked": true
+    },
+    {
+      "file": "tests/hero-layout.test.mjs",
+      "bytes": 1441,
+      "sha256": "38359f2602e4e2b857122edb33ceb9490efa6bf80ab3caccb702e64d5a7552fa",
+      "tracked": true
+    },
+    {
+      "file": "tests/inline-editing.test.mjs",
+      "bytes": 1930,
+      "sha256": "0f958e376a930a80d34cc200509211b25a28b7b20880e1c0371ae6b4d73689b3",
+      "tracked": true
+    },
+    {
+      "file": "tests/legacy-media-migration.test.mjs",
+      "bytes": 10687,
+      "sha256": "360386dd744f6ef9596fae2a42a41c0cecc2ac1d5443b42db6a2123c93e00e7b",
+      "tracked": true
+    },
+    {
+      "file": "tests/media-cleanup.test.mjs",
+      "bytes": 13694,
+      "sha256": "35c171508c2c86e492b237063c7660e7b860c2e69cbb890bb7a5712f5b781b38",
+      "tracked": true
+    },
+    {
+      "file": "tests/media-crop.test.mjs",
+      "bytes": 2599,
+      "sha256": "ba7c7442b5f9dee216ad0e8a9793372cc8c151c5ca28847f1ef003b89cd18bb5",
+      "tracked": true
+    },
+    {
+      "file": "tests/mobile-responsive-contract.test.mjs",
+      "bytes": 4283,
+      "sha256": "e8ce8bd53ea69193de5a4f7de162861d6c7cced0822152342d243f41b1ee35b6",
+      "tracked": true
+    },
+    {
+      "file": "tests/netlify-client.test.mjs",
+      "bytes": 11837,
+      "sha256": "b41ca2c806958e9e371b5fc32edf48fadd4b8848e51c6274d22b0baa3e84b855",
+      "tracked": true
+    },
+    {
+      "file": "tests/owner-onboarding.test.mjs",
+      "bytes": 8053,
+      "sha256": "e9705765844d7976760504e7f5a446ad4a3b0c3362bea3e029715e8eecc28dea",
+      "tracked": true
+    },
+    {
+      "file": "tests/portfolio-access.test.mjs",
+      "bytes": 28101,
+      "sha256": "82f3b0180630338008671fd364209e71635a2e19a4b31271db4c5be137511419",
+      "tracked": true
+    },
+    {
+      "file": "tests/portfolio-model.test.mjs",
+      "bytes": 19143,
+      "sha256": "3b54adb61669eed83fd9f7f6f7dddb9e2d4c4d19ed6f8ff59d1120f78d3167e0",
+      "tracked": true
+    },
+    {
+      "file": "tests/portfolio-security.test.mjs",
+      "bytes": 10603,
+      "sha256": "39ea919a8765da3f7acc8da91c8ad17899726c3241aba089b00d2dc15dda0d6b",
+      "tracked": true
+    },
+    {
+      "file": "tests/release-command.test.mjs",
+      "bytes": 8677,
+      "sha256": "a1211f91458a24287186338c8a432891cbe201f053309ba036b050e6cdcbc39d",
+      "tracked": true
+    },
+    {
+      "file": "tests/rendered-html.test.mjs",
+      "bytes": 5375,
+      "sha256": "cb3e734396e1dbb665926590000979c01544d9efdd8d9d8133d2c41c502baee3",
+      "tracked": true
+    },
+    {
+      "file": "tests/semantic-version.test.mjs",
+      "bytes": 3104,
+      "sha256": "2a0819f2a0e3e28ed471162023139fc314c99b2841fc308aaae088467d9f7935",
+      "tracked": true
+    },
+    {
+      "file": "tests/static-build-artifact.test.mjs",
+      "bytes": 5387,
+      "sha256": "084253eda6bf6b14b2caaebaae51f002bb93aa3309b2c8f013534e1f1e315ea9",
+      "tracked": true
+    },
+    {
+      "file": "tests/static-export-security.test.mjs",
+      "bytes": 4108,
+      "sha256": "72068f826c80539037f7c5951d2e7e674ee03c55ee70e97c6656384f40d2de46",
+      "tracked": true
+    },
+    {
+      "file": "tests/static-plan-evidence.test.mjs",
+      "bytes": 1394,
+      "sha256": "412b4d63e8dcde745cbc993dc6a7c085c49be67ba239365802902e250e9a1d68",
+      "tracked": true
+    },
+    {
+      "file": "tests/static-publish-state.test.mjs",
+      "bytes": 12550,
+      "sha256": "281b9ea590c1831f29b2b5af9c6a296b0071b11a7c87c1b56c6b960c384e1889",
+      "tracked": true
+    },
+    {
+      "file": "tests/static-site-contract.test.mjs",
+      "bytes": 2585,
+      "sha256": "f609efaccf0805c2886904aaaf8dfa4be9eeb094e69fa84b083544d415e164cb",
+      "tracked": true
+    },
+    {
+      "file": "tests/static-site-store.test.mjs",
+      "bytes": 2322,
+      "sha256": "35b2d2544687b0bfd21a8d79ddc994d64c139b026ea0445344178d5a1ee4f2b6",
+      "tracked": true
+    },
+    {
+      "file": "tests/tutorial-ui-audit.test.mjs",
+      "bytes": 9993,
+      "sha256": "2081129373b9ad90ef7b318549f2f21dfe2fecba68018dc51985a9175404dcb6",
+      "tracked": true
+    },
+    {
+      "file": "tests/update-notifier.test.mjs",
+      "bytes": 12649,
+      "sha256": "a6afc3e006514c3ff7a3906a4a02cfa7d99b282bb878c240b121639a01b8f4ba",
+      "tracked": true
+    },
+    {
+      "file": "tests/upload-token-authorization.test.mjs",
+      "bytes": 30778,
+      "sha256": "0580d3579e36d9e687ec70a1e2305c642c8c62697b276cda97bfa359b94f1dbd",
+      "tracked": true
+    },
+    {
+      "file": "tsconfig.json",
+      "bytes": 745,
+      "sha256": "bfb8faa6a0a01dc4ac94888b32b356950345bb95da2698bad16383c6741cc669",
+      "tracked": true
+    },
+    {
+      "file": "vite.config.ts",
+      "bytes": 1342,
+      "sha256": "a96ba73559926c365ba446ff474377a180e06a65923d5dacae6e4315d5e6d1c4",
+      "tracked": true
+    },
+    {
+      "file": "worker-configuration.d.ts",
+      "bytes": 522390,
+      "sha256": "c3b68e789cd35074eaf96e042c2b969a1aec9e20c948e096a2c70b7ee1ba6599",
+      "tracked": true
+    },
+    {
+      "file": "worker/index.ts",
+      "bytes": 344,
+      "sha256": "e4cf8f7cc95a10cdca1966d54628dfecd702b4114b6e235206a8b70a8933e504",
+      "tracked": true
+    },
+    {
+      "file": "wrangler.jsonc",
+      "bytes": 750,
+      "sha256": "ed52f7a2e1559cd5bdbb5d19e7ddc283e1be10231b98f77d115476ac67ec5f17",
+      "tracked": true
+    },
+    {
+      "file": "app/admin/admin-fetch.ts",
+      "bytes": 1726,
+      "sha256": "1e005c943b238cd367be6b1debd394cc1cd22f1554f6387c3abd067ece561589",
+      "tracked": false
+    },
+    {
+      "file": "app/api/admin/portfolio/dynamic-publish/route.ts",
+      "bytes": 2157,
+      "sha256": "0946209a9398700f0b03343209a664252f8b8847177decc9ffbce44afdc02f2d",
+      "tracked": false
+    },
+    {
+      "file": "tests/admin-fetch.test.mjs",
+      "bytes": 1438,
+      "sha256": "ae338cd7a072add260664fa6e73a7bf1578d9a06f7ca4da6ef802b101c2b0eef",
+      "tracked": false
+    }
+  ],
+  "originalSourceFilesRecheckedUnchanged": true,
+  "sourceMatchesProductionBuild": false,
+  "governance": "main Base; machine contract hashes retained with LF-normalized verification",
+  "retiredActivePaths": [
+    "app/api/_lib/netlify-client.ts",
+    "app/api/_lib/static-publish-verify.ts",
+    "app/api/_lib/static-publish.ts",
+    "app/api/_lib/static-site-export.ts",
+    "app/api/_lib/static-site-store.ts",
+    "netlify.toml",
+    "scripts/build-netlify-static.mjs",
+    "static-site/static-portfolio.tsx",
+    "static-site/styles.css",
+    "tests/e2e/static-site-public.spec.ts",
+    "tests/netlify-client.test.mjs",
+    "tests/static-build-artifact.test.mjs",
+    "tests/static-export-security.test.mjs",
+    "tests/static-plan-evidence.test.mjs",
+    "tests/static-publish-state.test.mjs",
+    "tests/static-site-store.test.mjs"
+  ]
+}

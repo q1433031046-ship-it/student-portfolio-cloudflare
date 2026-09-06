@@ -44,3 +44,10 @@ next-env.d.ts
 /.sites-runtime/
 /outputs/
 /work/
+/.local-dependencies/
+/.pages-template/
+/.pages-browser-fixture/
+/app/api/_generated/pages-template.json
+/.pages-workerd/
+/test-results/
+/playwright-report/

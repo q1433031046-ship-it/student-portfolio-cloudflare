@@ -11,8 +11,17 @@ const eslintConfig = defineConfig([
     ".next/**",
     "out/**",
     "build/**",
+    "dist/**",
+    "cloudflare-pages-dist/**",
+    "test-results/**",
+    "playwright-report/**",
     "next-env.d.ts",
     "worker-configuration.d.ts",
+    ".local-dependencies/**",
+    ".pages-workerd/**",
+    ".pages-template/**",
+    ".pages-browser-fixture/**",
+    "app/api/_generated/**",
   ]),
 ]);
 

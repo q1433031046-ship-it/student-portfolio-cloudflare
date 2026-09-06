@@ -1,0 +1,118 @@
+{
+  "runtime": "real workerd via Miniflare; synthetic local fixtures; no provider request",
+  "results": [
+    {
+      "size": 0,
+      "sourceChunkBytes": 65537,
+      "oracle": "blake3-wasm",
+      "elapsedMs": 311,
+      "upload": true,
+      "sink": "streaming base64 decode with exact byte count and SHA256; no full body buffering"
+    },
+    {
+      "size": 1,
+      "sourceChunkBytes": 65537,
+      "oracle": "blake3-wasm",
+      "elapsedMs": 40,
+      "upload": true,
+      "sink": "streaming base64 decode with exact byte count and SHA256; no full body buffering"
+    },
+    {
+      "size": 2,
+      "sourceChunkBytes": 65537,
+      "oracle": "blake3-wasm",
+      "elapsedMs": 4,
+      "upload": true,
+      "sink": "streaming base64 decode with exact byte count and SHA256; no full body buffering"
+    },
+    {
+      "size": 3,
+      "sourceChunkBytes": 65537,
+      "oracle": "blake3-wasm",
+      "elapsedMs": 8,
+      "upload": true,
+      "sink": "streaming base64 decode with exact byte count and SHA256; no full body buffering"
+    },
+    {
+      "size": 49153,
+      "sourceChunkBytes": 65537,
+      "oracle": "blake3-wasm",
+      "elapsedMs": 27,
+      "upload": true,
+      "sink": "streaming base64 decode with exact byte count and SHA256; no full body buffering"
+    },
+    {
+      "size": 1293044,
+      "sourceChunkBytes": 65537,
+      "oracle": "blake3-wasm",
+      "elapsedMs": 223,
+      "upload": true,
+      "sink": "streaming base64 decode with exact byte count and SHA256; no full body buffering"
+    },
+    {
+      "size": 26214400,
+      "sourceChunkBytes": 4194304,
+      "oracle": "blake3-wasm",
+      "elapsedMs": 4077,
+      "upload": true,
+      "sink": "streaming base64 decode with exact byte count and SHA256; no full body buffering"
+    },
+    {
+      "failureInput": {
+        "size": 26214401,
+        "chunk": 100
+      },
+      "result": {
+        "ok": false,
+        "code": "PAGES_FILE_TOO_LARGE",
+        "calls": 0
+      }
+    },
+    {
+      "failureInput": {
+        "size": 4096,
+        "chunk": 31,
+        "upload": true,
+        "changed": true
+      },
+      "result": {
+        "ok": false,
+        "code": "PAGES_MEDIA_CHANGED",
+        "calls": 1
+      }
+    },
+    {
+      "failureInput": {
+        "size": 4096,
+        "chunk": 31,
+        "upload": true,
+        "fail": true
+      },
+      "result": {
+        "ok": false,
+        "code": "PAGES_REQUEST_FAILED",
+        "calls": 1
+      }
+    },
+    {
+      "localForwardMigrations": 11,
+      "preservedTables": [
+        {
+          "name": "pages_files"
+        },
+        {
+          "name": "pages_jobs"
+        },
+        {
+          "name": "pages_site"
+        },
+        {
+          "name": "portfolio_documents"
+        },
+        {
+          "name": "static_publish_jobs"
+        }
+      ]
+    }
+  ]
+}

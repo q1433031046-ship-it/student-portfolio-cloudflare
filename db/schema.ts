@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const works = sqliteTable(
   "works",
@@ -32,6 +32,7 @@ export const portfolioDocuments = sqliteTable("portfolio_documents", {
   revision: integer("revision").notNull().default(1),
   draftJson: text("draft_json").notNull(),
   publishedJson: text("published_json"),
+  staticPublishedSourceRevision: integer("static_published_source_revision"),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   publishedAt: text("published_at"),
 });
@@ -253,3 +254,110 @@ export const portfolioAccessPassState = sqliteTable("portfolio_access_pass_state
   sessionGeneration: integer("session_generation").notNull().default(1),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
+
+export const staticSiteBindings = sqliteTable(
+  "static_site_bindings",
+  {
+    id: text("id").primaryKey(),
+    provider: text("provider", { enum: ["netlify"] }).notNull().default("netlify"),
+    accountIdentityHash: text("account_identity_hash").notNull(),
+    siteId: text("site_id").notNull(),
+    siteSlug: text("site_slug").notNull(),
+    productionUrl: text("production_url"),
+    buildBranch: text("build_branch").notNull().default("static-build/v1.3.1-b"),
+    expectedCommitSha: text("expected_commit_sha").notNull(),
+    status: text("status", { enum: ["unconfigured", "configured", "publishing", "published", "failed", "reauthorization_required", "reverification_required", "rollback_in_progress"] }).notNull().default("configured"),
+    currentDeployId: text("current_deploy_id"),
+    previousDeployId: text("previous_deploy_id"),
+    currentPublicRevision: integer("current_public_revision").notNull().default(0),
+    lastVerifiedAt: text("last_verified_at"),
+    lastErrorCode: text("last_error_code"),
+    lastErrorSummary: text("last_error_summary"),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+    firstPublishedAt: text("first_published_at"),
+    lastSuccessAt: text("last_success_at"),
+  },
+  (table) => [uniqueIndex("static_site_bindings_site_id_idx").on(table.siteId)],
+);
+
+export const staticPublishJobs = sqliteTable(
+  "static_publish_jobs",
+  {
+    id: text("id").primaryKey(),
+    siteBindingId: text("site_binding_id").notNull().default("default").references(() => staticSiteBindings.id, { onDelete: "restrict" }),
+    sourceDocumentRevision: integer("source_document_revision").notNull(),
+    publicRevision: integer("public_revision").notNull(),
+    candidateJson: text("candidate_json").notNull(),
+    candidateSha256: text("candidate_sha256").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    status: text("status").notNull().default("FROZEN"),
+    phase: text("phase").notNull().default("freeze"),
+    providerRequestKey: text("provider_request_key").notNull(),
+    deployId: text("deploy_id"),
+    deployPermalink: text("deploy_permalink"),
+    artifactManifestJson: text("artifact_manifest_json"),
+    artifactSha256: text("artifact_sha256"),
+    artifactManifestFileSha256: text("artifact_manifest_file_sha256"),
+    exportGeneration: integer("export_generation").notNull().default(1),
+    bootstrapTokenSha256: text("bootstrap_token_sha256").notNull(),
+    bootstrapExpiresAt: text("bootstrap_expires_at").notNull(),
+    bootstrapConsumedAt: text("bootstrap_consumed_at"),
+    leaseIdSha256: text("lease_id_sha256"),
+    leaseExpiresAt: text("lease_expires_at"),
+    errorCode: text("error_code"),
+    errorSummary: text("error_summary"),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+    completedAt: text("completed_at"),
+  },
+  (table) => [
+    uniqueIndex("static_publish_jobs_idempotency_idx").on(table.idempotencyKey),
+    index("static_publish_jobs_status_idx").on(table.siteBindingId, table.status, table.createdAt),
+  ],
+);
+
+export const staticPublishJobMedia = sqliteTable(
+  "static_publish_job_media",
+  {
+    jobId: text("job_id").notNull().references(() => staticPublishJobs.id, { onDelete: "cascade" }),
+    mediaId: text("media_id").notNull(),
+    objectKey: text("object_key").notNull(),
+    publicPath: text("public_path").notNull(),
+    contentType: text("content_type").notNull(),
+    byteSize: integer("byte_size").notNull(),
+    storageBackend: text("storage_backend", { enum: ["kv", "r2"] }).notNull(),
+    sourceEtag: text("source_etag").notNull(),
+    sha256: text("sha256"),
+    providerSha1: text("provider_sha1"),
+    artifactVerifiedAt: text("artifact_verified_at"),
+    status: text("status").notNull().default("frozen"),
+  },
+  (table) => [
+    primaryKey({ columns: [table.jobId, table.mediaId] }),
+    uniqueIndex("static_publish_job_media_path_idx").on(table.jobId, table.publicPath),
+  ],
+);
+
+// Independent Pages state; existing static_* rows remain historical evidence.
+export const pagesSite = sqliteTable("pages_site", {
+  id: text("id").primaryKey(), project: text("project").notNull(), productionBranch: text("production_branch").notNull(),
+  productionUrl: text("production_url").notNull(), currentJob: text("current_job"), previousJob: text("previous_job"),
+  currentDeploy: text("current_deploy"), previousDeploy: text("previous_deploy"), publicRevision: integer("public_revision").notNull().default(0), lastSuccessAt: text("last_success_at"),
+});
+export const pagesJobs = sqliteTable("pages_jobs", {
+  id: text("id").primaryKey(), sourceRevision: integer("source_revision").notNull(), candidateJson: text("candidate_json").notNull(),
+  candidateHash: text("candidate_hash").notNull(), templateHash: text("template_hash").notNull(), artifactHash: text("artifact_hash"),
+  status: text("status").notNull(), lockToken: text("lock_token"), lockUntil: integer("lock_until").notNull().default(0),
+  previewAttempted: integer("preview_attempted").notNull().default(0), productionAttempted: integer("production_attempted").notNull().default(0),
+  previewId: text("preview_id"), previewUrl: text("preview_url"), productionId: text("production_id"), productionUrl: text("production_url"),
+  lookupCount: integer("lookup_count").notNull().default(0), errorCode: text("error_code"), errorSummary: text("error_summary"),
+  createdAt: text("created_at").notNull(), completedAt: text("completed_at"),
+}, t => [uniqueIndex("pages_one_active_job").on(sql`(1)`).where(sql`${t.status} NOT IN ('PUBLISHED','FAILED_FINAL')`)]);
+export const pagesFiles = sqliteTable("pages_files", {
+  jobId: text("job_id").notNull().references(() => pagesJobs.id, { onDelete: "restrict" }), path: text("path").notNull(),
+  byteSize: integer("byte_size").notNull(), contentType: text("content_type").notNull(), inlineBase64: text("inline_base64"),
+  objectKey: text("object_key"), storageBackend: text("storage_backend"), sourceEtag: text("source_etag"),
+  sha256: text("sha256"), assetKey: text("asset_key"), uploaded: integer("uploaded").notNull().default(0), uploadAttempts: integer("upload_attempts").notNull().default(0),
+  previewVerified: integer("preview_verified").notNull().default(0), productionVerified: integer("production_verified").notNull().default(0), canonicalVerified: integer("canonical_verified").notNull().default(0),
+}, t => [primaryKey({ columns: [t.jobId, t.path] }), index("pages_files_media_reference").on(t.objectKey)]);
