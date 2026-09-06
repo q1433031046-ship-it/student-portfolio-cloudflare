@@ -1,7 +1,9 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- This standalone CommonJS byte-patch tool uses Node built-ins. */
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const assert = require('node:assert/strict');
+/* eslint-enable @typescript-eslint/no-require-imports */
 const BASE_HASH = '8d0fc2b08777af56d43139412327c0a8702b469919bb7428d54cfeca7f3351d8';
 const HEADER_HASH = '9e55124bccd40b43dbc6e002daa777fa8f32a230420152910784ca65501d9e0f';
 const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');

@@ -4,8 +4,8 @@
   "runtimeSourceIsHistoricalGitTree": false,
   "files": {
     "patch-runtime.cjs": {
-      "bytes": 4251,
-      "sha256": "986ad5fcec5fa24f95c8a83be0a0b560ebc6c752d37ce0ce40143e1fe746c24d"
+      "bytes": 4433,
+      "sha256": "58677ef46ed9f794c42d6e18211fbb1cbf00c2f90566b6b2448448e260616c05"
     },
     "verify-runtime.cjs": {
       "bytes": 8506,
