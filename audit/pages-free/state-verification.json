@@ -2,6 +2,28 @@
   "runtime": "real local workerd/D1/KV; provider fixture only",
   "results": [
     {
+      "node": "v24.18.0",
+      "templateIdentity": "2ff250c1321cad6f6d12f36274618c845cba164d890763d8ad133f40ab699f20",
+      "files": [
+        {
+          "path": "assets/index-Bteumf-x.js",
+          "bytes": 232464,
+          "sha256": "1e132598d7d2886f1c7664e756265bef8cf77c9c77b38e34978685905d89bc85"
+        },
+        {
+          "path": "assets/index-CSaSH_62.css",
+          "bytes": 56236,
+          "sha256": "a5e6e43fa0d44d06b75e534367cc6b4b4329b70f04d379f557163107e74d123a"
+        },
+        {
+          "path": "index.html",
+          "bytes": 552,
+          "sha256": "2797615b047e14c0451ec76faa268060d4b17eb42c74af383ad5f7bae68c90b5"
+        }
+      ],
+      "templateIdentityAndBytesIndependentlyVerified": true
+    },
+    {
       "safeSnapshot": true,
       "archivedAndKeysExcludedBeforeCI": true
     },
@@ -32,6 +54,13 @@
       "runnerIndexRequests": 0,
       "canonicalHomeReads": 4,
       "canonicalHomeBytesAndHeadersVerified": true
+    },
+    {
+      "internallyConsistentWrongTemplateRejectedByRealRunner": true,
+      "frozenTemplateIdentityUnchanged": true,
+      "wrongTemplateProviderFixtureReads": 1,
+      "wrongTemplateProviderWrites": 0,
+      "wrongTemplateDeploymentCreates": 0
     },
     {
       "control60KiBAccepted66KiBRejected": true,

@@ -1,0 +1,15 @@
+# 当次生成模板测试夹具修正
+
+角色3本地最小返工，Parent 0dc366534405bab3dc41e5cc6cb01c49a87c0b62。方案R2-20260906-FREE-CI-TEMPLATE-FIX-PLAN-001本地PASS；本报告不代表远端CI或发布批准。
+
+仅修改scripts/verify-pages-free.mjs、tests/pages-free-workerd-entry.ts。驱动在创建workerd前读取现有生成模板，检查schema、路径唯一性、安全相对路径、字节数、base64规范表示与每文件SHA256，并按生产清单投影独立重算identity。将核定值作为esbuild测试常量注入fixture，冻结后不能经HTTP/claim覆盖。生产runner、真实配置与模板内容没有改动。
+
+正确模板沿既有真实本地workerd/D1/KV和provider fixture完整路径通过，预览与正式发布保持同包、主页字节/headers匹配。负例构造另一个内部字节及清单身份自洽的模板，其身份不同于冻结任务；真实executeRunner拒绝RUNNER_TEMPLATE_MISMATCH，先有1次合成项目GET，provider写0、deployment创建0，冻结身份保持不变。
+
+实际环境Windows / Node v24.18.0。使用Parent隔离目录中已生成模板的相同字节副本，identity 2ff250c1321cad6f6d12f36274618c845cba164d890763d8ad133f40ab699f20；本次未重建产品或追查平台字节差异。当次完整三文件path/bytes/SHA256及Node版本写入state-verification.json与console，不包含base64正文或秘密。
+
+最终node scripts/verify-pages-free.mjs通过；两涉及文件eslint通过；git diff --check通过。本地负例接线初次检查分别暴露缺失source配置、项目fixture、修订状态及项目GET响应，均仅调整本次测试编排后完成上述实际负例，不是产品错误或远端重试。
+
+按用户有限验证要求，本次完成直接正确/错误模板回归即结束。没有重复246全量、UI、CPU、25MiB专项或UbuntuCI。首轮PR40真实Linux246/246通过继续作为原准确checkout证据；run34037158201整体failure记录原地保留。新补丁尚未远端验证，整体RELEASE_HOLD。
+
+旧云端配置说明中的Windows模板身份不能直接作为最终真实preview基准；根已收敛到最终目标Linux准确产物另行冻结。本次没有改该历史报告、真实PAGES_RUNNER_TEMPLATE_SHA或页面、workflow。没有push、PR修改、rerun、provider/DB/Secret写入。

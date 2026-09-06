@@ -5,7 +5,8 @@ import { runnerRequest } from '../app/api/_lib/pages-runner-service';
 import { freezeSafeSnapshot } from '../app/api/_lib/pages-free-freeze';
 import { createDefaultPortfolioDocument } from '../app/portfolio/default-document';
 import { requirePagesManager } from '../app/api/_lib/pages-admin-auth';
-const source = { head: 'a'.repeat(40), ref: 'refs/tags/local-fixture', template: '2ff250c1321cad6f6d12f36274618c845cba164d890763d8ad133f40ab699f20' };
+declare const __FIXTURE_TEMPLATE_IDENTITY__: string;
+const source = { head: 'a'.repeat(40), ref: 'refs/tags/local-fixture', template: __FIXTURE_TEMPLATE_IDENTITY__ };
 const secret = 'local-fixture-only-not-a-real-secret';
 const worker = { async fetch(request: Request) {
   const db = (env as unknown as { DB: D1Database }).DB;

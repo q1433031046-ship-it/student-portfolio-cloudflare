@@ -4,12 +4,37 @@ import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
+import { createHash } from 'node:crypto';
+const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
+const template = JSON.parse(await readFile('app/api/_generated/pages-template.json', 'utf8'));
+assert.equal(template.schemaVersion, 1);
+assert.match(template.identity, /^[a-f0-9]{64}$/);
+assert.equal(Array.isArray(template.files) && template.files.length > 0, true);
+const paths = new Set();
+const templateFiles = template.files.map(file => {
+  assert.equal(typeof file.path, 'string');
+  assert.match(file.path, /^[A-Za-z0-9_./-]+$/);
+  assert.equal(file.path.startsWith('/') || file.path.split('/').some(part => !part || part === '.' || part === '..') || paths.has(file.path), false);
+  paths.add(file.path);
+  assert.equal(Number.isSafeInteger(file.bytes) && file.bytes >= 0, true);
+  assert.match(file.sha256, /^[a-f0-9]{64}$/);
+  assert.equal(typeof file.base64, 'string');
+  const bytes = Buffer.from(file.base64, 'base64');
+  assert.equal(bytes.toString('base64'), file.base64);
+  assert.equal(bytes.length, file.bytes);
+  assert.equal(sha256(bytes), file.sha256);
+  return { path: file.path, bytes: file.bytes, sha256: file.sha256 };
+});
+const templateIdentity = sha256(JSON.stringify(templateFiles));
+assert.equal(templateIdentity, template.identity);
+const templateEvidence = { node: process.version, templateIdentity, files: templateFiles, templateIdentityAndBytesIndependentlyVerified: true };
+console.log(JSON.stringify(templateEvidence));
 await mkdir('.pages-workerd', { recursive: true });
-await build({ entryPoints: ['tests/pages-free-workerd-entry.ts'], bundle: true, format: 'esm', platform: 'browser', external: ['cloudflare:workers'], outfile: '.pages-workerd/free.js', metafile: true }).then(r => writeFile('.pages-workerd/free-metafile.json', JSON.stringify(r.metafile)));
+await build({ entryPoints: ['tests/pages-free-workerd-entry.ts'], bundle: true, format: 'esm', platform: 'browser', external: ['cloudflare:workers'], define: { __FIXTURE_TEMPLATE_IDENTITY__: JSON.stringify(templateIdentity) }, outfile: '.pages-workerd/free.js', metafile: true }).then(r => writeFile('.pages-workerd/free-metafile.json', JSON.stringify(r.metafile)));
 await build({ entryPoints: ['app/api/_lib/pages-runner-auth.ts'], bundle: true, format: 'esm', platform: 'node', outfile: '.pages-workerd/auth.mjs' });
 const { signControl } = await import(pathToFileURL(resolve('.pages-workerd/auth.mjs')));
 const mf = new Miniflare(convertV4MiniflareOptions({ name: 'pages-free', modules: true, scriptPath: '.pages-workerd/free.js', compatibilityDate: '2026-09-01', d1Databases: ['DB'], kvNamespaces: ['MEDIA_KV'], bindings: { AUTH_PLATFORM: 'sites' }, inspectorPort: 0 }));
-const results = [];
+const results = [templateEvidence];
 try {
   const db = await mf.getD1Database('DB');
   for (const name of (await readdir('drizzle')).filter(n => n.endsWith('.sql')).sort()) for (const sql of (await readFile(`drizzle/${name}`, 'utf8')).split('--> statement-breakpoint').filter(s => s.trim())) await db.prepare(sql).run();
@@ -71,6 +96,40 @@ try {
   results.push({ deploymentPermitOnce: true, concurrentPermitCASOneWinner: true, canceledLeaseExpiredRerunRecoverOnly: true, sameReceiptIdempotent: true, changedReceiptRejected: true });
   const { verifyNodeRunner } = await import('./verify-pages-free-node-fixture.mjs');
   results.push(await verifyNodeRunner(mf, db, fixture));
+  // A different, internally consistent template must not replace the frozen identity.
+  await db.prepare("UPDATE pages_jobs SET status='PUBLISHED'").run();
+  await db.prepare("UPDATE portfolio_documents SET revision=1 WHERE id='default'").run();
+  const wrongJob = await fixture({ op: 'freeze' });
+  await fixture({ op: 'dispatch', id: wrongJob.id, phase: 'preview' });
+  const wrongTemplate = structuredClone(template);
+  const changedBytes = Buffer.from(wrongTemplate.files[0].base64, 'base64');
+  assert.equal(changedBytes.length > 0, true); changedBytes[0] ^= 1;
+  wrongTemplate.files[0].base64 = changedBytes.toString('base64');
+  wrongTemplate.files[0].sha256 = sha256(changedBytes);
+  wrongTemplate.identity = sha256(JSON.stringify(wrongTemplate.files.map(({ path, bytes, sha256 }) => ({ path, bytes, sha256 }))));
+  assert.notEqual(wrongTemplate.identity, templateIdentity);
+  const wrongPath = '.pages-workerd/wrong-template.json';
+  await writeFile(wrongPath, JSON.stringify(wrongTemplate));
+  let providerReads = 0, providerWrites = 0, deploymentCreates = 0;
+  const { executeRunner } = await import('./pages-runner.mjs');
+  await assert.rejects(executeRunner({ job: wrongJob.id, phase: 'preview', run: '201', attempt: 1, head: 'a'.repeat(40), ref: 'refs/tags/local-fixture', repository: 'q1433031046-ship-it/student-portfolio-cloudflare', workflowRef: 'q1433031046-ship-it/student-portfolio-cloudflare/.github/workflows/pages-publish.yml@refs/tags/local-fixture', origin: 'https://worker.example.test', secret: 'local-fixture-only-not-a-real-secret', account: 'a'.repeat(32), pagesToken: 'local-only' }, {
+    templatePath: wrongPath,
+    fetch: (input, init) => {
+      const url = new URL(String(input));
+      if (url.hostname === 'worker.example.test') return mf.dispatchFetch(`http://fixture${url.pathname}`, init);
+      if (url.hostname === 'api.cloudflare.com' && url.pathname.endsWith('/pages/projects/zkyl-student-showcase') && (!init?.method || init.method === 'GET')) {
+        providerReads++;
+        return Promise.resolve(Response.json({ success: true, result: { name: 'zkyl-student-showcase', production_branch: 'main' } }));
+      }
+      providerWrites++;
+      if (url.pathname.endsWith('/deployments') && init?.method === 'POST') deploymentCreates++;
+      return Promise.resolve(new Response(null, { status: 500 }));
+    },
+    delay: async () => {},
+  }), /RUNNER_TEMPLATE_MISMATCH/);
+  assert.equal(providerReads, 1); assert.equal(providerWrites, 0); assert.equal(deploymentCreates, 0);
+  assert.equal((await db.prepare('SELECT template FROM pages_runner_sources WHERE job_id=?').bind(wrongJob.id).first()).template, templateIdentity);
+  results.push({ internallyConsistentWrongTemplateRejectedByRealRunner: true, frozenTemplateIdentityUnchanged: true, wrongTemplateProviderFixtureReads: providerReads, wrongTemplateProviderWrites: providerWrites, wrongTemplateDeploymentCreates: deploymentCreates });
   const { verifyAdditionalBoundaries } = await import('./verify-pages-free-node-fixture.mjs');
   results.push(await verifyAdditionalBoundaries(mf, db, fixture));
   await db.prepare("INSERT INTO site_ownership(id,owner_email,auth_provider,bound_at) VALUES('default','fixture@example.test','password','2026-09-06')").run();
