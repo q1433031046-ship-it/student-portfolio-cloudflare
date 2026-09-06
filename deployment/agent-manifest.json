@@ -279,7 +279,11 @@
     "0004_owner_email_onboarding.sql",
     "0005_password_auth_kv_media.sql",
     "0006_auth_v2.sql",
-    "0007_legacy_media_and_access_state.sql"
+    "0007_legacy_media_and_access_state.sql",
+    "0008_static_site_publish.sql",
+    "0009_pages_dual_publish.sql",
+    "0010_pages_readback_progress.sql",
+    "0011_pages_runner.sql"
   ],
   "databaseMigrationPolicy": {
     "strategy": "forward-only",
@@ -288,12 +292,22 @@
       "0007_legacy_media_and_access_state.sql"
     ],
     "migrationSha256": {
-      "0007_legacy_media_and_access_state.sql": "c29e080e93d8fa71378c43d7afdbcef97a591e434dca092af84741428acd9a1e"
+      "0007_legacy_media_and_access_state.sql": "c29e080e93d8fa71378c43d7afdbcef97a591e434dca092af84741428acd9a1e",
+      "0008_static_site_publish.sql": "4ea93ca3f69fa8e654e72b018d798a26ef1f36de07d49313f4f399e44fef1e61",
+      "0009_pages_dual_publish.sql": "fb075bd922dec971643c2776565fe8ded8f83f03b4151d990a19c454807d86ef",
+      "0010_pages_readback_progress.sql": "f1eda2ff3d6ea7b71f6b3d234b86570b37824df54725cf7ee4cfbcef84730fcb",
+      "0011_pages_runner.sql": "0e5b610c53ec208ebb8790f6a7ca274d52df125937a0417e2405dfc5d155dac9"
     },
     "runtimeBootstrapRoute": "/admin",
     "permissionFallback": "only after migrations list succeeds and reliably enumerates all pending files, apply then clearly fails for D1 permission, the exact target fingerprint matches, and every pending migration is allowlisted and verified as idempotent DDL",
     "migrationListFailure": "fail-closed because the complete pending set is unproven",
-    "allOtherMigrationErrors": "fail-closed"
+    "allOtherMigrationErrors": "fail-closed",
+    "normalApplyRequiredMigrations": [
+      "0008_static_site_publish.sql",
+      "0009_pages_dual_publish.sql",
+      "0010_pages_readback_progress.sql",
+      "0011_pages_runner.sql"
+    ]
   },
   "authStateBootstrap": {
     "table": "admin_auth_state",
@@ -397,5 +411,33 @@
       "mainland-China broadband access"
     ],
     "unknownResult": "report as unverified"
+  },
+  "localCandidateManifest": "deployment/local-candidate.json",
+  "pagesPublishing": {
+    "project": "zkyl-student-showcase",
+    "productionBranch": "main",
+    "requiredBindings": [
+      "WORKER_PUBLIC_ORIGIN",
+      "PAGES_GITHUB_TOKEN",
+      "PAGES_RUNNER_HMAC_KEY",
+      "PAGES_RUNNER_HEAD",
+      "PAGES_RUNNER_REF",
+      "PAGES_RUNNER_TEMPLATE_SHA"
+    ],
+    "credentialsByHiddenChannel": true,
+    "automaticProjectCreation": false,
+    "productionRequiresSeparateAction": true,
+    "execution": "public-repository-standard-GitHub-Actions",
+    "workflow": ".github/workflows/pages-publish.yml",
+    "actionsSecrets": [
+      "PAGES_RUNNER_HMAC_KEY",
+      "PAGES_API_TOKEN"
+    ],
+    "actionsVariables": [
+      "PAGES_WORKER_ORIGIN",
+      "PAGES_ACCOUNT_ID"
+    ],
+    "runtimeCpuEvidence": "audit/pages-free/cpu-profile.json",
+    "releaseStatus": "RELEASE_HOLD"
   }
 }

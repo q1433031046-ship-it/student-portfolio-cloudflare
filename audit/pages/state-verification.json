@@ -1,0 +1,29 @@
+{
+  "runtime": "real workerd/D1 with local provider fixture; no Cloudflare write",
+  "results": [
+    {
+      "previewVerified": true,
+      "acceptedPreviewLostResponseRecovered": true,
+      "previewCreates": 1,
+      "dynamicIndependent": true,
+      "frozenDraftIndependent": true
+    },
+    {
+      "productionVerified": true,
+      "acceptedProductionLostResponseRecovered": true,
+      "totalCreates": 2,
+      "publicRevision": 1,
+      "dynamicSnapshotUnchanged": true
+    },
+    {
+      "secondUpdateSameFixedUrl": true,
+      "publicRevision": 2,
+      "previousJobPreserved": true
+    },
+    {
+      "realD1KvCleanup": true,
+      "draftDynamicPagesAndLegacyReferencesPreserved": true,
+      "unreferencedOrphanRemoved": true
+    }
+  ]
+}

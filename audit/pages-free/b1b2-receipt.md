@@ -1,0 +1,15 @@
+# B1/B2最小修复回执
+
+父Candidate：980ba4a2d041a9d1c01c1e3e5cb749273947db6f / Tree533efb20dfbe8a7f007844fb0c235356f4c15fa2。依据角色2审计9a79c9ecd0ca24669f4697b8f7e2ae85a4c9ddd7dc5dd723ab9faa4a3df9eddb，仅处理B1/B2。状态LOCAL_FIX_COMPLETE / RELEASE_HOLD，等待准确新Candidate增量复核。
+
+B1：Node runner的HTTP读取将清单index.html映射为同一已核定origin的/。清单名、正文摘要和redirect:manual保持。冻结_headers的首页Cache-Control规则从/index.html改为/，读取侧按实际HTTP路径匹配冻结响应头。其余路径仍直接、手动重定向模式访问；未增加自动跟随。新的冻结包会自然记录控制字节新摘要，既有包记录不被改写。
+
+直接回归使用真实Node runner与本地workerd/D1/KV RPC，将Pages夹具修为/index.html返回308 Location=/，/返回对应manifest index.html的字节和实际匹配的响应头。预览验收、正式冻结包下载、正式不可变及固定站读回共4次首页读取均走/，runner请求/index.html为0，正文与全部冻结首页headers通过。预览/正式manifest及控制字节相同，坏包拒绝、响应和回调丢失仍保留一次许可。见state-verification.json。
+
+B2：后台卡片只在ARTIFACT_VERIFIED的显式点击发送promote；PUBLISH_REQUESTED与PRODUCTION_READBACK_VERIFIED的自动及人工核验均发送verify。移除自动重发promote的本地标记，核验完成时依读回状态显示正式成功。服务端派发/租约/单次部署实现未改。
+
+浏览器直接回归8/8通过：保留3项原静态卡用例，新增正式处理中、失败、取消、核验响应丢失及首次promote响应丢失后刷新。实际React后台卡片在Windows Chrome运行；接口夹具模拟原run状态，断言原job的verify请求、恢复入口和dispatch/deployment计数不增加。初次promote只出现一次，刷新后读取原任务。该UI计数为接口夹具证据；真实Node/workerd单次许可证据另见state-verification，不冒充远端实测。
+
+产品构建、tsc及涉及文件lint通过。完整展示组件和static-site模板源码不变，模板身份仍2ff250c1321cad6f6d12f36274618c845cba164d890763d8ad133f40ab699f20；后台卡片仅B2控制流增量。新构建文件摘要在b1b2-build-artifacts.json，父build-artifacts.json仍为980阶段历史对象。旧全量246=206通过/37失败/3跳过、CPU INCONCLUSIVE及Linux/macOS/真实云端未验收继续保留，不为本轮重跑或改写PASS。
+
+检查摘要及浏览器用例在b1b2-checks.json。未修改方案、迁移、治理、workflow或凭据；未重复CPU采样、推Git/PR或provider写，角色4仍暂停。新Head/Tree在提交后的根身份回执记录，父差分仅本修复和直接证据。

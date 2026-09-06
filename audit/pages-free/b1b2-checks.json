@@ -1,0 +1,145 @@
+{
+  "parent": "980ba4a2d041a9d1c01c1e3e5cb749273947db6f",
+  "auditSha256": "9a79c9ecd0ca24669f4697b8f7e2ae85a4c9ddd7dc5dd723ab9faa4a3df9eddb",
+  "scope": [
+    "B1",
+    "B2"
+  ],
+  "nodeWorkerd": "state-verification.json",
+  "browser": {
+    "runtime": "Windows system Chrome via Playwright mobile-chromium, actual admin component with route fixtures",
+    "stats": {
+      "startTime": "2026-09-06T13:24:06.378Z",
+      "duration": 22749.763,
+      "expected": 8,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    },
+    "tests": [
+      {
+        "title": "static publishing card covers unconfigured and configured first-publish states without a premature QR",
+        "project": "mobile-chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration": 2599
+          }
+        ]
+      },
+      {
+        "title": "verification exposes one immutable preview and promotion is a separate action",
+        "project": "mobile-chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration": 2002
+          }
+        ]
+      },
+      {
+        "title": "first success renders the fixed URL QR while reauthorization and rollback remain explicit",
+        "project": "mobile-chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration": 3032
+          }
+        ]
+      },
+      {
+        "title": "production processing uses verify after refresh without another promotion",
+        "project": "mobile-chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration": 2859
+          }
+        ]
+      },
+      {
+        "title": "production failure uses verify after refresh without another promotion",
+        "project": "mobile-chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration": 2812
+          }
+        ]
+      },
+      {
+        "title": "production cancelled uses verify after refresh without another promotion",
+        "project": "mobile-chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration": 2794
+          }
+        ]
+      },
+      {
+        "title": "production lost-response uses verify after refresh without another promotion",
+        "project": "mobile-chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration": 2295
+          }
+        ]
+      },
+      {
+        "title": "lost first promotion response is recovered by verify after reload",
+        "project": "mobile-chromium",
+        "status": "expected",
+        "results": [
+          {
+            "status": "passed",
+            "duration": 1951
+          }
+        ]
+      }
+    ]
+  },
+  "typescript": "pass",
+  "targetedLint": "0 errors / 0 warnings",
+  "productBuild": "pass",
+  "fullUnit": {
+    "source": "parent980ba4a; not rerun for these two fixes",
+    "total": 246,
+    "pass": 206,
+    "fail": 37,
+    "skipped": 3,
+    "overall": "not passed"
+  },
+  "cpu": "unchanged INCONCLUSIVE; no new profiling",
+  "sourceFiles": [
+    {
+      "path": "scripts/pages-runner.mjs",
+      "sha256": "8f4aa6c59bc142094ff610d5c75af0a576ab232d8258996fae5d77fe81b320c9"
+    },
+    {
+      "path": "app/api/_lib/pages-control.ts",
+      "sha256": "40ae9f6f803837165902c1965d62e6e3faa9b1fae8e99c08216e76a35b161853"
+    },
+    {
+      "path": "app/admin/static-site-card.tsx",
+      "sha256": "b6e97c62ca24a21df8f737ba4a6b44c5104503175700d2678c7932ba0e48ae94"
+    },
+    {
+      "path": "scripts/verify-pages-free-node-fixture.mjs",
+      "sha256": "7ab47afc26798460bbc74d55281527eb651944400421f4052b717c6135701504"
+    },
+    {
+      "path": "tests/e2e/static-site-admin.spec.ts",
+      "sha256": "1346b1104cc9589181949ffbd8474f605e2cc9a062aeb8c5285ed9a0a51d3735"
+    }
+  ],
+  "remoteWrites": 0
+}

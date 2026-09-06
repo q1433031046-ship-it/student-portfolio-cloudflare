@@ -60,7 +60,8 @@ export async function publishPortfolio(expectedRevision: number): Promise<Portfo
   const nextRevision = expectedRevision + 1;
   const now = new Date().toISOString();
   const result = await getPortfolioDb()
-    .prepare("UPDATE portfolio_documents SET published_json = draft_json, revision = ?, updated_at = ?, published_at = ? WHERE id = ? AND revision = ?")
+    .prepare(`UPDATE portfolio_documents SET published_json = draft_json, revision = ?, updated_at = ?, published_at = ?
+      WHERE id = ? AND revision = ?`)
     .bind(nextRevision, now, now, DOCUMENT_ID, expectedRevision)
     .run();
   if (Number(result.meta.changes ?? 0) !== 1) return null;

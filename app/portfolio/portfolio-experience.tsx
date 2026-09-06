@@ -40,7 +40,7 @@ type PlaybackState = {
 
 export type PortfolioExperienceProps = {
   initialPortfolio: PortfolioDocument;
-  mode: "review" | "live";
+  mode: "review" | "live" | "static";
   embedded?: boolean;
   initialPreviewTarget?: PortfolioPreviewTarget;
 };
@@ -539,8 +539,12 @@ export function PortfolioExperience({ initialPortfolio: portfolio, mode, embedde
         : { project, asset, status: "error", error: "草稿视频暂时无法读取，请保存草稿后重试", recoveryCount: 0, autoplayRejected: false });
       return;
     }
-    if (asset.src) {
-      setPlayback({ project, asset, status: "ready", recoveryCount: 0, autoplayRejected: false });
+    if (mode === "static" || asset.src) {
+      const localSource = asset.src && /^\/media\/[A-Za-z0-9_.-]+$/u.test(asset.src);
+      setPlayback({ project, asset, status: mode === "static" && !localSource ? "error" : "ready",
+        error: mode === "static" && !localSource ? "静态视频文件缺失，请联系网站管理员重新发布" : undefined,
+        recoveryCount: recovery?.count ?? 0, restoreTime: recovery?.currentTime,
+        shouldResume: recovery?.shouldResume, autoplayRejected: false });
       return;
     }
 
@@ -586,7 +590,7 @@ export function PortfolioExperience({ initialPortfolio: portfolio, mode, embedde
       if (request.controller.signal.aborted || playbackRequestRef.current?.id !== request.id) return;
       const message = toUserFacingChineseError(error, "暂时无法播放这个版本，请检查网络后重试");
       setPlayback({ project, asset, status: "error", error: message, recoveryCount: recovery?.count ?? 0, autoplayRejected: false });
-      reportEvent("play_error", project.id, "final", getPortfolioSessionId());
+      if (mode === "live") reportEvent("play_error", project.id, "final", getPortfolioSessionId());
     }
   }
 
@@ -594,13 +598,15 @@ export function PortfolioExperience({ initialPortfolio: portfolio, mode, embedde
     if (!playback || playback.status !== "ready") return;
     if (playback.recoveryCount >= 1) {
       setPlayback({ ...playback, asset: { ...playback.asset, src: undefined }, status: "error", error: "播放连接已中断，请重新连接" });
-      reportEvent("play_error", playback.project.id, "final", getPortfolioSessionId());
+      if (mode === "live") reportEvent("play_error", playback.project.id, "final", getPortfolioSessionId());
       return;
     }
     void startPlayback(playback.project, undefined, { ...snapshot, count: playback.recoveryCount + 1 });
   }
 
-  const customFontUrl = portfolio.settings.customFont.src?.startsWith("/api/media/")
+  const customFontUrl = (mode === "static"
+    ? /^\/media\/[A-Za-z0-9_.-]+$/u.test(portfolio.settings.customFont.src ?? "")
+    : portfolio.settings.customFont.src?.startsWith("/api/media/"))
     ? portfolio.settings.customFont.src
     : undefined;
   const contactAvailable = hasContactContent(portfolio.hero, portfolio.settings.contact);

@@ -1,0 +1,77 @@
+{
+  "scope": "Local implementation verification, not independent Role2 audit or production acceptance",
+  "build": true,
+  "dryRun": true,
+  "typecheck": true,
+  "lint": {
+    "errors": 0,
+    "warnings": 0
+  },
+  "productionAudit": {
+    "vulnerabilities": 0
+  },
+  "unit": {
+    "total": 246,
+    "passed": 206,
+    "failed": 37,
+    "skipped": 3,
+    "overallPassed": false,
+    "failures": "cloudflare-deploy-script, cloudflare-tag-race, release-command; default shell probe returned ENOENT spawn bash; existing Bash works with its DLL path, but POSIX command harness still fails on Windows. Native Linux unverified."
+  },
+  "browser": {
+    "fullStaticWidths": [
+      1280,
+      320,
+      360,
+      390
+    ],
+    "adminPagesTests": 3,
+    "adminMobileTests": 2,
+    "chromeH264AacTests": 1,
+    "macOSWebKit": "unverified",
+    "realUserContent": "unverified"
+  },
+  "runtime": {
+    "node": "v24.18.0",
+    "wrangler": "4.127.1",
+    "miniflare": "5.20260828.0-alpha",
+    "workerd": "1.20260828.1",
+    "blake3Oracle": "blake3-wasm 2.1.5"
+  },
+  "logs": [
+    {
+      "file": ".pages-workerd/build-final.log",
+      "bytes": 3001,
+      "sha256": "33b79be7a6a86d1b24ab95a2193dc740c9bd412626dab7d7683cf2877601ac83"
+    },
+    {
+      "file": ".pages-workerd/dry-run.log",
+      "bytes": 881,
+      "sha256": "3aa7d968ccaa8b2fa062e460b0949898c265f76e3d7eb1f79e5a8a22c7814788"
+    },
+    {
+      "file": ".pages-workerd/lint.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": ".pages-workerd/typecheck.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": ".pages-workerd/unit-tests-final.log",
+      "bytes": 53269,
+      "sha256": "7b8574fddf10ba0dc71a8e56a9f8edb18e81a87ce0469a4f8b7cd2d534b7254a"
+    },
+    {
+      "file": ".pages-workerd/production-audit.json",
+      "bytes": 388,
+      "sha256": "4afa3d8be7e3da96a0466cca139c921108b363d98840410eec25e2010f84af01"
+    }
+  ],
+  "template": "2ff250c1321cad6f6d12f36274618c845cba164d890763d8ad133f40ab699f20",
+  "providerWrites": 0,
+  "remoteGitWrites": 0,
+  "newOAuth": 0
+}

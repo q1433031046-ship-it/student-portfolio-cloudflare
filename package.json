@@ -1,6 +1,6 @@
 {
   "name": "zkyl-student-showcase",
-  "version": "1.3.0",
+  "version": "1.3.1-b",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
@@ -17,12 +17,14 @@
     "cloudflare:package": "bash scripts/package-cloudflare.sh",
     "governance:validate": "node scripts/governance-state.mjs validate-static governance/runtime-example/current.json",
     "start": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext start",
-    "test": "npm run build && node --experimental-strip-types --test tests/*.test.mjs",
+    "test": "npm run build && node --experimental-strip-types --test tests/*.test.mjs && npm run test:pages",
+    "test:pages": "node scripts/build-pages-runner.mjs && node scripts/verify-pages-free.mjs && node scripts/verify-pages-node-protocol.mjs",
     "test:e2e": "node scripts/run-playwright-suite.mjs mobile",
     "test:e2e:codec:chrome": "node scripts/run-playwright-suite.mjs codec-chrome",
     "test:e2e:codec:webkit": "node scripts/run-playwright-suite.mjs codec-webkit",
     "lint": "bash scripts/sites-env.sh -- eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern cloudflare-pages-dist",
-    "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate"
+    "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate",
+    "build:pages-template": "node scripts/build-pages-template.mjs"
   },
   "cloudflare": {
     "bindings": {
@@ -34,10 +36,35 @@
       },
       "INITIAL_ADMIN_CODE": {
         "description": "首次进入后台使用的一次性部署口令，至少16位并包含英文字母和数字；初始化完成后改用管理员密码。"
+      },
+      "PAGES_ACCOUNT_ID": {
+        "description": "Actions使用的既有Pages账号ID；Worker发布不使用该值。"
+      },
+      "PAGES_API_TOKEN": {
+        "description": "仅Actions隐藏配置的Pages令牌；Worker发布不使用该令牌。"
+      },
+      "WORKER_PUBLIC_ORIGIN": {
+        "description": "原 Worker 后台的固定 HTTPS 根网址。"
+      },
+      "PAGES_GITHUB_TOKEN": {
+        "description": "Worker专用固定仓库Actions派发与读回凭据，隐藏配置。"
+      },
+      "PAGES_RUNNER_HMAC_KEY": {
+        "description": "Worker与Actions专用签名密钥，隐藏配置。"
+      },
+      "PAGES_RUNNER_HEAD": {
+        "description": "经审核执行源码的准确40位SHA。"
+      },
+      "PAGES_RUNNER_REF": {
+        "description": "准确已审核并受保护的可派发ref。"
+      },
+      "PAGES_RUNNER_TEMPLATE_SHA": {
+        "description": "已审核完整展示模板的SHA256。"
       }
     }
   },
   "dependencies": {
+    "@noble/hashes": "2.4.0",
     "drizzle-orm": "0.45.2",
     "jose": "6.2.10",
     "next": "16.3.3",

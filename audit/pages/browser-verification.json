@@ -1,0 +1,81 @@
+{
+  "fixture": "Frozen synthetic document with local image/video/font; not claimed to be current user content",
+  "candidateSha256": "bf9864b82675240de1aa81af44f1e1d3dc8b6bd37e7a646058d92c37cedb1ef8",
+  "mediaCount": 24,
+  "results": [
+    {
+      "width": 1280,
+      "heroSwitch": true,
+      "projectExpansion": true,
+      "video": {
+        "duration": 0.4,
+        "currentTime": 0.011008,
+        "src": "http://127.0.0.1:2281/media/fixture-11.mp4"
+      },
+      "boundedErrorRecovery": true,
+      "manualReconnect": true,
+      "twoEndCovers": true,
+      "contact": true,
+      "noVideo": true,
+      "font": true,
+      "noOverflow": true,
+      "pageErrors": []
+    },
+    {
+      "width": 320,
+      "heroSwitch": true,
+      "projectExpansion": true,
+      "video": {
+        "duration": 0.4,
+        "currentTime": 0.015819,
+        "src": "http://127.0.0.1:2281/media/fixture-11.mp4"
+      },
+      "boundedErrorRecovery": true,
+      "manualReconnect": true,
+      "twoEndCovers": true,
+      "contact": true,
+      "noVideo": true,
+      "font": true,
+      "noOverflow": true,
+      "pageErrors": []
+    },
+    {
+      "width": 360,
+      "heroSwitch": true,
+      "projectExpansion": true,
+      "video": {
+        "duration": 0.4,
+        "currentTime": 0.010923,
+        "src": "http://127.0.0.1:2281/media/fixture-11.mp4"
+      },
+      "boundedErrorRecovery": true,
+      "manualReconnect": true,
+      "twoEndCovers": true,
+      "contact": true,
+      "noVideo": true,
+      "font": true,
+      "noOverflow": true,
+      "pageErrors": []
+    },
+    {
+      "width": 390,
+      "heroSwitch": true,
+      "projectExpansion": true,
+      "video": {
+        "duration": 0.4,
+        "currentTime": 0.010058,
+        "src": "http://127.0.0.1:2281/media/fixture-11.mp4"
+      },
+      "boundedErrorRecovery": true,
+      "manualReconnect": true,
+      "twoEndCovers": true,
+      "contact": true,
+      "noVideo": true,
+      "font": true,
+      "noOverflow": true,
+      "pageErrors": []
+    }
+  ],
+  "contactQr": true,
+  "apiRequests": 0
+}

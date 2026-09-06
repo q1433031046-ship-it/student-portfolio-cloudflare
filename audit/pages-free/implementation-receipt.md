@@ -1,0 +1,17 @@
+# 角色3免费v1.1本地实施回执
+
+结论：LOCAL_IMPLEMENTED / RELEASE_HOLD，可交角色2核对准确本地Candidate。方案69d29770cf7ec5598fc00ac472faf954ea3e621a587ba82290170e9718ead8d9，方案独立PASS 6dd3fcdb65c6c5e169b93f9ea3ae9ccb654e17842697e924a0e25622bf9ac66b；本文件不代替Candidate独立审计或线上批准。
+
+从618638872086fcee6e230351085eb4b922aa585a / Tree dc42b4a4ff30a4023e94a1cd1cf4a80f2fd063bf在新隔离目录实施。原候选目录仍clean且HEAD不变。远端基准仍d59825a25bce70b090aa613ea708adaa1362d113，仅用于沿用来源，不作当前远端GET。新Head/Tree在提交后外部角色3候选回执记录，差分基准为6186388。
+
+完整展示组件、static-site入口和后台卡片保持原样，模板身份仍2ff250c1321cad6f6d12f36274618c845cba164d890763d8ad133f40ab699f20。重计算已移到标准Actions Node runner：安全快照和原始块下载、完整模板装配、SHA256/BLAKE3/base64、Pages上传、不可变预览/正式/固定网址逐文件及响应头读回。生产不构建模板、不读取最新草稿。
+
+Worker仅保留小型管理员鉴权/状态、D1安全冻结、HMAC64KiB控制、真实GitHub run绑定、CAS/nonce/租约、分页清单及原始4MiB块流。派发、原run重跑和deployment各自先持久化意图；未知不盲发。并发部署许可只有一个赢家；恢复不会重置已用标记；生产phase只能由管理员正式动作创建。
+
+证据入口：checks.json、state-verification.json、node-protocol-verification.json、build-artifacts.json、cpu-profile.json、cpu-profile-index.json。构建/tsc/lint/Drizzle同步/dry-run通过；246全量单测206通过、37原发布shell失败、3跳过。小型鉴权、跨任务/重放拒绝、849110字节Unicode分页、64KiB边界、原始4MiB块、25MiB协议、坏预览包、并发许可、响应与回调丢失、201原run恢复均有本地夹具验收。
+
+CPU证据仅属此前增量阶段的Windows稀疏V8采样，不绑定最终Candidate的线上计费CPU。最终本地摘要为INCONCLUSIVE；当前按用户方向准备云端实测，未重复采样。Linux入口准备但未跑，macOS WebKit、真实Free预算、真实内容与provider、正式推广及第二次更新继续未验收。
+
+新DDL0011及3张runner表已与24表Drizzle模型同步，旧表/内容/媒体/历史未删。worker发布路径不再需要PAGES_API_TOKEN，旧线上Secret未撤。没有远端Git、workflow、OAuth、Secret、DB/KV/Pages/Worker写入，没有付费套餐变更。
+
+后续准确对象见cloud-validation-objects.md：先审本Candidate及纯验证Linuxworkflow，再对同Worker零生产流量Version Preview可行性做实时核定，明确共享DB影响、凭据/ref/版本/资产/metadata、一次Pages preview与停止回滚对象。角色4继续暂停，由根统筹下一阶段。

@@ -1,0 +1,33 @@
+name: Pages free validation
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  local-protocol:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Fetch exact validation source
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_SHA" =~ ^[a-f0-9]{40}$ ]]
+          git init .
+          git remote add origin https://github.com/q1433031046-ship-it/student-portfolio-cloudflare.git
+          git fetch --depth=1 origin "$GITHUB_SHA"
+          git checkout --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      - name: Validate locally without provider credentials
+        shell: bash
+        env:
+          WRANGLER_SEND_METRICS: 'false'
+        run: |
+          set -euo pipefail
+          npm ci
+          npm test
+          npm run lint
+          node node_modules/typescript/bin/tsc --noEmit --incremental false
+          node node_modules/drizzle-kit/bin.cjs generate
+          git diff --exit-code -- drizzle
+          node node_modules/wrangler/bin/wrangler.js deploy --dry-run --keep-vars --config wrangler.jsonc --outdir .pages-workerd/dry-run

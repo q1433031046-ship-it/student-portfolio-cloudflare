@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "status": "unreleased",
+  "version": "1.3.1-b",
+  "sourceVersion": "1.3.1-b",
+  "change": "Cloudflare Pages dual publishing with standard Actions runner",
+  "releaseTag": null,
+  "historicalReleaseManifest": "deployment/template-version.json",
+  "plan": "PLAN-20260906-CF-DUAL-PUBLISH-001",
+  "requiredNormalMigrations": [
+    "0008_static_site_publish.sql",
+    "0009_pages_dual_publish.sql",
+    "0010_pages_readback_progress.sql",
+    "0011_pages_runner.sql"
+  ],
+  "planVersion": "1.1",
+  "baseCandidate": "618638872086fcee6e230351085eb4b922aa585a"
+}

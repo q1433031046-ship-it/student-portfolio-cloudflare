@@ -62,14 +62,16 @@ test("ships a machine-readable agent deployment contract", async () => {
   assert.ok(manifest.liveTests.length >= 10);
 });
 
-test("keeps package, lockfile and template release versions synchronized", async () => {
+test("keeps package and candidate versions synchronized without inventing a release tag", async () => {
   const [packageJson, packageLock, templateVersion] = await Promise.all([
     readFile("package.json", "utf8").then(JSON.parse),
     readFile("package-lock.json", "utf8").then(JSON.parse),
-    readFile("deployment/template-version.json", "utf8").then(JSON.parse),
+    readFile("deployment/local-candidate.json", "utf8").then(JSON.parse),
   ]);
 
-  assert.equal(packageJson.version, "1.3.0");
+  assert.equal(packageJson.version, "1.3.1-b");
+  assert.equal(templateVersion.status, "unreleased");
+  assert.equal(templateVersion.releaseTag, null);
   assert.equal(packageLock.version, packageJson.version);
   assert.equal(packageLock.packages[""].version, packageJson.version);
   assert.equal(templateVersion.version, packageJson.version);
