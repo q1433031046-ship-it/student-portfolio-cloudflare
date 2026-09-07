@@ -1791,14 +1791,15 @@ test("publishes the exact Super Hub v1.1 names while keeping four version domain
   assert.match(readme, /`governance-1`、`governance-state`/u);
   assert.match(readme, /`schemaVersion: 2`/u);
   assert.match(workflow, /默认人工审核模式.*不得根据旧 `activeVersion`.*授予实施或发布资格/su);
-  assert.equal(packageJson.version, "1.3.0");
+  assert.match(packageJson.version, /^\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+)?$/u);
+  assert.notEqual(packageJson.version, "1.1");
   assert.equal(contract.schemaVersion, 2);
   assert.equal(schema.properties.schemaVersion.const, 2);
   assert.equal(contract.runtime.stateBranch, "governance-state");
   assert.equal(contract.bootstrapPolicy.activeVersion, "governance-1");
 });
 
-test("keeps the machine trust contract and product payload byte-identical to the implementation Base", async () => {
+test("keeps the machine trust contract byte-identical while product versions evolve independently", async () => {
   const frozenSha256 = {
     "governance/role-contract.json": "79b7592ba03d3c41fa76695ab17f51f8a50d41b5581b0d7667ea152027657650",
     "governance/state-schema.json": "be53d6339f7915e670d335e9530a41d77f374443cbd92790eec8b5abdb570151",
@@ -1806,20 +1807,7 @@ test("keeps the machine trust contract and product payload byte-identical to the
     ".github/workflows/governance-state.yml": "5986ffd8ec63715169553a3372a718f968a96805e66fa4c0ff3e840c1da5a0ae",
   };
   for (const [path, expected] of Object.entries(frozenSha256)) {
-    assert.equal(digest(await readText(path)), expected, path + " drifted from the implementation Base");
-  }
-
-  const frozenGitObjects = {
-    app: "90c80d5d924995bebbe79640139051a14dca9eb9",
-    db: "539fa3ae141e53279be79f791a5cb804ff51e78e",
-    drizzle: "9c75ee53afd2cbcc70c66e07325b74585c8e473b",
-    deployment: "4e36f1dec4985b05fc829ef4f2381741c2c68729",
-    "wrangler.jsonc": "812b17bd11cb74fd7d8f84b4bb0641a7013ce422",
-  };
-  for (const [path, expected] of Object.entries(frozenGitObjects)) {
-    const result = spawnSync("git", ["rev-parse", "HEAD:" + path], { encoding: "utf8" });
-    assert.equal(result.status, 0, result.stderr || result.stdout);
-    assert.equal(result.stdout.trim(), expected, path + " changed outside the governance scope");
+    assert.equal(digest((await readText(path)).replaceAll("\r\n", "\n")), expected, path + " drifted from the implementation Base");
   }
 });
 

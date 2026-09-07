@@ -1,6 +1,5 @@
 import { writeAuditLog } from "../../../_lib/audit";
-import { cleanupUnreferencedMedia } from "../../../_lib/media-cleanup";
-import { publishPortfolio } from "../../../_lib/portfolio-store";
+import { freezeAndTriggerStaticPublish, StaticPublishError } from "../../../_lib/static-publish";
 import { isRequestBodyError, readJsonBody } from "../../../_lib/request-body";
 import { requirePortfolioManager } from "../../../_lib/site-ownership";
 
@@ -12,23 +11,13 @@ export async function POST(request: Request) {
     const body = await readJsonBody(request, 8_192);
     if (!isRecord(body) || !Number.isInteger(body.revision)) return Response.json({ error: "缺少有效的修订号" }, { status: 400 });
 
-    const published = await publishPortfolio(Number(body.revision));
-    if (!published) return Response.json({ error: "草稿已变化，请刷新后再发布" }, { status: 409 });
-    await writeAuditLog({
-      actorEmail: identity.user,
-      action: "portfolio.published",
-      targetType: "portfolio",
-      targetId: published.id,
-      summary: { revision: published.revision, projects: published.draft.projects.length },
-    });
-    try {
-      await cleanupUnreferencedMedia(published.draft, published.revision);
-    } catch (error) {
-      console.error(JSON.stringify({ message: "未引用媒体自动清理失败", error: errorMessage(error) }));
-    }
-    return Response.json({ ok: true, revision: published.revision, publishedAt: published.publishedAt });
+    const result = await freezeAndTriggerStaticPublish(Number(body.revision), identity.user);
+    await writeAuditLog({ actorEmail: identity.user, action: "portfolio.static_publish.requested", targetType: "static_publish_job",
+      targetId: result.job?.id ?? "unknown", summary: { revision: Number(body.revision), repeated: result.repeated } });
+    return Response.json({ ok: true, jobId: result.job?.id, status: result.job?.status, repeated: result.repeated }, { status: 202 });
   } catch (error) {
     if (isRequestBodyError(error)) return Response.json({ error: error.message }, { status: error.status });
+    if (error instanceof StaticPublishError) return Response.json({ code: error.code, error: error.message }, { status: error.status });
     console.error(JSON.stringify({ message: "作品集发布失败", error: errorMessage(error) }));
     return Response.json({ error: "发布失败，请稍后重试" }, { status: 500 });
   }

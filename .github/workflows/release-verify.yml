@@ -322,12 +322,15 @@ jobs:
           assert(agent.releaseContract?.upgradePromptManifest === "deployment/upgrade-prompt.json", "agent prompt path is invalid");
           assert(agent.releaseContract?.upgradePromptSha256 === promptDigest, "agent prompt digest is invalid");
 
-          const migrationName = "0007_legacy_media_and_access_state.sql";
-          const migrationDigest = sha256(show(`drizzle/${migrationName}`));
+          const migrationDigests = agent.databaseMigrationPolicy?.migrationSha256;
           assert(
-            agent.databaseMigrationPolicy?.migrationSha256?.[migrationName] === migrationDigest,
-            "0007 migration digest is invalid",
+            migrationDigests && typeof migrationDigests === "object" && !Array.isArray(migrationDigests),
+            "migration digest contract is missing",
           );
+          for (const [migrationName, expectedDigest] of Object.entries(migrationDigests)) {
+            assert(/^\d{4}_[a-z0-9_]+\.sql$/u.test(migrationName), "migration name is invalid");
+            assert(expectedDigest === sha256(show(`drizzle/${migrationName}`)), `${migrationName} digest is invalid`);
+          }
           NODE
 
       - name: Create the release tag once

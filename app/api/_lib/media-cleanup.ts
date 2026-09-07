@@ -1,6 +1,7 @@
 import { mediaAssetsInDocument, type PortfolioDocument } from "../../portfolio/model";
 import { getPortfolioDb } from "./portfolio-store";
 import { deleteStoredMedia } from "./storage";
+import { protectMediaKeysForCleanup } from "./static-site-store";
 
 const DOCUMENT_ID = "default";
 
@@ -22,6 +23,7 @@ export async function cleanupUnreferencedMedia(document: PortfolioDocument, expe
 async function cleanupUnreferencedKvMedia(document: PortfolioDocument, expectedRevision: number) {
   const referencedKeys = Array.from(new Set(mediaAssetsInDocument(document).flatMap((asset) => asset.key ? [asset.key] : [])));
   const referenced = new Set(referencedKeys);
+  const protectedStaticKeys = await protectMediaKeysForCleanup();
   const database = getPortfolioDb();
   const rows = await database
     .prepare(`SELECT media.object_key, media.storage_backend, media.chunk_count, media.status
@@ -34,7 +36,7 @@ async function cleanupUnreferencedKvMedia(document: PortfolioDocument, expectedR
       ORDER BY media.created_at ASC LIMIT 1000`)
     .bind(JSON.stringify(referencedKeys))
     .all<CleanupMediaRow>();
-  const unused = rows.results.filter((row) => !referenced.has(row.object_key));
+  const unused = rows.results.filter((row) => !referenced.has(row.object_key) && !protectedStaticKeys.has(row.object_key));
   let removed = 0;
 
   for (const row of unused) {

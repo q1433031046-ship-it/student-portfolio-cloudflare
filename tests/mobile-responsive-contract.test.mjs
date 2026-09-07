@@ -22,7 +22,7 @@ const [layoutSource, globalsCss, portfolioSource, heroSource, endCoverSource, ca
   readFile(new URL("../app/demo/portfolio-demo.module.css", import.meta.url), "utf8"),
 ]);
 
-test("freezes mobile support at document schema five and migration 0007", async () => {
+test("keeps document schema five while adding forward-only static publication migration 0008", async () => {
   assert.equal(templateVersion.portfolioDocumentSchemaVersion, 5);
   assert.match(modelSource, /export type PortfolioDocument = \{\s*schemaVersion: 5;/u);
   for (const persistedField of ["mobileCrop", "mobileLayout", "mobileLayers"]) {
@@ -32,8 +32,8 @@ test("freezes mobile support at document schema five and migration 0007", async 
   const sqlMigrations = (await readdir(new URL("../drizzle/", import.meta.url)))
     .filter((name) => /^\d{4}_.+\.sql$/u.test(name))
     .sort();
-  assert.equal(sqlMigrations.at(-1), "0007_legacy_media_and_access_state.sql");
-  assert.equal(migrationJournal.entries.at(-1)?.tag, "0007_legacy_media_and_access_state");
+  assert.equal(sqlMigrations.at(-1), "0008_static_site_publish.sql");
+  assert.equal(migrationJournal.entries.at(-1)?.tag, "0008_static_site_publish");
 });
 
 test("keeps the public Worker template on one D1 and one media KV binding", () => {

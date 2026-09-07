@@ -77,12 +77,12 @@ test("end-cover direct editing keeps Enter for line breaks", () => {
   assert.equal(shouldFinishMultilineInlineEditing({ key: "Enter", ctrlKey: true, isComposing: true, keyCode: 229 }), false);
 });
 
-test("recovery download records host, current v1.3.0 and UTC time", async () => {
+test("recovery download records host, current v1.3.1-b and UTC time", async () => {
   const [source, version] = await Promise.all([
     readFile(new URL("../app/admin/recovery-download.ts", import.meta.url), "utf8"),
     readFile(new URL("../deployment/template-version.json", import.meta.url), "utf8").then(JSON.parse),
   ]);
-  assert.equal(version.version, "1.3.0");
+  assert.equal(version.version, "1.3.1-b");
   assert.match(source, /PROGRAM_VERSION/u);
   assert.match(source, /safeHostname/u);
   assert.match(source, /生成时间（UTC）/u);
@@ -92,9 +92,9 @@ test("recovery download records host, current v1.3.0 and UTC time", async () => 
     .replace(/(recoveryCode|hostname): string/gu, "$1");
   const recoveryModule = await import(`data:text/javascript;base64,${Buffer.from(executable).toString("base64")}`);
   const download = recoveryModule.buildRecoveryCodeDownload("RECOVERY-CODE", "Portfolio.Example", new Date("2026-08-30T12:34:56.789Z"));
-  assert.equal(download.filename, "portfolio.example-v1.3.0-系统恢复码-20260830T123456Z.txt");
+  assert.equal(download.filename, "portfolio.example-v1.3.1-b-系统恢复码-20260830T123456Z.txt");
   assert.match(download.content, /站点：portfolio\.example/u);
-  assert.match(download.content, /程序版本：v1\.3\.0/u);
+  assert.match(download.content, /程序版本：v1\.3\.1-b/u);
   assert.match(download.content, /生成时间（UTC）：2026-08-30T12:34:56\.789Z/u);
 });
 

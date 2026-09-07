@@ -1,9 +1,9 @@
 import localVersion from "@/deployment/template-version.json";
 import localUpgradePrompt from "@/deployment/upgrade-prompt.json";
+import { compareSemanticVersion, parseSemanticVersion } from "../../../shared/semantic-version.mjs";
 
 const LATEST_VERSION_URL = "https://raw.githubusercontent.com/q1433031046-ship-it/student-portfolio-cloudflare/main/deployment/template-version.json";
 const TAGGED_RELEASE_ROOT = "https://raw.githubusercontent.com/q1433031046-ship-it/student-portfolio-cloudflare";
-const VERSION_PATTERN = /^\d+\.\d+\.\d+$/;
 const RELEASE_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const SHA256_PATTERN = /^[a-f0-9]{64}$/;
 const VALID_IMPORTANCE = new Set(["routine", "recommended", "important"] as const);
@@ -34,17 +34,6 @@ type UpgradePromptManifest = {
   promptSha256?: string;
   prompt?: string;
 };
-
-function compareVersions(left: string, right: string) {
-  const a = left.split(".").map((value) => Number.parseInt(value, 10) || 0);
-  const b = right.split(".").map((value) => Number.parseInt(value, 10) || 0);
-  const length = Math.max(a.length, b.length, 3);
-  for (let index = 0; index < length; index += 1) {
-    const delta = (a[index] ?? 0) - (b[index] ?? 0);
-    if (delta !== 0) return delta;
-  }
-  return 0;
-}
 
 function taggedPromptUrl(releaseTag: string, promptPath: string) {
   return `${TAGGED_RELEASE_ROOT}/${encodeURIComponent(releaseTag)}/${promptPath}`;
@@ -77,8 +66,8 @@ function hasValidVersionManifest(remote: VersionManifest, currentVersion: string
   return remote.schemaVersion === localVersion.schemaVersion
     && remote.program === localVersion.program
     && typeof remote.version === "string"
-    && VERSION_PATTERN.test(remote.version)
-    && compareVersions(remote.version, currentVersion) >= 0
+    && isSemanticVersion(remote.version)
+    && compareSemanticVersion(remote.version, currentVersion) >= 0
     && typeof remote.releaseTag === "string"
     && remote.releaseTag === `v${remote.version}`
     && typeof remote.releasedAt === "string"
@@ -104,7 +93,7 @@ async function hasValidUpgradePrompt(
     || remotePrompt.promptVersion !== latestVersion
     || remotePrompt.releaseTag !== releaseTag
     || remotePrompt.promptSha256 !== expectedPromptSha256
-    || !VERSION_PATTERN.test(remotePrompt.promptVersion)
+    || !isSemanticVersion(remotePrompt.promptVersion)
     || typeof remotePrompt.prompt !== "string"
     || remotePrompt.prompt.length < MINIMUM_PROMPT_LENGTH
     || remotePrompt.prompt.length > MAXIMUM_PROMPT_LENGTH
@@ -160,7 +149,7 @@ export async function GET() {
         const remotePrompt = await promptResponse.json() as UpgradePromptManifest;
         if (
           await hasValidUpgradePrompt(remotePrompt, latestVersion, releaseTag, expectedPromptSha256)
-          && compareVersions(remotePrompt.promptVersion ?? "0.0.0", localUpgradePrompt.promptVersion) >= 0
+          && compareSemanticVersion(remotePrompt.promptVersion ?? "0.0.0", localUpgradePrompt.promptVersion) >= 0
         ) {
           latestUpgradePrompt = remotePrompt.prompt?.trim() ?? latestUpgradePrompt;
           latestUpgradePromptVersion = remotePrompt.promptVersion ?? latestUpgradePromptVersion;
@@ -179,7 +168,7 @@ export async function GET() {
     releasedAt: localVersion.releasedAt,
     latestVersion,
     latestReleasedAt,
-    updateAvailable: compareVersions(latestVersion, currentVersion) > 0,
+    updateAvailable: compareSemanticVersion(latestVersion, currentVersion) > 0,
     importance,
     releaseNotes,
     checkSucceeded,
@@ -194,4 +183,8 @@ export async function GET() {
       "Cache-Control": "private, max-age=300",
     },
   });
+}
+
+function isSemanticVersion(value: string) {
+  try { parseSemanticVersion(value); return true; } catch { return false; }
 }

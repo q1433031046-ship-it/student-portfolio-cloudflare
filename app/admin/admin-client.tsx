@@ -37,6 +37,7 @@ import { activeUploadReducer, createActiveUploadMap, failedUploads, hasBlockingU
 import { humanizeValidationMessage } from "./validation-message";
 import { MobilePortfolioPreview, type PortfolioPreviewTarget } from "./mobile-portfolio-preview";
 import { graphemeCountLabel } from "./grapheme";
+import { StaticSiteCard } from "./static-site-card";
 
 export type AdminView = "overview" | "identity" | "categories" | "projects" | "end-covers" | "contact" | "publish" | "records";
 type Operation = "idle" | "saving" | "previewing" | "publishing";
@@ -417,14 +418,12 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
       setMessage(dirty ? "正在保存并发布…" : "正在发布…");
       const revision = dirty ? await persistDraft() : data.revision;
       setMessage("正在发布…");
-      const result = await api<{ revision: number; publishedAt: string }>("/api/admin/portfolio/publish", {
+      const result = await api<{ jobId: string; status: string; repeated: boolean }>("/api/admin/portfolio/publish", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ revision }),
       });
-      setData((current) => current ? { ...current, revision: result.revision, publishedAt: result.publishedAt } : current);
-      localStorage.setItem("portfolio-published-revision", String(result.revision));
-      setMessage(`已发布 · ${formatDate(result.publishedAt)}`);
+      setMessage(result.repeated ? `已找到相同发布任务 · ${result.status}` : `静态发布任务已冻结 · ${result.status}`);
     } catch (error) {
       notify(errorMessage(error));
     } finally {
@@ -1709,14 +1708,15 @@ function PublishPanel({ portfolio, data, dirty, busy, publish }: { portfolio: Po
   ];
   return (
     <>
-      <ViewHeader eyebrow="07 / PUBLISH" title="检查并发布作品集" detail="发布会生成独立快照；之后继续编辑草稿，不会改变访客正在看的版本。" />
+      <ViewHeader eyebrow="07 / PUBLISH" title="检查并发布静态作品网站" detail="发布会冻结独立候选；验证并提升同一个 Netlify Deploy 后，固定网址才会更新。" />
       <section className={styles.publishCard}>
         <div><span>REVISION</span><strong>r{data.revision}</strong><small>{dirty ? "包含未保存修改" : "草稿已保存"}</small></div>
         <div><span>PROJECTS</span><strong>{portfolio.projects.length}</strong><small>{missing.length ? `${missing.length} 个必要媒体待补充` : "必要媒体完整"}</small></div>
         <div><span>LAST PUBLISHED</span><strong>{data.publishedAt ? formatDate(data.publishedAt) : "—"}</strong><small>公开快照</small></div>
       </section>
       {missing.length > 0 && <div className={styles.warning}><strong>发布前检查</strong><p>{missing.slice(0, 8).join("、")}</p></div>}
-      <div className={styles.publishActions}><a href={`/?revision=${data.revision}`} target="_blank" rel="noreferrer">打开已发布前台 ↗</a><button type="button" disabled={busy || missing.length > 0} onClick={() => void publish()}>{busy ? "处理中…" : dirty ? "保存并发布 →" : "发布当前草稿 →"}</button></div>
+      <div className={styles.publishActions}><a href={`/?revision=${data.revision}`} target="_blank" rel="noreferrer">打开当前公开入口 ↗</a></div>
+      <StaticSiteCard revision={data.revision} disabled={busy || missing.length > 0} publish={publish} />
     </>
   );
 }
