@@ -1,150 +1,60 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { qrSvg } from "../lib/qr-code";
-import styles from "./admin.module.css";
-import { fetchAdmin } from "./admin-fetch";
+import { useEffect, useState } from 'react';
+import { qrSvg } from '../lib/qr-code';
+import { fetchAdmin } from './admin-fetch';
+import { downloadManualPackage, PAGES_UPLOAD_URL } from './manual-static-package';
+import styles from './admin.module.css';
 
-type StaticSiteState = {
-  configured: boolean;
-  status: string;
-  productionUrl: string | null;
-  publicRevision: number;
-  activeJob: { id: string; status: string; phase: string; previewUrl?: string | null } | null;
-  retryableJob: { id: string; status: string; phase: string; previewUrl?: string | null } | null;
-  lastSuccessAt: string | null;
-  lastError: { code: string; summary: string | null } | null;
-  mediaTotalBytes: number;
-  qrAvailable: boolean;
-};
-
-const AUTO_VERIFY_STATUSES = new Set(["FROZEN", "BUILD_TRIGGERED", "DRAFT_DEPLOY_LOCATED", "DRAFT_DEPLOY_READY"]);
-const PROMOTION_STATUSES = new Set(["ARTIFACT_VERIFIED", "PUBLISH_REQUESTED", "PRODUCTION_READBACK_VERIFIED"]);
-const PROMOTION_RESUME_STATUSES = new Set(["PUBLISH_REQUESTED", "PRODUCTION_READBACK_VERIFIED"]);
-
-export function StaticSiteCard({ revision, disabled, publish }: { revision: number; disabled: boolean; publish: () => Promise<void> }) {
-  const [state, setState] = useState<StaticSiteState | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [operationMessage, setOperationMessage] = useState("");
-  const operationInFlightRef = useRef(false);
-  const loadState = useCallback(async (): Promise<StaticSiteState> => {
-    const response = await fetchAdmin("/api/admin/static-site");
-    const body = await response.json() as StaticSiteState;
-    if (!response.ok) throw new Error("静态网站状态读取失败");
-    setState(body);
-    return body;
-  }, []);
-
-  const submit = useCallback(async (action: Record<string, unknown>) => {
-    if (operationInFlightRef.current) return;
-    operationInFlightRef.current = true;
-    const isPromotion = action.action === "promote";
-    setOperationMessage(action.action === "retry" ? "正在恢复原静态发布任务…"
-      : isPromotion ? "正在发布到静态网站固定网址…" : "正在自动核验静态制品…");
-    try {
-      const response = await fetchAdmin("/api/admin/static-site", { method: "POST",
-        headers: { "Content-Type": "application/json" }, body: JSON.stringify(action) }, 150_000);
-      const body = await response.json() as { error?: string; waiting?: boolean };
-      if (!response.ok) throw new Error(body.error ?? "静态发布操作失败");
-      if (isPromotion) {
-        if (body.waiting) setOperationMessage("正式发布已请求，正在核验固定网址当前版本。");
-        else setOperationMessage("静态网站已发布到固定网址。动态前台仍可单独发布。 ");
-      } else if (action.action === "retry") {
-        setOperationMessage("已恢复原静态任务，正在自动核验…");
-      } else if (body.waiting) {
-        setOperationMessage("当前步骤已受理，系统会继续核验原任务。");
-      } else {
-        setOperationMessage("静态制品已核验，可以先打开预览测试。");
-      }
-      const next = await loadState();
-      if (action.action === "verify" && !body.waiting && next.status === "published") setOperationMessage("静态网站已发布到固定网址。动态前台仍可单独发布。");
-    } catch (error) {
-      setOperationMessage(error instanceof Error ? error.message : "静态发布操作失败");
-    } finally {
-      operationInFlightRef.current = false;
-    }
-  }, [loadState]);
-
-  const autoAdvance = useCallback(async (next: StaticSiteState | null) => {
-    const activeJob = next?.activeJob;
-    if (!activeJob || operationInFlightRef.current || next?.lastError) return;
-    if (AUTO_VERIFY_STATUSES.has(activeJob.status) || PROMOTION_RESUME_STATUSES.has(activeJob.status)) {
-      await submit({ action: "verify", jobId: activeJob.id });
-    }
-  }, [submit]);
-
+type StaticState = { productionUrl: string | null; publicRevision: number; lastSuccessAt: string | null };
+export function StaticSiteCard({ revision, disabled }: { revision: number; disabled: boolean; publish: () => Promise<void> }) {
+  const [state, setState] = useState<StaticState | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
   useEffect(() => {
     let active = true;
-    const refresh = async () => {
-      try {
-        const next = await loadState();
-        if (active) await autoAdvance(next);
-      } catch { if (active) setOperationMessage("静态网站状态读取失败"); }
-    };
-    const initial = window.setTimeout(() => void refresh().finally(() => { if (active) setLoading(false); }), 0);
-    const interval = window.setInterval(() => { if (active) void refresh(); }, 15_000);
-    return () => { active = false; window.clearTimeout(initial); window.clearInterval(interval); };
-  }, [autoAdvance, loadState]);
-  const size = useMemo(() => formatBytes(state?.mediaTotalBytes ?? 0), [state?.mediaTotalBytes]);
-  const qrMarkup = state?.qrAvailable && state.productionUrl ? qrSvg(state.productionUrl, { title: "静态作品网站" }) : null;
-
-  function downloadQr() {
-    if (!state?.qrAvailable || !state.productionUrl) return;
-    const url = URL.createObjectURL(new Blob([qrSvg(state.productionUrl, { title: "静态作品网站" })], { type: "image/svg+xml" }));
-    const anchor = document.createElement("a"); anchor.href = url; anchor.download = "静态作品网站-二维码.svg"; anchor.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 0);
-  }
-
-  async function startPublish() {
-    setOperationMessage("正在冻结本次静态候选…");
-    await publish();
+    fetchAdmin('/api/admin/static-site').then(async response => {
+      if (response.ok && active) setState(await response.json());
+    }).catch(() => { if (active) setMessage('历史发布记录暂时无法读取，仍可下载当前内容。'); });
+    return () => { active = false; };
+  }, []);
+  async function download() {
+    if (busy || disabled) return;
+    setBusy(true); setMessage('正在读取当前已保存内容…');
     try {
-      const next = await loadState();
-      await autoAdvance(next);
-    } catch { /* the next polling cycle will retry the read */ }
+      const result = await downloadManualPackage(revision, setMessage);
+      setMessage(`完整静态包已生成（${result.fileCount} 个文件）。请打开上传页面，选择 ZIP 完成手动发布。`);
+    } catch (error) { setMessage(error instanceof Error ? error.message : '下载未完成，请检查后再试'); }
+    finally { setBusy(false); }
   }
-
+  const fixedUrl = state?.productionUrl ?? 'https://zkyl-student-showcase.pages.dev';
   return <section className={styles.staticSiteCard} aria-labelledby="static-site-card-title">
-    <header><div><span>CLOUDFLARE PAGES</span><h2 id="static-site-card-title">固定静态作品网站</h2></div><strong data-status={state?.status ?? "loading"}>{loading ? "读取中" : statusLabel(state?.status)}</strong></header>
-    <p>点击“生成静态预览”会冻结当前内容并生成预览。检查预览后，再点击“发布到固定网址”更新正式静态网站。保存草稿和动态发布均可独立使用。</p>
-    <dl>
-      <div><dt>当前草稿</dt><dd>r{revision}</dd></div><div><dt>静态公开序号</dt><dd>{state?.publicRevision ?? 0}</dd></div>
-      <div><dt>媒体总量</dt><dd>{size}</dd></div><div><dt>发布状态</dt><dd>{state?.activeJob ? jobStatusLabel(state.activeJob.status) : statusLabel(state?.status)}</dd></div>
-    </dl>
-    {!state?.configured && !loading && <aside className={styles.warning}><strong>尚未配置 Cloudflare Pages</strong><p>请由发布角色完成既有 Pages 项目的配置与授权。</p></aside>}
-    {state?.lastError && <aside className={styles.warning}><strong>{state.lastError.code}</strong><p>{state.lastError.summary ?? "操作未完成，请核验原任务状态。"}</p></aside>}
-    {state?.activeJob?.status === "ARTIFACT_VERIFIED" && <aside className={styles.readyNotice}>
-      <strong>静态预览已核验，可以测试</strong>
-      <p>正式发布使用与此预览相同的冻结文件。测试通过后再点“发布到固定网址”；之后的草稿修改留给下一次预览。</p>
-      {state.activeJob.previewUrl && <a href={state.activeJob.previewUrl} target="_blank" rel="noreferrer">打开已核验静态预览 ↗</a>}
-    </aside>}
-    {operationMessage && <p role="status" aria-live="polite">{operationMessage}</p>}
-    <p>静态网站单个文件最大 25 MiB，较大的媒体仍可用于动态网站。</p>
-    {qrMarkup && <div className={styles.staticSiteQr} data-static-site-qr aria-label="固定静态网站二维码"
-      dangerouslySetInnerHTML={{ __html: qrMarkup }} />}
+    <header><div><span>CLOUDFLARE PAGES</span><h2 id="static-site-card-title">固定静态作品网站</h2></div><strong>手动上传</strong></header>
+    <p>先保存草稿，再下载包含页面、图片和视频的完整 ZIP。打开原项目上传页面，选择 ZIP 并完成发布。动态网站仍可独立发布。</p>
+    <dl><div><dt>当前已保存草稿</dt><dd>r{revision}</dd></div><div><dt>发布方式</dt><dd>Cloudflare 手动上传</dd></div></dl>
+    <p>自动静态发布暂时停用，原实现和历史记录保留。下载完成不代表静态网站已更新，请上传后打开固定网址确认。</p>
+    {state?.lastSuccessAt && <p>历史自动发布记录：r{state.publicRevision}（{state.lastSuccessAt}）。此记录不代表最近一次手动上传。</p>}
+    <p>单个文件最大 25 MiB。下载期间请勿编辑内容或清理媒体；较大的完整包需要足够的浏览器内存。</p>
     <div className={styles.publishActions}>
-      <button type="button" disabled={disabled || !state?.configured || Boolean(state?.activeJob) || Boolean(state?.retryableJob)
-        || state?.status === "reauthorization_required" || state?.status === "reverification_required"
-        || state?.status === "rollback_in_progress"} onClick={() => void startPublish()}>生成静态预览 →</button>
-      {state?.activeJob && AUTO_VERIFY_STATUSES.has(state.activeJob.status) && <button type="button" onClick={() => void submit({ action: "verify", jobId: state.activeJob!.id })}>重新核验</button>}
-      {state?.activeJob && PROMOTION_STATUSES.has(state.activeJob.status) && <button type="button" onClick={() => void submit({ action: state.activeJob!.status === "ARTIFACT_VERIFIED" ? "promote" : "verify", jobId: state.activeJob!.id })}>{state.activeJob.status === "ARTIFACT_VERIFIED" ? "发布到固定网址 →" : "核验正式发布状态"}</button>}
-      {state?.retryableJob && <button type="button" onClick={() => void submit({ action: "retry", jobId: state.retryableJob!.id })}>重试原发布任务</button>}
-      {state?.qrAvailable && state.productionUrl && <>
-        <a href={state.productionUrl} target="_blank" rel="noreferrer">查看静态网站 ↗</a>
-        <button type="button" onClick={() => void navigator.clipboard.writeText(state.productionUrl!)}>复制固定链接</button>
-        <button type="button" onClick={downloadQr}>下载二维码</button>
-      </>}
+      <button type="button" disabled={disabled || busy} onClick={() => void download()}>{busy ? '正在生成静态包…' : '下载完整静态包'}</button>
+      <a href={PAGES_UPLOAD_URL} target="_blank" rel="noreferrer">打开上传页面 ↗</a>
+      <a href={fixedUrl} target="_blank" rel="noreferrer">查看静态网站 ↗</a>
     </div>
+    <details>
+      <summary>手动上传教程：从保存内容到正式更新</summary>
+      <p>内容编辑与下载请进入<a href="https://student-portfolio.q1433031046.workers.dev/admin" target="_blank" rel="noreferrer">原 Worker 管理后台 ↗</a>。静态网站用于展示作品，上传页面需要登录原 Cloudflare 账号。</p>
+      <ol>
+        <li>在原管理后台保存内容，确认上方草稿版本已经更新。</li>
+        <li>点击“下载完整静态包”，等待浏览器完成 ZIP 下载。</li>
+        <li>点击“打开上传页面”，进入原 Cloudflare Pages 项目。</li>
+        <li>确认项目为 zkyl-student-showcase，发布环境选择 Production。</li>
+        <li>选择刚下载的整个 ZIP，无需解压，也无需创建新项目。</li>
+        <li>等待全部文件上传完成，再点击“Save and deploy”。</li>
+        <li>看到“Success”后，打开“查看静态网站”，确认最新内容和图片。</li>
+      </ol>
+      <p>下载 ZIP 只生成文件，完成 Cloudflare 发布后网站才会更新。以后修改内容时重复以上步骤。若出现失败或状态不明，先查看本次部署记录与状态，避免连续重复提交。</p>
+    </details>
+    {message && <p role="status" aria-live="polite">{message}</p>}
+    <div className={styles.staticSiteQr} aria-label="固定静态网站二维码" dangerouslySetInnerHTML={{ __html: qrSvg(fixedUrl, { title: '静态作品网站' }) }} />
   </section>;
 }
-
-function statusLabel(status?: string) {
-  return ({ unconfigured: "未配置", configured: "已配置", publishing: "发布中", published: "已发布", failed: "需要处理",
-    reauthorization_required: "需要重新授权", reverification_required: "需要重新核验", rollback_in_progress: "回滚中" } as Record<string, string>)[status ?? ""] ?? "等待发布";
-}
-function jobStatusLabel(status: string) {
-  return ({ FROZEN: "核验冻结文件", BUILD_TRIGGERED: "上传静态文件", DRAFT_DEPLOY_LOCATED: "核验预览创建结果",
-    DRAFT_DEPLOY_READY: "核验预览内容", ARTIFACT_VERIFIED: "静态预览已就绪", PUBLISH_REQUESTED: "核验正式发布结果",
-    PRODUCTION_READBACK_VERIFIED: "核验正式网站内容", FAILED_RETRYABLE: "需要重试", PUBLISHED: "已发布" } as Record<string,string>)[status] ?? "等待核验";
-}
-function formatBytes(value: number) { return value >= 1024 ** 3 ? `${(value / 1024 ** 3).toFixed(2)} GiB` : value >= 1024 ** 2 ? `${(value / 1024 ** 2).toFixed(1)} MiB` : `${Math.round(value / 1024)} KiB`; }

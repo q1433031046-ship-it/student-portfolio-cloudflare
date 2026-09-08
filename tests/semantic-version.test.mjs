@@ -35,13 +35,15 @@ test("parses stable and authorized prerelease semantic versions", () => {
     patch: 1,
     prerelease: ["b"],
   });
+  assert.equal(parseSemanticVersion("v1.3.1-C").version, "1.3.1-C");
+  assert.deepEqual(parseSemanticVersion("1.3.1-B").prerelease, ["B"]);
+  assert.equal(compareSemanticVersion("1.3.1-C", "1.3.1-b"), -1);
   assert.equal(parseSemanticVersion("0.0.0").version, "0.0.0");
   assert.equal(parseSemanticVersion("12.34.56-rc.1").version, "12.34.56-rc.1");
 });
 
 test("rejects malformed, ambiguous, path-like, and unauthorized versions", () => {
   for (const version of [
-    "1.3.1-B",
     "1.3.1-",
     "1.03.1-b",
     "01.3.1",
@@ -85,6 +87,7 @@ test("the controlled CLI returns only the canonical version", async () => {
   for (const [input, expected] of [
     ["1.3.1", "1.3.1"],
     ["v1.3.1-b", "1.3.1-b"],
+    ["v1.3.1-C", "1.3.1-C"],
   ]) {
     const result = await execFileAsync(
       process.execPath,

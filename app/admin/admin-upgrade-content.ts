@@ -5,7 +5,7 @@ import { compareSemanticVersion, parseSemanticVersion } from "../../shared/seman
 
 export const PROGRAM_VERSION = candidate.version;
 export const LOCAL_UPGRADE_PROMPT = candidate.status === "unreleased"
-  ? "当前程序是 Cloudflare 双发布的本地候选，尚无对应正式发布标签。请先核对准确候选及独立审计结果，再准备发布对象。历史升级说明对应 " + localVersion.releaseTag + "，不能据此安装本次 Pages 改动。"
+  ? "当前程序是 Cloudflare Pages 手动打包的本地候选，尚无对应正式发布标签。请先核对准确候选及独立审计结果，再准备发布对象。历史升级说明对应 " + localVersion.releaseTag + "，不能据此安装本次 Pages 改动。"
   : localUpgradePrompt.prompt.trim();
 export const LOCAL_UPGRADE_PROMPT_VERSION = candidate.status === "unreleased" ? candidate.version : localUpgradePrompt.promptVersion;
 export const UPGRADE_PROMPT_SYNC_EVENT = "portfolio:upgrade-prompt-synced";
