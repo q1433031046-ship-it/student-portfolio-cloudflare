@@ -1,11 +1,14 @@
-import localVersion from "@/deployment/template-version.json";
 import localUpgradePrompt from "@/deployment/upgrade-prompt.json";
 import candidate from "@/deployment/local-candidate.json";
+import { UPGRADE_PREPARATION_PROMPT } from "./upgrade-preparation-prompt";
 import { compareSemanticVersion, parseSemanticVersion } from "../../shared/semantic-version.mjs";
 
 export const PROGRAM_VERSION = candidate.version;
-export const LOCAL_UPGRADE_PROMPT = candidate.status === "unreleased"
-  ? "当前程序是 Cloudflare Pages 手动打包的本地候选，尚无对应正式发布标签。请先核对准确候选及独立审计结果，再准备发布对象。历史升级说明对应 " + localVersion.releaseTag + "，不能据此安装本次 Pages 改动。"
+export const IS_UPGRADE_PREPARATION = candidate.status === "unreleased";
+export const UPGRADE_CONTENT_LABEL = IS_UPGRADE_PREPARATION ? "升级准备指令" : "升级指令";
+export const UPGRADE_COPY_LABEL = `复制${UPGRADE_CONTENT_LABEL}`;
+export const LOCAL_UPGRADE_PROMPT = IS_UPGRADE_PREPARATION
+  ? UPGRADE_PREPARATION_PROMPT.trim()
   : localUpgradePrompt.prompt.trim();
 export const LOCAL_UPGRADE_PROMPT_VERSION = candidate.status === "unreleased" ? candidate.version : localUpgradePrompt.promptVersion;
 export const UPGRADE_PROMPT_SYNC_EVENT = "portfolio:upgrade-prompt-synced";

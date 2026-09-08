@@ -1760,7 +1760,7 @@ function PublishPanel({ portfolio, data, dirty, busy, publishDynamic, publishSta
   ];
   return (
     <>
-      <ViewHeader eyebrow="07 / PUBLISH" title="检查并发布作品网站" detail="动态前台与静态网站分开发布：先测试动态前台或静态预览，确认后再提升静态固定网址。" />
+      <ViewHeader eyebrow="07 / PUBLISH" title="检查并发布作品网站" detail="推荐双站同步：等待媒体上传完成，保存草稿并发布动态前台；成功后下载 ZIP，再到 Cloudflare 发布静态网站。" />
       <section className={styles.publishCard}>
         <div><span>REVISION</span><strong>r{data.revision}</strong><small>{dirty ? "包含未保存修改" : "草稿已保存"}</small></div>
         <div><span>PROJECTS</span><strong>{portfolio.projects.length}</strong><small>{missing.length ? `${missing.length} 个必要媒体待补充` : "必要媒体完整"}</small></div>
@@ -1778,7 +1778,7 @@ function DynamicSiteCard({ revision, publishedAt, disabled, publish }: {
 }) {
   return <section className={styles.dynamicSiteCard} aria-labelledby="dynamic-site-card-title">
     <header><div><span>WORKER DYNAMIC FRONTEND</span><h2 id="dynamic-site-card-title">动态前台（Worker）</h2></div><strong>{publishedAt ? "已发布" : "待首次发布"}</strong></header>
-    <p>这是当前 Worker 前台，适合快速测试和即时更新。发布动态前台不会创建 Pages 正式发布，也不会改变静态网站的固定链接或二维码。</p>
+    <p>等待媒体上传完成并保存草稿后，先点击“发布动态前台 →”。看到“动态前台已更新”后，再按下方步骤下载 ZIP 并更新静态网站；本步骤只更新动态网站。</p>
     <dl><div><dt>将发布草稿</dt><dd>r{revision}</dd></div><div><dt>最近动态发布</dt><dd>{publishedAt ? formatDate(publishedAt) : "—"}</dd></div></dl>
     <div className={styles.publishActions}>
       <a href="/?preview=dynamic" target="_blank" rel="noreferrer">打开动态前台 ↗</a>

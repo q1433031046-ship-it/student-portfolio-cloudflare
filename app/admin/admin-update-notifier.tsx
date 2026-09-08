@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import {
+  IS_UPGRADE_PREPARATION,
   LOCAL_UPGRADE_PROMPT_VERSION,
   PROGRAM_VERSION,
   getUpgradePrompt,
@@ -191,7 +192,9 @@ export function AdminUpdateNotifier() {
       <div className="meta">
         {status?.upgradePromptCheckSucceeded
           ? `升级指令已同步至 v${status.latestUpgradePromptVersion}`
-          : `升级指令使用内置安全版本 v${LOCAL_UPGRADE_PROMPT_VERSION}`}
+          : IS_UPGRADE_PREPARATION
+            ? `当前提供 v${LOCAL_UPGRADE_PROMPT_VERSION} 升级准备指令，尚未核定正式分发`
+            : `升级指令使用内置安全版本 v${LOCAL_UPGRADE_PROMPT_VERSION}`}
       </div>
       <button type="button" onClick={() => void checkVersion()} disabled={checking}>{checking ? "正在检查…" : "重新检查版本"}</button>
     </div>,
