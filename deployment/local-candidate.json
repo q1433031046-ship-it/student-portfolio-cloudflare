@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "status": "unreleased",
-  "version": "1.3.1-b",
+  "version": "1.3.1-C",
   "sourceVersion": "1.3.1-b",
-  "change": "Cloudflare Pages dual publishing with standard Actions runner",
+  "change": "Manual Cloudflare Pages ZIP publishing with automatic publishing paused",
   "releaseTag": null,
   "historicalReleaseManifest": "deployment/template-version.json",
   "plan": "PLAN-20260906-CF-DUAL-PUBLISH-001",

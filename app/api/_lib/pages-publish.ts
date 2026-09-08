@@ -4,7 +4,9 @@ import { freezeSafeSnapshot } from './pages-free-freeze';
 import { getPagesSite, getPagesJobSummary } from './pages-store';
 import { writeAuditLog } from './audit';
 export { PagesError as StaticPublishError } from './pages-errors';
+function rejectAutomaticPublish(): void { throw new PagesError('STATIC_AUTOMATION_PAUSED', '自动静态发布已暂停，请下载完整静态包后手动上传', 423); }
 export async function freezeAndTriggerStaticPublish(revision: number, actor: string) {
+  rejectAutomaticPublish();
   const c = runnerConfig(), site = await getPagesSite();
   if (!site || site.project !== 'zkyl-student-showcase' || site.production_url !== 'https://zkyl-student-showcase.pages.dev' || !site.production_branch) throw new PagesError('PAGES_UNCONFIGURED', '唯一Pages项目尚未准确配置');
   const id = await freezeSafeSnapshot(c.db, revision, c.source);
@@ -13,6 +15,7 @@ export async function freezeAndTriggerStaticPublish(revision: number, actor: str
   return { job: await getPagesJobSummary(id), repeated: false };
 }
 export async function advanceStaticPublish(id: string, _actor: string) {
+  rejectAutomaticPublish();
   void _actor;
   const c = runnerConfig(), job = await getPagesJobSummary(id);
   if (!job) throw new PagesError('PAGES_JOB_MISSING', '任务不存在');
@@ -38,6 +41,7 @@ export async function advanceStaticPublish(id: string, _actor: string) {
   return { job: await getPagesJobSummary(id), waiting: true };
 }
 export async function promoteStaticPublish(id: string, actor: string) {
+  rejectAutomaticPublish();
   const c = runnerConfig();
   const created = await c.state.createPhase(id, 'production');
   if (!created) throw new PagesError('PAGES_PROMOTION_USED', '正式许可已存在或预览未验证；请核验原任务');
@@ -46,6 +50,7 @@ export async function promoteStaticPublish(id: string, actor: string) {
   return { job: await getPagesJobSummary(id), waiting: true };
 }
 export async function retryStaticPublish(id: string, actor: string) {
+  rejectAutomaticPublish();
   const c = runnerConfig();
   const production = await c.db.prepare("SELECT 1 found FROM pages_runner_phases WHERE job_id=? AND phase='production'").bind(id).first();
   await c.state.retryOriginal(id, production ? 'production' : 'preview');

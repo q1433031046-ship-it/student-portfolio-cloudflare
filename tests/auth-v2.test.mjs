@@ -30,6 +30,9 @@ test("new administrator credentials and sessions no longer depend on the initial
   assert.equal(row.auth_version, 2);
   assert.equal(row.confirmed_program_version, PROGRAM_VERSION);
 
+  const credentialsBefore = database.prepare("SELECT password_hash, recovery_hash FROM admin_credentials WHERE id = 'default'").get();
+  database.prepare("UPDATE admin_auth_state SET confirmed_program_version = '1.3.1-b' WHERE id = 'default'").run();
+  const sessionsBefore = database.prepare("SELECT token_hash FROM admin_sessions").all();
   delete env.INITIAL_ADMIN_CODE;
   const existingSession = await portfolioRoute.GET(new Request("https://portfolio.example/api/admin/portfolio", {
     headers: { Cookie: setupCookie },
@@ -37,6 +40,10 @@ test("new administrator credentials and sessions no longer depend on the initial
   assert.equal(existingSession.status, 200);
   const login = await loginRoute.POST(jsonRequest("https://portfolio.example/api/admin/login", { password }));
   assert.equal(login.status, 200);
+  assert.deepEqual(database.prepare("SELECT password_hash, recovery_hash FROM admin_credentials WHERE id = 'default'").get(), credentialsBefore);
+  assert.equal(database.prepare("SELECT confirmed_program_version FROM admin_auth_state WHERE id = 'default'").get().confirmed_program_version, "1.3.1-b");
+  const sessionsAfter = database.prepare("SELECT token_hash FROM admin_sessions").all();
+  assert.ok(sessionsBefore.every((session) => sessionsAfter.some((next) => next.token_hash === session.token_hash)));
   resetEnv();
 });
 
@@ -105,6 +112,14 @@ test("legacy recovery performs the one-time version confirmation and rotates the
 
 test("version gate and password normalization reject hidden input mistakes", () => {
   assert.equal(programResetRequired(PROGRAM_VERSION), false);
+  assert.equal(PROGRAM_VERSION, "1.3.1-C");
+  assert.equal(programResetRequired("1.3.1-b", "1.3.1-C"), false);
+  for (const confirmed of [null, "1.3.0", "1.3.1-c", "1.3.1-B", "1.3.1"]) {
+    assert.equal(programResetRequired(confirmed, "1.3.1-C"), true);
+  }
+  assert.equal(programResetRequired("1.3.1-b", "1.3.2"), true);
+  assert.equal(programResetRequired("1.3.1-C", "1.3.2"), true);
+  assert.equal(programResetRequired("1.3.1-C", "1.3.1-b"), true);
   assert.equal(programResetRequired("1.1.6"), true);
   assert.equal(programResetRequired("1.3.0", "1.3.0"), false);
   assert.equal(programResetRequired("1.2.0", "1.3.0"), true);

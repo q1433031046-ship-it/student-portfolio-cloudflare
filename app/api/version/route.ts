@@ -108,7 +108,7 @@ export async function GET() {
     program: localVersion.program, version: candidate.version, currentVersion: candidate.version,
     candidateStatus: candidate.status, releasedAt: null, latestVersion: candidate.version,
     latestReleasedAt: null, updateAvailable: false, importance: "routine",
-    releaseNotes: ["Cloudflare 双发布本地候选，正式发布标签待核定。"], checkSucceeded: false,
+    releaseNotes: ["Cloudflare Pages 手动打包候选，自动发布已暂停，正式发布标签待核定。"], checkSucceeded: false,
     latestUpgradePrompt: null, latestUpgradePromptVersion: null, upgradePromptCheckSucceeded: false,
     templateRepository: localVersion.templateRepository, latestManifestUrl: LATEST_VERSION_URL,
     latestUpgradePromptManifestUrl: null,

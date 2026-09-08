@@ -1,10 +1,10 @@
 "use client";
 
-import localVersion from "@/deployment/template-version.json";
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   LOCAL_UPGRADE_PROMPT_VERSION,
+  PROGRAM_VERSION,
   getUpgradePrompt,
   syncUpgradePrompt,
 } from "./admin-upgrade-content";
@@ -97,8 +97,8 @@ export function AdminUpdateNotifier() {
       setStatus(payload);
     } catch {
       setStatus({
-        currentVersion: localVersion.version,
-        latestVersion: localVersion.version,
+        currentVersion: PROGRAM_VERSION,
+        latestVersion: PROGRAM_VERSION,
         updateAvailable: false,
         checkSucceeded: false,
         latestUpgradePrompt: getUpgradePrompt(),
@@ -116,7 +116,7 @@ export function AdminUpdateNotifier() {
       setAdminReady(Boolean(toolbar));
 
       const versionText = document.querySelector<HTMLElement>("[data-native-upgrade-center] .version strong");
-      if (versionText && versionText.textContent !== `v${localVersion.version}`) versionText.textContent = `v${localVersion.version}`;
+      if (versionText && versionText.textContent !== `v${PROGRAM_VERSION}`) versionText.textContent = `v${PROGRAM_VERSION}`;
 
       const panel = document.getElementById("program-upgrade-center");
       if (!panel) {
