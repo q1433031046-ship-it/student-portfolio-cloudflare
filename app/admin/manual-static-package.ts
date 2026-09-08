@@ -3,7 +3,7 @@ import { fetchAdmin } from './admin-fetch';
 
 type Media = { path: string; bytes: number; contentType: string; downloadPath: string };
 type Description = { revision: number; templateIdentity: string; templatePath: string; document: Record<string, unknown>; media: Media[]; headers: string; adminOrigin: string };
-export const PAGES_UPLOAD_URL = 'https://dash.cloudflare.com/f2dd3e8eddac6dcbf6515dfdf4795d59/pages/view/zkyl-student-showcase/deployments/new';
+export { PAGES_UPLOAD_URL } from '../lib/site-entrances';
 async function responseBytes(response: Response, expected: number) {
   if (!response.ok || response.redirected || !response.body) throw new Error('媒体下载未完成');
   const reader = response.body.getReader(); const parts: Uint8Array[] = []; let size = 0;

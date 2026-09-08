@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { PROGRAM_VERSION, UPGRADE_PROMPT_SYNC_EVENT, getUpgradePrompt } from "./admin-upgrade-content";
 import { useScrollLock } from "../lib/use-scroll-lock";
 import { closeAdminMobileMore } from "./mobile-more-contract";
+import { PAGES_UPLOAD_URL, STATIC_SITE_URL } from "../lib/site-entrances";
 
 const CENTRAL_GUIDE_URL = "https://github.com/q1433031046-ship-it/student-portfolio-cloudflare#readme";
 const DEPLOY_URL = "https://deploy.workers.cloudflare.com/?url=https://github.com/q1433031046-ship-it/student-portfolio-cloudflare";
@@ -247,7 +248,7 @@ export function AdminGuideCenter() {
           <a href="#admin-guide-sections">后台栏目</a>
           <a href="#admin-guide-sizes">图片 / 视频尺寸</a>
           <a href="#admin-guide-crop">裁切与排版</a>
-          <a href="#admin-guide-publish">草稿与发布</a>
+          <a href="#admin-guide-publish">静态网站手动上传</a>
           <a href="#admin-guide-qr">二维码</a>
           <a href="#admin-guide-password">密码与恢复</a>
           <a href="#admin-guide-accounts">多账号 / 多网站</a>
@@ -392,27 +393,27 @@ export function AdminGuideCenter() {
           </section>
 
           <section className="guide" id="admin-guide-publish">
-            <GuideHeader eyebrow="08 / PUBLISH" title="保存草稿与正式发布" />
-            <div className="flow"><div><b>1</b>保存草稿</div><div><b>2</b>生成静态预览</div><div><b>3</b>检查预览</div><div><b>4</b>发布到固定网址</div></div>
-            <ul>
-              <li>保存草稿更新后台版本，公开前台保持当前内容。</li>
-              <li>点击“快速预览”时，快速预览会先自动保存当前修改，再打开管理员草稿版本。</li>
-              <li>先生成并核验静态预览；正式发布复用同一冻结文件，单独更新固定网址。</li>
-              <li>新建作品先填名称和分类、新建分类先填名称，保存草稿后再上传媒体。</li>
-              <li>每次上传或替换图片后先保存草稿，再切换作品或后台栏目。</li>
-              <li>左下角显示“有未保存修改”时，保存后再离开。</li>
-              <li>发布前先检查 Cloudflare Pages 用量；页面只显示媒体总量，不伪造实时剩余额度。</li>
-              <li>“重新核验”和“重试原发布任务”各有适用状态：资产上传失败时可明确重试；正式部署结果未知时只核验原部署，不能重复创建。正式发布请求已接收后，固定网址可能已经更新。</li>
-              <li>第一次成功前不显示固定二维码；成功后固定网址不随重新发布改变，Worker 的 /admin 继续可用。</li>
-            </ul>
+            <GuideHeader eyebrow="08 / PUBLISH" title="静态网站手动上传" />
+            <p>保存草稿只保存后台内容；“发布动态前台”只更新动态网站。静态网站需要将可上传的网站包（ZIP）交给原 Cloudflare Pages 项目，完成发布后才会更新。</p>
+            <div className="steps">
+              <div className="step"><strong>保存当前草稿</strong><p>在原 Worker 管理后台完成编辑并保存，确认草稿版本已更新。先检查图片和视频。</p></div>
+              <div className="step"><strong>下载可上传的网站包（ZIP）</strong><p>在“发布”栏点击同名按钮，等待完整 ZIP 下载完成。包内包含已保存页面、图片和视频。</p></div>
+              <div className="step"><strong>打开原项目上传页面</strong><p>点击“打开上传页面”，在 Cloudflare 登录原账号。<a href={PAGES_UPLOAD_URL} target="_blank" rel="noreferrer">前往原 Cloudflare 上传页面 ↗</a></p></div>
+              <div className="step"><strong>核对项目与环境</strong><p>确认项目为 zkyl-student-showcase，发布环境选择 Production。</p></div>
+              <div className="step"><strong>选择整个 ZIP</strong><p>使用刚下载的网站包，无需解压，也无需创建新项目。</p></div>
+              <div className="step"><strong>完成文件上传并发布</strong><p>等待全部文件上传完成，再点击“Save and deploy”。</p></div>
+              <div className="step"><strong>看到 Success 后检查网站</strong><p>打开<a href={STATIC_SITE_URL} target="_blank" rel="noreferrer">固定静态网站 ↗</a>，确认最新文字、图片和视频。以后更新时重复以上步骤。</p></div>
+            </div>
+            <div className="callout"><strong>下载完成不等于发布成功</strong><p>二维码只是固定访问入口，不能证明本次上传成功。失败或状态不明时先查看本次 Cloudflare 部署记录，避免连续重复提交。下载期间请勿编辑或清理媒体，单个静态文件最大 25 MiB。</p></div>
+            <p>快速预览仍会先保存修改并打开管理员草稿；新建作品和替换媒体后请保存。自动静态发布保持暂停，日常静态更新使用以上手动流程。</p>
           </section>
 
           <section className="guide" id="admin-guide-qr">
             <GuideHeader eyebrow="09 / QR" title="二维码访问" />
-            <p>v1.3.1-b 暂停旧限制访问功能的写入，原设置、访问码、次数、到期时间和历史记录全部保留。第一次静态发布成功后生成新的固定网址二维码。</p>
+            <p>v1.3.1-b 暂停旧限制访问功能的写入，原设置、访问码、次数、到期时间和历史记录全部保留。静态网站二维码展示原项目的固定访问地址，不依赖旧自动发布记录。</p>
             <ul>
-              <li>固定二维码只包含公开的 pages.dev URL，不含 token、Cookie 或后台权限。</li>
-              <li>重新发布沿用同一固定二维码；正式发布后的实际版本以固定网址核验结果为准。</li>
+              <li>固定二维码只包含公开的 pages.dev URL，不含 token、Cookie 或后台权限；用于访问网站，不是上传入口或 ZIP 下载入口。</li>
+              <li>每次更新沿用同一固定二维码。二维码出现不代表本次上传已成功，实际内容以打开固定网址查看为准。</li>
               <li>旧访问限制只读展示，所有写动作会明确拒绝，不删除任何旧数据。</li>
               <li>管理员登录仍为 12 小时，与固定公开二维码互不影响。</li>
             </ul>
@@ -478,15 +479,15 @@ export function AdminGuideCenter() {
               <article className="card"><h3>图片等待保存或预览读取失败</h3><p>先保存草稿，再点“重新检查”；不要重复上传同一张图。</p></article>
               <article className="card"><h3>视频上传没有完成</h3><p>视频可留空；已有视频要改为无视频时，到“作品 → 成稿视频（可选）”点“移除成稿视频”，再保存草稿并发布。需要上传时确认是 H.264 / AAC MP4 且小于 50 MiB。</p></article>
               <article className="card"><h3>快速预览没有打开</h3><p>允许当前站点打开弹出窗口。</p></article>
-              <article className="card"><h3>保存后前台仍是旧内容</h3><p>保存后可独立发布动态前台。静态网站需要先生成预览，检查后再点击“发布到固定网址”。</p></article>
-              <article className="card"><h3>静态发布需要重新授权</h3><p>请由发布角色通过隐藏渠道配置当前账号与唯一 Pages 项目的发布授权。</p></article>
+              <article className="card"><h3>保存后前台仍是旧内容</h3><p>保存后可独立发布动态前台。静态网站需要重新下载可上传的网站包（ZIP），在原 Cloudflare 项目选择 Production 上传，看到 Success 后再打开固定网址确认。</p></article>
+              <article className="card"><h3>打不开静态上传页面</h3><p>先在 Cloudflare 登录原账号，再打开本教程提供的原项目上传页面。确认项目名称和 Production 环境，无需在后台填写发布令牌。</p></article>
             </div>
           </section>
 
           <section className="guide" id="admin-guide-checks">
             <GuideHeader eyebrow="14 / CHECK" title="最终验收清单" />
             <ul className="checks">
-              <li>仓库、Worker 属于当前学生。</li><li>D1 / KV 为本网站独立资源；有旧 R2 时 BUCKET 属于同站。</li><li>前台和后台可打开。</li><li>恢复码已离线保存。</li><li>正式升级后已保存并打开新的站点专属恢复码文件，旧恢复码和旧管理员会话失效。</li><li>安全退出后重新进入要密码。</li><li>首图、联系图、封面“调整裁切”正常。</li><li>封面桌面 16:9 的字号、位置与换行正常。</li><li>320、360 和 390 px 手机宽度下前台无整页水平滚动，首图、作品、联系、视频和封底正常。</li><li>手机后台只有一条底部操作栏，栏目导航、“更多”、保存状态和错误定位可用。</li><li>手机预览复用真实作品树并可定位内容；全屏裁切、取消恢复和确认写入正常。</li><li>上传进行中阻止切换栏目、预览、保存和发布；失败后可重试、关闭或定位。</li><li>多张封底独立编辑并位于作品之后、页脚之前。</li><li>中文和空白可选字段保存正常，错误可精确定位。</li><li>上传后未保存并切换栏目仍能预览。</li><li>图片组与通栏图正常。</li><li>无视频可发布、显示 00:00 且无播放按钮；有视频时可播放和拖动。</li><li>有视频时，用独立浏览器配置文件或独立 Cookie jar 建立 10 个独立 Cookie 会话。</li><li>保存草稿不触发 Cloudflare Pages。</li><li>快速预览可打开并先自动保存修改。</li><li>静态预览与正式发布使用同一冻结文件。</li><li>部署结果未知时仅核验原任务；资产上传失败需明确重试，最多两次尝试。</li><li>旧限制访问控件不可写且数据保留；第一次成功后固定网址和二维码一致。</li><li>网站空间统计正常。</li><li>使用教程可打开。</li><li>程序升级可定位并复制已校验指令。</li><li>大陆手机流量和常用宽带由所有者人工验收。</li>
+              <li>仓库、Worker 属于当前学生。</li><li>D1 / KV 为本网站独立资源；有旧 R2 时 BUCKET 属于同站。</li><li>前台和后台可打开。</li><li>恢复码已离线保存。</li><li>正式升级后已保存并打开新的站点专属恢复码文件，旧恢复码和旧管理员会话失效。</li><li>安全退出后重新进入要密码。</li><li>首图、联系图、封面“调整裁切”正常。</li><li>封面桌面 16:9 的字号、位置与换行正常。</li><li>320、360 和 390 px 手机宽度下前台无整页水平滚动，首图、作品、联系、视频和封底正常。</li><li>手机后台只有一条底部操作栏，栏目导航、“更多”、保存状态和错误定位可用。</li><li>手机预览复用真实作品树并可定位内容；全屏裁切、取消恢复和确认写入正常。</li><li>上传进行中阻止切换栏目、预览、保存和发布；失败后可重试、关闭或定位。</li><li>多张封底独立编辑并位于作品之后、页脚之前。</li><li>中文和空白可选字段保存正常，错误可精确定位。</li><li>上传后未保存并切换栏目仍能预览。</li><li>图片组与通栏图正常。</li><li>无视频可发布、显示 00:00 且无播放按钮；有视频时可播放和拖动。</li><li>有视频时，用独立浏览器配置文件或独立 Cookie jar 建立 10 个独立 Cookie 会话。</li><li>保存草稿不触发 Cloudflare Pages。</li><li>快速预览可打开并先自动保存修改。</li><li>下载的网站 ZIP 可整包上传，文件上传完成后再点击 Save and deploy。</li><li>部署状态不明时先查看本次 Cloudflare 部署记录，避免连续重复提交。</li><li>旧限制访问控件不可写且数据保留；两处静态访问二维码与固定网址一致，不表示本次上传成功。</li><li>网站空间统计正常。</li><li>使用教程可打开。</li><li>程序升级可定位并复制已校验指令。</li><li>大陆手机流量和常用宽带由所有者人工验收。</li>
             </ul>
           </section>
         </div>

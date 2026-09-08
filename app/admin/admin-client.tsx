@@ -18,6 +18,7 @@ import { HeroLayoutEditor } from "./hero-layout-editor";
 import { EndCoverLayoutEditor } from "./end-cover-layout-editor";
 import { MediaCropEditor } from "./media-crop-editor";
 import styles from "./admin.module.css";
+import { STATIC_SITE_URL } from "../lib/site-entrances";
 import { createClientId } from "../lib/client-id";
 import { toUserFacingChineseError, UserFacingError, userFacingError, userFacingResponseError } from "../lib/user-facing-error";
 import { formatVideoDuration } from "../lib/video-duration";
@@ -637,29 +638,13 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
 }
 
 function SiteEntrances() {
-  const [staticSite, setStaticSite] = useState<{ productionUrl: string | null; publicRevision: number; qrAvailable: boolean } | null>(null);
-  const [staticLoading, setStaticLoading] = useState(true);
-  const [staticError, setStaticError] = useState(false);
   // The Worker wrapper redirects a bare `/` to the fixed Cloudflare Pages site after a
   // successful static promotion.  Keep the dynamic entrance query-marked so
   // its link and QR always stay on the Worker frontend.
   const dynamicUrl = typeof window === "undefined" ? null : `${window.location.origin}/?preview=dynamic`;
 
-  useEffect(() => {
-    let active = true;
-    void fetchAdmin("/api/admin/static-site")
-      .then(async (response) => {
-        if (!response.ok) throw new Error("static site state unavailable");
-        return await response.json() as { productionUrl: string | null; publicRevision: number; qrAvailable: boolean };
-      })
-      .then((next) => { if (active) setStaticSite(next); })
-      .catch(() => { if (active) setStaticError(true); })
-      .finally(() => { if (active) setStaticLoading(false); });
-    return () => { active = false; };
-  }, []);
-
   const dynamicMarkup = dynamicUrl ? qrSvg(dynamicUrl, { title: "动态前台（Worker）" }) : null;
-  const staticMarkup = staticSite?.qrAvailable && staticSite.productionUrl ? qrSvg(staticSite.productionUrl, { title: "静态网站" }) : null;
+  const staticMarkup = qrSvg(STATIC_SITE_URL, { title: "静态网站访问二维码" });
 
   async function copyLink(url: string) {
     try { await navigator.clipboard.writeText(url); } catch { /* visible link remains available for manual copying */ }
@@ -675,9 +660,10 @@ function SiteEntrances() {
         {dynamicUrl && <div className={styles.entranceActions}><a href={dynamicUrl} target="_blank" rel="noreferrer">{dynamicUrl}</a><button type="button" onClick={() => void copyLink(dynamicUrl)}>复制链接</button></div>}
       </article>
       <article data-site-entrance="static">
-        <div><span>STATIC SITE</span><h3>静态网站（Cloudflare Pages）</h3><p>用于正式固定网址；只有静态制品核验并提升后才会生成链接和二维码。</p></div>
-        {staticMarkup ? <div className={styles.entranceQr} data-static-site-qr dangerouslySetInnerHTML={{ __html: staticMarkup }} /> : <div className={styles.entrancePending}>{staticLoading ? "正在读取静态发布状态…" : staticError ? "静态发布状态暂时无法读取" : "尚未正式发布静态网站"}</div>}
-        {staticSite?.qrAvailable && staticSite.productionUrl && <div className={styles.entranceActions}><a href={staticSite.productionUrl} target="_blank" rel="noreferrer">{staticSite.productionUrl}</a><button type="button" onClick={() => void copyLink(staticSite.productionUrl!)}>复制链接</button></div>}
+        <div><span>STATIC SITE</span><h3>静态网站（Cloudflare Pages）</h3><p>扫码查看已上传的静态网站。上传、下载网站包请到“发布”栏操作；固定二维码无需随每次更新重新生成。</p></div>
+        <div className={styles.entranceQr} data-static-site-qr dangerouslySetInnerHTML={{ __html: staticMarkup }} />
+        <div className={styles.entranceActions}><a href={STATIC_SITE_URL} target="_blank" rel="noreferrer">{STATIC_SITE_URL}</a><button type="button" onClick={() => void copyLink(STATIC_SITE_URL)}>复制链接</button></div>
+        <p style={{ gridColumn: "1 / -1" }}>这是固定访问入口，出现二维码不代表本次上传已成功。上传后请打开网站确认最新内容。</p>
       </article>
     </div>
   </section>;
