@@ -1,0 +1,144 @@
+import { build } from 'esbuild';
+import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import assert from 'node:assert/strict';
+import { pathToFileURL } from 'node:url';
+import { resolve } from 'node:path';
+import { createHash } from 'node:crypto';
+const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
+const template = JSON.parse(await readFile('app/api/_generated/pages-template.json', 'utf8'));
+assert.equal(template.schemaVersion, 1);
+assert.match(template.identity, /^[a-f0-9]{64}$/);
+assert.equal(Array.isArray(template.files) && template.files.length > 0, true);
+const paths = new Set();
+const templateFiles = template.files.map(file => {
+  assert.equal(typeof file.path, 'string');
+  assert.match(file.path, /^[A-Za-z0-9_./-]+$/);
+  assert.equal(file.path.startsWith('/') || file.path.split('/').some(part => !part || part === '.' || part === '..') || paths.has(file.path), false);
+  paths.add(file.path);
+  assert.equal(Number.isSafeInteger(file.bytes) && file.bytes >= 0, true);
+  assert.match(file.sha256, /^[a-f0-9]{64}$/);
+  assert.equal(typeof file.base64, 'string');
+  const bytes = Buffer.from(file.base64, 'base64');
+  assert.equal(bytes.toString('base64'), file.base64);
+  assert.equal(bytes.length, file.bytes);
+  assert.equal(sha256(bytes), file.sha256);
+  return { path: file.path, bytes: file.bytes, sha256: file.sha256 };
+});
+const templateIdentity = sha256(JSON.stringify(templateFiles));
+assert.equal(templateIdentity, template.identity);
+const templateEvidence = { node: process.version, templateIdentity, files: templateFiles, templateIdentityAndBytesIndependentlyVerified: true };
+console.log(JSON.stringify(templateEvidence));
+await mkdir('.pages-workerd', { recursive: true });
+await build({ entryPoints: ['tests/pages-free-workerd-entry.ts'], bundle: true, format: 'esm', platform: 'browser', external: ['cloudflare:workers'], define: { __FIXTURE_TEMPLATE_IDENTITY__: JSON.stringify(templateIdentity) }, outfile: '.pages-workerd/free.js', metafile: true }).then(r => writeFile('.pages-workerd/free-metafile.json', JSON.stringify(r.metafile)));
+await build({ entryPoints: ['app/api/_lib/pages-runner-auth.ts'], bundle: true, format: 'esm', platform: 'node', outfile: '.pages-workerd/auth.mjs' });
+const { signControl } = await import(pathToFileURL(resolve('.pages-workerd/auth.mjs')));
+const mf = new Miniflare(convertV4MiniflareOptions({ name: 'pages-free', modules: true, scriptPath: '.pages-workerd/free.js', compatibilityDate: '2026-09-01', d1Databases: ['DB'], kvNamespaces: ['MEDIA_KV'], bindings: { AUTH_PLATFORM: 'sites' }, inspectorPort: 0 }));
+const results = [templateEvidence];
+try {
+  const db = await mf.getD1Database('DB');
+  for (const name of (await readdir('drizzle')).filter(n => n.endsWith('.sql')).sort()) for (const sql of (await readFile(`drizzle/${name}`, 'utf8')).split('--> statement-breakpoint').filter(s => s.trim())) await db.prepare(sql).run();
+  await db.prepare('CREATE TABLE fixture_dispatches(body TEXT)').run();
+  const finishProfile = process.env.PAGES_CPU_PROFILE === '1' ? await (await import('./pages-cpu-profile.mjs')).profileWorker(mf) : null;
+  const fixture = async body => { const r = await mf.dispatchFetch('http://fixture/', { method: 'POST', body: JSON.stringify(body) }); const v = await r.json(); assert.equal(r.status, 200, JSON.stringify(v)); return v; };
+  const document = await fixture({ op: 'default' });
+  document.archivedMedia = [{ id: 'private', kind: 'image', key: 'archived-private-key' }];
+  document.hero.slides[0].media.key = 'frozen-private-object'; document.hero.slides[0].media.src = 'https://private.invalid';
+  await db.prepare("INSERT INTO portfolio_documents(id,owner_email,revision,draft_json,updated_at) VALUES('default','fixture@example.test',1,?,'2026-09-06')").bind(JSON.stringify(document)).run();
+  await db.prepare("INSERT INTO portfolio_media(id,object_key,content_type,byte_size,storage_backend,status,uploaded_by,filename,project_id,slot,created_at) VALUES('image1','frozen-private-object','image/png',4194304,'kv','uploaded','fixture@example.test','fixture','hero','hero','2026-09-06')").run();
+  const kv = await mf.getKVNamespace('MEDIA_KV'); await kv.put('frozen-private-object::chunk:0000', new Uint8Array(4194304).fill(87));
+  const { id } = await fixture({ op: 'freeze' });
+  const frozen = await db.prepare('SELECT candidate_json FROM pages_jobs WHERE id=?').bind(id).first();
+  assert.equal(frozen.candidate_json.includes('private'), false); assert.equal(JSON.parse(frozen.candidate_json).hero.slides[0].media.src, '/media/image1.png');
+  results.push({ safeSnapshot: true, archivedAndKeysExcludedBeforeCI: true });
+  assert.equal((await fixture({ op: 'dispatch', id, phase: 'preview' })).created, true);
+  assert.equal((await fixture({ op: 'dispatch', id, phase: 'preview' })).created, false);
+  assert.equal((await db.prepare('SELECT count(*) n FROM fixture_dispatches').first()).n, 1);
+  let lease = '', seq = 0, attempt = 1;
+  const signed = async (op, args = {}, overrides = {}, tamper = false) => {
+    const i = { job: id, phase: 'preview', run: '101', attempt, op, time: Date.now(), nonce: crypto.randomUUID().replaceAll('-', ''), lease, seq: op === 'claim' ? 0 : ++seq, ...overrides };
+    const bytes = new TextEncoder().encode(JSON.stringify({ op, args }));
+    const signature = await signControl('local-fixture-only-not-a-real-secret', i, bytes);
+    const request = { method: 'POST', headers: { 'x-pages-identity': JSON.stringify(i), 'x-pages-signature': tamper ? '0'.repeat(64) : signature }, body: bytes };
+    return { response: await mf.dispatchFetch('http://fixture/api/pages-runner', request), request, i };
+  };
+  assert.equal((await signed('claim', {}, { run: '999' })).response.status, 403);
+  assert.equal((await signed('claim', {}, {}, true)).response.status, 401);
+  const claim = await signed('claim'); const claimed = await claim.response.json(); assert.equal(claim.response.status, 200, JSON.stringify(claimed)); lease = claimed.lease;
+  assert.equal((await mf.dispatchFetch('http://fixture/api/pages-runner', claim.request)).status, 409);
+  const page = await signed('snapshot', { page: 0 }); assert.equal(page.response.status, 200);
+  assert.equal((await mf.dispatchFetch('http://fixture/api/pages-runner', page.request)).status, 403);
+  const block = await signed('block', { file: 0, block: 0 }); assert.equal(block.response.status, 200); const bytes = new Uint8Array(await block.response.arrayBuffer()); assert.equal(bytes.length, 4194304); assert.equal(bytes[4194303], 87);
+  assert.equal((await signed('block', { file: 1, block: 0 })).response.status, 404);
+  assert.equal((await signed('status', { padding: 'x'.repeat(60_000) })).response.status, 200);
+  assert.equal((await signed('status', { padding: 'x'.repeat(66_000) })).response.status, 413); seq--;
+  assert.equal((await signed('claim', {}, { phase: 'production', lease: '' })).response.status, 403);
+  // Invalid cross-job does not advance the actual job sequence.
+  const cross = await signed('snapshot', { page: 0 }, { job: `job_${'d'.repeat(32)}` }); assert.notEqual(cross.response.status, 200); seq--;
+  results.push({ realGitHubReadbackRequired: true, invalidSignatureRejected: true, replayRejected: true, crossJobRejected: true, rawKv4MiB: true, dispatchResponseLostPosts: 1 });
+  await db.prepare('UPDATE pages_runner_sources SET manifest_final=1 WHERE job_id=?').bind(id).run();
+  await db.prepare('UPDATE pages_jobs SET artifact_hash=? WHERE id=?').bind('e'.repeat(64), id).run();
+  const permitSequence = seq + 1;
+  const simultaneous = await Promise.all([signed('deployment-permit', {}, { seq: permitSequence }), signed('deployment-permit', {}, { seq: permitSequence })]);
+  seq = permitSequence;
+  assert.equal(simultaneous.filter(r => r.response.status === 200).length, 1);
+  const permit = simultaneous.find(r => r.response.status === 200); const granted = await permit.response.json();
+  assert.equal((await signed('deployment-permit')).response.status, 403); seq--;
+  const row = await db.prepare('SELECT state_json FROM pages_runner_phases WHERE job_id=?').bind(id).first(); const stale = JSON.parse(row.state_json); stale.expires = 0;
+  await db.prepare('UPDATE pages_runner_phases SET state_json=? WHERE job_id=?').bind(JSON.stringify(stale), id).run();
+  attempt = 2; lease = ''; seq = 0;
+  const recovered = await signed('claim'); const recovery = await recovered.response.json(); assert.equal(recovered.response.status, 200, JSON.stringify(recovery)); assert.equal(recovery.scope, 'recover'); lease = recovery.lease;
+  assert.equal((await signed('deployment-permit')).response.status, 403); seq--;
+  const receipt = { artifact: 'e'.repeat(64), marker: granted.marker, phase: 'preview', verified: true, id: '12345678', url: 'https://12345678.zkyl-student-showcase.pages.dev' };
+  const first = await signed('receipt', receipt); assert.equal(first.response.status, 200, JSON.stringify(await first.response.json()));
+  assert.equal((await signed('receipt', receipt)).response.status, 200);
+  assert.equal((await signed('receipt', { ...receipt, artifact: 'f'.repeat(64) })).response.status, 409);
+  results.push({ deploymentPermitOnce: true, concurrentPermitCASOneWinner: true, canceledLeaseExpiredRerunRecoverOnly: true, sameReceiptIdempotent: true, changedReceiptRejected: true });
+  const { verifyNodeRunner } = await import('./verify-pages-free-node-fixture.mjs');
+  results.push(await verifyNodeRunner(mf, db, fixture));
+  // A different, internally consistent template must not replace the frozen identity.
+  await db.prepare("UPDATE pages_jobs SET status='PUBLISHED'").run();
+  await db.prepare("UPDATE portfolio_documents SET revision=1 WHERE id='default'").run();
+  const wrongJob = await fixture({ op: 'freeze' });
+  await fixture({ op: 'dispatch', id: wrongJob.id, phase: 'preview' });
+  const wrongTemplate = structuredClone(template);
+  const changedBytes = Buffer.from(wrongTemplate.files[0].base64, 'base64');
+  assert.equal(changedBytes.length > 0, true); changedBytes[0] ^= 1;
+  wrongTemplate.files[0].base64 = changedBytes.toString('base64');
+  wrongTemplate.files[0].sha256 = sha256(changedBytes);
+  wrongTemplate.identity = sha256(JSON.stringify(wrongTemplate.files.map(({ path, bytes, sha256 }) => ({ path, bytes, sha256 }))));
+  assert.notEqual(wrongTemplate.identity, templateIdentity);
+  const wrongPath = '.pages-workerd/wrong-template.json';
+  await writeFile(wrongPath, JSON.stringify(wrongTemplate));
+  let providerReads = 0, providerWrites = 0, deploymentCreates = 0;
+  const { executeRunner } = await import('./pages-runner.mjs');
+  await assert.rejects(executeRunner({ job: wrongJob.id, phase: 'preview', run: '201', attempt: 1, head: 'a'.repeat(40), ref: 'refs/tags/local-fixture', repository: 'q1433031046-ship-it/student-portfolio-cloudflare', workflowRef: 'q1433031046-ship-it/student-portfolio-cloudflare/.github/workflows/pages-publish.yml@refs/tags/local-fixture', origin: 'https://worker.example.test', secret: 'local-fixture-only-not-a-real-secret', account: 'a'.repeat(32), pagesToken: 'local-only' }, {
+    templatePath: wrongPath,
+    fetch: (input, init) => {
+      const url = new URL(String(input));
+      if (url.hostname === 'worker.example.test') return mf.dispatchFetch(`http://fixture${url.pathname}`, init);
+      if (url.hostname === 'api.cloudflare.com' && url.pathname.endsWith('/pages/projects/zkyl-student-showcase') && (!init?.method || init.method === 'GET')) {
+        providerReads++;
+        return Promise.resolve(Response.json({ success: true, result: { name: 'zkyl-student-showcase', production_branch: 'main' } }));
+      }
+      providerWrites++;
+      if (url.pathname.endsWith('/deployments') && init?.method === 'POST') deploymentCreates++;
+      return Promise.resolve(new Response(null, { status: 500 }));
+    },
+    delay: async () => {},
+  }), /RUNNER_TEMPLATE_MISMATCH/);
+  assert.equal(providerReads, 1); assert.equal(providerWrites, 0); assert.equal(deploymentCreates, 0);
+  assert.equal((await db.prepare('SELECT template FROM pages_runner_sources WHERE job_id=?').bind(wrongJob.id).first()).template, templateIdentity);
+  results.push({ internallyConsistentWrongTemplateRejectedByRealRunner: true, frozenTemplateIdentityUnchanged: true, wrongTemplateProviderFixtureReads: providerReads, wrongTemplateProviderWrites: providerWrites, wrongTemplateDeploymentCreates: deploymentCreates });
+  const { verifyAdditionalBoundaries } = await import('./verify-pages-free-node-fixture.mjs');
+  results.push(await verifyAdditionalBoundaries(mf, db, fixture));
+  await db.prepare("INSERT INTO site_ownership(id,owner_email,auth_provider,bound_at) VALUES('default','fixture@example.test','password','2026-09-06')").run();
+  assert.equal((await mf.dispatchFetch('http://fixture/manager')).status, 401);
+  assert.equal((await mf.dispatchFetch('http://fixture/manager', { headers: { 'oai-authenticated-user-email': 'wrong@example.test' } })).status, 403);
+  assert.equal((await mf.dispatchFetch('http://fixture/manager', { method: 'POST', headers: { 'oai-authenticated-user-email': 'fixture@example.test', Origin: 'https://other.invalid' } })).status, 401);
+  assert.equal((await mf.dispatchFetch('http://fixture/manager', { headers: { 'oai-authenticated-user-email': 'fixture@example.test' } })).status, 200);
+  results.push({ lightweightAdminManagerAuthorization: true, anonymousWrongOwnerAndCrossOriginDenied: true });
+  if (finishProfile) results.push(await finishProfile());
+  await writeFile('audit/pages-free/state-verification.json', JSON.stringify({ runtime: 'real local workerd/D1/KV; provider fixture only', results }, null, 2));
+  console.log(JSON.stringify(results));
+} finally { await mf.dispose(); }

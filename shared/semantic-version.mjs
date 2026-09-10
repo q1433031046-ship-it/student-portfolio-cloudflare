@@ -1,6 +1,4 @@
-import { pathToFileURL } from "node:url";
-
-const SEMANTIC_VERSION_PATTERN = /^(?:v)?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9a-z-]+(?:\.[0-9a-z-]+)*))?$/u;
+const SEMANTIC_VERSION_PATTERN = /^(?:v)?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/u;
 const NUMERIC_IDENTIFIER_PATTERN = /^\d+$/u;
 
 function invalidVersion() {
@@ -111,8 +109,10 @@ function runCli() {
 }
 
 if (
-  typeof process.argv[1] === "string"
-  && import.meta.url === pathToFileURL(process.argv[1]).href
+  typeof process !== "undefined"
+  && Array.isArray(process.argv)
+  && typeof process.argv[1] === "string"
+  && process.argv[1].replaceAll("\\", "/").endsWith("/shared/semantic-version.mjs")
 ) {
   runCli();
 }

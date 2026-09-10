@@ -1,0 +1,5 @@
+-- Optional ORIGINAL site example; supply verified original values before execution.
+-- Prefer existing pages_site or non-secret PAGES_PROJECT_NAME / STATIC_SITE_URL.
+-- INSERT INTO pages_site(id,project,production_branch,production_url)
+-- SELECT 'default', :original_project, :original_branch, :original_https_url
+-- WHERE NOT EXISTS (SELECT 1 FROM pages_site WHERE id='default');

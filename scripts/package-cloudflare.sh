@@ -11,10 +11,12 @@ fi
 output_dir="${1:-outputs}"
 mkdir -p "$output_dir"
 timestamp="$(date -u +%Y%m%d-%H%M%S)"
-archive="$output_dir/zkyl-student-showcase-cloudflare-$timestamp.zip"
+archive="$output_dir/student-portfolio-cloudflare-$timestamp.zip"
 
 zip -q -r "$archive" . \
+  -x '.git' \
   -x '.git/*' \
+  -x 'audit/*' \
   -x '.openai/*' \
   -x '.env*' \
   -x '.next/*' \

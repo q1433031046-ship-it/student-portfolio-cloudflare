@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { PROGRAM_VERSION, getUpgradePrompt } from "./admin-upgrade-content";
+import { PROGRAM_VERSION, IS_UPGRADE_PREPARATION, UPGRADE_CONTENT_LABEL, UPGRADE_COPY_LABEL, getUpgradePrompt } from "./admin-upgrade-content";
 import { closeAdminMobileMore } from "./mobile-more-contract";
 
 const OPEN_GUIDE_EVENT = "portfolio:open-guide";
@@ -10,7 +10,7 @@ const OPEN_UPGRADE_EVENT = "portfolio:open-upgrade";
 
 export function AdminUpgradeCenter() {
   const [panelHost, setPanelHost] = useState<HTMLElement | null>(null);
-  const [copyLabel, setCopyLabel] = useState("复制给 GPT 的升级指令");
+  const [copyLabel, setCopyLabel] = useState(UPGRADE_COPY_LABEL);
 
   useEffect(() => {
     const locate = () => {
@@ -69,8 +69,8 @@ export function AdminUpgradeCenter() {
   async function copyPrompt() {
     try {
       await navigator.clipboard.writeText(getUpgradePrompt());
-      setCopyLabel("已复制升级指令");
-      window.setTimeout(() => setCopyLabel("复制给 GPT 的升级指令"), 1800);
+      setCopyLabel(`已复制${UPGRADE_CONTENT_LABEL}`);
+      window.setTimeout(() => setCopyLabel(UPGRADE_COPY_LABEL), 1800);
     } catch {
       setCopyLabel("复制失败，请重试");
     }
@@ -135,11 +135,11 @@ export function AdminUpgradeCenter() {
         </div>
         <div>
           <strong>保留身份与内容</strong>
-          <small>管理员身份与内容保留；正式确认会轮换恢复码并撤销旧管理员会话。</small>
+          <small>内容保留；恢复码确认按实际版本条件处理，同 1.3.1 部署不自动轮换。</small>
         </div>
       </div>
       <p className="note">
-        GPT 会先核对当前 Worker、DB、MEDIA_KV 和可选旧 BUCKET，记录资源指纹，再从发布标签读取并校验 SHA-256。升级过程以“目标指纹一致、内容完整保留、状态变化如实记录”为验收标准。
+        {IS_UPGRADE_PREPARATION ? "当前版本 尚未正式分发，复制的是完整升级准备指令。先核对正式标签、清单、准确审核及原站地址适配；条件不齐只读盘点并停止升级写入。" : "先核对固定发布标签与配套摘要、原站资源和内容，再准备准确同站升级对象。"}
       </p>
       <div className="actions">
         <button className="primary" type="button" onClick={() => void copyPrompt()}>{copyLabel}</button>
@@ -150,12 +150,12 @@ export function AdminUpgradeCenter() {
             <p><strong>入口：</strong>后台右上角“程序升级”，或“概览 → 网站空间 → 程序升级中心”。</p>
             <p><strong>推荐配置：</strong>能单独选择时优先 GPT-5.6 Sol；没有选择器时保留默认 Power。一般任务使用默认或 High，复杂迁移或故障按界面实际可用项使用 High 或 Extra High。</p>
             <p><strong>升级前读取：</strong>README.md、AGENTS.md、deployment/agent-manifest.json、deployment/template-version.json、deployment/upgrade-prompt.json。</p>
-            <p><strong>学生闭环：</strong>打开当前恢复码文件 → 复制指令 → 等待同站部署 → 返回原 /admin → 输入恢复码和两次密码 → 下载并打开“{'{hostname}'}-v1.3.0-系统恢复码-{'{YYYYMMDDTHHMMSSZ}'}.txt” → 进入后台 → 对照基线。</p>
-            <p><strong>升级前置：</strong>自动升级要求原站已有固定 D1 DB ID 和唯一 MEDIA_KV ID，当前 Worker 使用相同绑定。纯 v1.0 R2-only 站点没有 MEDIA_KV，本版本未支持直接自动升级；必须在指纹和部署前停止，不得创建、复用或认领新的 MEDIA_KV，不得改动任何远端资源。</p>
-            <p><strong>旧版工具：</strong>前置条件满足后，在原站仓库外的隔离工作树验证 v1.3.0；指纹脚本把 Wrangler 的运行目录固定在已验证标签工作树根目录，再用原站 wrangler.jsonc 只读记录指纹。已验证源码收敛到原站且恢复原配置后，再复核指纹和部署。自动 Builds 关闭失败不算升级。</p>
-            <p><strong>源码保护：</strong>切换到标签前记录原分支和 commit；发现未提交改动就停止并先做所有者确认的可恢复保存，不强制切换或清空工作树。</p>
-            <p><strong>升级后检查：</strong>无视频时验证可发布、00:00 与无播放按钮；有视频时再验证 Range，并用独立浏览器配置文件或 Cookie jar 建立 10 个会话。大陆网络由所有者人工检查。</p>
-            <p><strong>资源原则：</strong>沿用现有 Worker、D1、MEDIA_KV、Secrets 与资源 ID；有旧 R2 行时保留同一 BUCKET，固定原对象 ETag 并续跑逐块复制，再进入 final-verifying 最终 KV 复验，全量通过才 CAS 切换；源对象不自动删除。</p>
+            <p><strong>准备流程：</strong>打开原站恢复码文件 → 复制当前完整指令 → 核对正式目标及原站适配 → 核定迁移、资源指纹与恢复对象 → 准确审核和授权满足后执行 → 原 /admin 按实际版本条件确认 → 有限验收。</p>
+            <p><strong>原站适配：</strong>Pages 和上传页读取原站配置，ZIP 后台入口来自本次已鉴权的 HTTPS 请求。缺失或冲突时对应静态快捷入口不可用；不要复制其他网站账号、资源 ID 或凭据。保留原 Worker、DB、MEDIA_KV、必要旧绑定、免费套餐与内容。</p>
+            <p><strong>必要迁移：</strong>1.3.1 涉及 0008–0011，按真实账本与摘要只处理缺失增量；不能沿用旧“止于 0007”说明或靠打开 /admin 补齐。cloudflare:deploy 会真实迁移和部署，不是只读工具。</p>
+            <p><strong>恢复码条件：</strong>从 1.3.0 升级到 1.3.1，需要本人用当前恢复码确认、设置密码并保存新恢复码。同一 1.3.1 再部署不自动轮换。新文件名按实际版本生成，下载后核对站点和版本；秘密不发到聊天。</p>
+            <p><strong>历史说明：</strong>历史 v1.3.0 标签保留原发布记录；当前两个复制入口共享已校验的正式 1.3.1 指令。</p>
+            <p><strong>有限验收：</strong>核对生产版本、原首页与后台、资源指纹、内容和必要迁移；沿用适用证据，不默认追加手机、多会话或重复 ZIP/视频检查。动态内容发布和静态发布分别判断结果，异常先读回。</p>
           </div>
         </details>
       </div>

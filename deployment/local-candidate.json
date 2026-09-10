@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "status": "released",
+  "version": "1.3.1",
+  "sourceVersion": "1.3.0",
+  "change": "Portable manual Pages publishing and formal 1.3.0 upgrade channel",
+  "releaseTag": "v1.3.1",
+  "plan": "formal-131-update-channel",
+  "requiredNormalMigrations": [
+    "0008_static_site_publish.sql",
+    "0009_pages_dual_publish.sql",
+    "0010_pages_readback_progress.sql",
+    "0011_pages_runner.sql"
+  ],
+  "planVersion": "1.1",
+  "baseCandidate": "5d6917b87cf78a186d762fea4d89be9c90b8be3a",
+  "releaseManifest": "deployment/template-version.json"
+}

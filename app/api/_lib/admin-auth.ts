@@ -57,7 +57,8 @@ export function isSitesAuthPlatform() {
 }
 
 export function programResetRequired(confirmedProgramVersion: string | null, currentProgramVersion = PROGRAM_VERSION) {
-  return confirmedProgramVersion !== currentProgramVersion;
+  if (confirmedProgramVersion === currentProgramVersion) return false;
+  return !(currentProgramVersion === '1.3.1-C' && confirmedProgramVersion === '1.3.1-b');
 }
 
 export async function getLocalCredentialState(): Promise<LocalCredentialState> {

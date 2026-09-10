@@ -38,18 +38,20 @@ async function cleanupUnreferencedKvMedia(document: PortfolioDocument, expectedR
   let removed = 0;
 
   for (const row of unused) {
-    if (row.status === "uploaded") {
       const claim = await database
         .prepare(`UPDATE portfolio_media SET status = 'deleting'
-          WHERE object_key = ? AND storage_backend = 'kv' AND status = 'uploaded'
+          WHERE object_key = ? AND storage_backend = 'kv' AND status IN ('uploaded','deleting')
             AND EXISTS (
               SELECT 1 FROM portfolio_documents
               WHERE id = ? AND revision = ?
-            )`)
+            )
+            AND NOT EXISTS (SELECT 1 FROM portfolio_documents d, json_tree(d.draft_json) j WHERE j.key='key' AND j.value=portfolio_media.object_key)
+            AND NOT EXISTS (SELECT 1 FROM portfolio_documents d, json_tree(d.published_json) j WHERE j.key='key' AND j.value=portfolio_media.object_key)
+            AND NOT EXISTS (SELECT 1 FROM pages_files f WHERE f.object_key=portfolio_media.object_key)
+            AND NOT EXISTS (SELECT 1 FROM static_publish_job_media f WHERE f.object_key=portfolio_media.object_key)`)
         .bind(row.object_key, DOCUMENT_ID, expectedRevision)
         .run();
       if (Number(claim.meta.changes ?? 0) !== 1) continue;
-    }
 
     await deleteStoredMedia({ objectKey: row.object_key, chunkCount: row.chunk_count });
     const retired = await database

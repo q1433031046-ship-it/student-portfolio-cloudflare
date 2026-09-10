@@ -18,13 +18,14 @@ import { HeroLayoutEditor } from "./hero-layout-editor";
 import { EndCoverLayoutEditor } from "./end-cover-layout-editor";
 import { MediaCropEditor } from "./media-crop-editor";
 import styles from "./admin.module.css";
+import { useSiteEntrances } from "./use-site-entrances";
 import { createClientId } from "../lib/client-id";
-import { toUserFacingChineseError, userFacingError, userFacingResponseError } from "../lib/user-facing-error";
+import { toUserFacingChineseError, UserFacingError, userFacingError, userFacingResponseError } from "../lib/user-facing-error";
 import { formatVideoDuration } from "../lib/video-duration";
 import { resolveWatermarkText } from "../portfolio/watermark";
 import { croppedImageStyle, croppedImageStyleForAspect, fitCropToAspect, fullMediaCrop, validAspect } from "../portfolio/media-crop";
 import { ProjectCoverText, type CoverLayerKey, type CoverTextKey, type CoverViewport } from "../portfolio/project-cover-text";
-import { AccessManager, type AccessPayload } from "./access-manager";
+import { qrSvg } from "../lib/qr-code";
 import { shouldFinishInlineEditing } from "./inline-editing";
 import { buildRecoveryCodeDownload } from "./recovery-download";
 import { migrateLegacyMediaUntilComplete, type LegacyMediaMigrationSummary } from "./legacy-media-migration";
@@ -37,6 +38,8 @@ import { activeUploadReducer, createActiveUploadMap, failedUploads, hasBlockingU
 import { humanizeValidationMessage } from "./validation-message";
 import { MobilePortfolioPreview, type PortfolioPreviewTarget } from "./mobile-portfolio-preview";
 import { graphemeCountLabel } from "./grapheme";
+import { StaticSiteCard } from "./static-site-card";
+import { fetchAdmin } from "./admin-fetch";
 
 export type AdminView = "overview" | "identity" | "categories" | "projects" | "end-covers" | "contact" | "publish" | "records";
 type Operation = "idle" | "saving" | "previewing" | "publishing";
@@ -115,7 +118,6 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
   const [setupBusy, setSetupBusy] = useState(false);
   const [data, setData] = useState<AdminPayload | null>(null);
   const [portfolio, setPortfolio] = useState<PortfolioDocument | null>(null);
-  const [access, setAccess] = useState<AccessPayload | null>(null);
   const [storage, setStorage] = useState<StoragePayload | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [state, setState] = useState<"loading" | "initial_setup" | "upgrade_required" | "recovery_code" | "ready" | "unauthenticated" | "recover" | "error">("loading");
@@ -188,7 +190,7 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
   const load = useCallback(async () => {
     setState("loading");
     try {
-      const setupResponse = await fetch("/api/admin/setup", { credentials: "same-origin", cache: "no-store" });
+      const setupResponse = await fetchAdmin("/api/admin/setup");
       if (setupResponse.status === 401) {
         setState("unauthenticated");
         setMessage("请输入管理员密码");
@@ -207,10 +209,9 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
         return;
       }
 
-      const [response, accessResponse, storageResponse] = await Promise.all([
-        fetch("/api/admin/portfolio", { credentials: "same-origin", cache: "no-store" }),
-        fetch("/api/admin/access", { credentials: "same-origin", cache: "no-store" }),
-        fetch("/api/admin/storage", { credentials: "same-origin", cache: "no-store" }),
+      const [response, storageResponse] = await Promise.all([
+        fetchAdmin("/api/admin/portfolio"),
+        fetchAdmin("/api/admin/storage"),
       ]);
       if (response.status === 401) {
         setState("unauthenticated");
@@ -218,14 +219,11 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
         return;
       }
       const body = await response.json() as AdminPayload & { error?: string };
-      const accessBody = await accessResponse.json() as AccessPayload & { error?: string };
       const storageBody = await storageResponse.json() as StoragePayload & { error?: string };
       if (!response.ok) throw userFacingResponseError(body, "管理数据读取失败");
-      if (!accessResponse.ok) throw userFacingResponseError(accessBody, "二维码访问设置读取失败");
       if (!storageResponse.ok) throw userFacingResponseError(storageBody, "网站空间读取失败");
       setData(body);
       setPortfolio(body.portfolio);
-      setAccess(accessBody);
       setStorage(storageBody);
       setSelectedProjectId(body.portfolio.projects[0]?.id ?? null);
       setDirty(false);
@@ -246,7 +244,7 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
     setSetupBusy(true);
     setMessage("正在创建管理员和系统恢复码…");
     try {
-      const response = await fetch("/api/admin/setup", {
+      const response = await fetchAdmin("/api/admin/setup", {
         method: "POST",
         credentials: "same-origin",
         cache: "no-store",
@@ -410,21 +408,39 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
     }
   }
 
-  async function publish() {
+  async function publishStatic() {
     if (!data || busy) return;
     setOperation("publishing");
     try {
-      setMessage(dirty ? "正在保存并发布…" : "正在发布…");
+      setMessage(dirty ? "正在保存并准备静态网站…" : "正在准备静态网站…");
       const revision = dirty ? await persistDraft() : data.revision;
-      setMessage("正在发布…");
-      const result = await api<{ revision: number; publishedAt: string }>("/api/admin/portfolio/publish", {
+      setMessage("正在生成并核验静态网站…");
+      const result = await api<{ jobId: string; status: string; repeated: boolean }>("/api/admin/portfolio/publish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ revision }),
+      });
+      setMessage(result.repeated ? `已找到相同静态任务 · ${result.status}` : `静态候选已生成，正在自动核验 · ${result.status}`);
+    } catch (error) {
+      notify(errorMessage(error));
+    } finally {
+      setOperation("idle");
+    }
+  }
+
+  async function publishDynamic() {
+    if (!data || busy) return;
+    setOperation("publishing");
+    try {
+      setMessage(dirty ? "正在保存并发布动态前台…" : "正在发布动态前台…");
+      const revision = dirty ? await persistDraft() : data.revision;
+      const result = await api<{ revision: number; publishedAt: string | null }>("/api/admin/portfolio/dynamic-publish", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ revision }),
       });
       setData((current) => current ? { ...current, revision: result.revision, publishedAt: result.publishedAt } : current);
-      localStorage.setItem("portfolio-published-revision", String(result.revision));
-      setMessage(`已发布 · ${formatDate(result.publishedAt)}`);
+      setMessage(`动态前台已更新 · r${result.revision}`);
     } catch (error) {
       notify(errorMessage(error));
     } finally {
@@ -523,7 +539,7 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
       </div>
     </StatePanel>
   );
-  if (state === "error" || !portfolio || !data || !access || !storage) {
+  if (state === "error" || !portfolio || !data || !storage) {
     return <StatePanel label="服务状态" title="管理台暂时没有连上" detail={message}><button className={styles.primaryAction} onClick={() => void load()}>重新连接</button></StatePanel>;
   }
 
@@ -569,7 +585,7 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
 
       <section className={styles.content}>
         {(["identity", "projects", "contact", "end-covers"] as AdminView[]).includes(view) && <button className={styles.mobileFinalPreviewButton} type="button" disabled={busy} onClick={() => setMobilePreviewTarget(previewTargetForView(view, selectedProjectId))}>查看手机最终效果</button>}
-        {view === "overview" && <Overview data={data} portfolio={portfolio} access={access} storage={storage} setAccess={setAccess} onLegacyMigrationChange={(legacyMigration) => setStorage((current) => current ? { ...current, legacyMigration } : current)} change={change} onNavigate={navigate} setMessage={notify} />}
+        {view === "overview" && <Overview data={data} portfolio={portfolio} storage={storage} onLegacyMigrationChange={(legacyMigration) => setStorage((current) => current ? { ...current, legacyMigration } : current)} change={change} onNavigate={navigate} setMessage={notify} />}
         {view === "identity" && <IdentityEditor portfolio={portfolio} change={change} setMessage={notify} onMobilePreview={(target) => setMobilePreviewTarget(target)} />}
         {view === "categories" && <CategoryEditor portfolio={portfolio} savedCategoryIds={new Set(data.portfolio.categories.map((category) => category.id))} change={change} setMessage={notify} />}
         {view === "projects" && (
@@ -586,7 +602,7 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
         )}
         {view === "contact" && <ContactEditor portfolio={portfolio} change={change} setMessage={notify} />}
         {view === "end-covers" && <EndCoverEditor portfolio={portfolio} savedEndCoverSlideIds={new Set(data.portfolio.endCovers.slides.map((slide) => slide.id))} change={change} setMessage={notify} onMobilePreview={(target) => setMobilePreviewTarget(target)} />}
-        {view === "publish" && <PublishPanel portfolio={portfolio} data={data} dirty={dirty} busy={busy} publish={publish} />}
+        {view === "publish" && <PublishPanel portfolio={portfolio} data={data} dirty={dirty} busy={busy} publishDynamic={publishDynamic} publishStatic={publishStatic} />}
         {view === "records" && <RecordsPanel events={events} audits={audits} />}
       </section>
       {operationError && <OperationErrorDialog error={operationError} onClose={() => setOperationError(null)} />}
@@ -621,7 +637,40 @@ export function AdminClient({ initialEmail, signInHref, signOutHref }: { initial
   );
 }
 
-function Overview({ data, portfolio, access, storage, setAccess, onLegacyMigrationChange, change, onNavigate, setMessage }: { data: AdminPayload; portfolio: PortfolioDocument; access: AccessPayload; storage: StoragePayload; setAccess: (next: AccessPayload) => void; onLegacyMigrationChange: (summary: LegacyMediaMigrationSummary) => void; change: (mutator: (document: PortfolioDocument) => PortfolioDocument) => void; onNavigate: (view: AdminView) => void; setMessage: (message: string) => void }) {
+function SiteEntrances() {
+  const { staticUrl } = useSiteEntrances();
+  // The Worker wrapper redirects a bare `/` to the fixed Cloudflare Pages site after a
+  // successful static promotion.  Keep the dynamic entrance query-marked so
+  // its link and QR always stay on the Worker frontend.
+  const dynamicUrl = typeof window === "undefined" ? null : `${window.location.origin}/?preview=dynamic`;
+
+  const dynamicMarkup = dynamicUrl ? qrSvg(dynamicUrl, { title: "动态前台（Worker）" }) : null;
+  const staticMarkup = staticUrl ? qrSvg(staticUrl, { title: "静态网站访问二维码" }) : null;
+
+  async function copyLink(url: string) {
+    try { await navigator.clipboard.writeText(url); } catch { /* visible link remains available for manual copying */ }
+  }
+
+  return <section className={styles.siteEntrances} aria-labelledby="site-entrances-title">
+    <header><div><span>PUBLIC ENTRANCES</span><h2 id="site-entrances-title">网站入口与二维码</h2></div><strong>限制访问已移除</strong></header>
+    <p>这里不再管理访问码。动态前台和静态网站是两个独立入口，链接与二维码分别对应各自的网站，不会互相覆盖。</p>
+    <div className={styles.siteEntranceGrid}>
+      <article data-site-entrance="dynamic">
+        <div><span>DYNAMIC FRONTEND</span><h3>动态前台（Worker）</h3><p>用于快速预览和即时测试；发布动态前台不会创建 Pages 正式发布。</p></div>
+        {dynamicMarkup && <div className={styles.entranceQr} data-dynamic-site-qr dangerouslySetInnerHTML={{ __html: dynamicMarkup }} />}
+        {dynamicUrl && <div className={styles.entranceActions}><a href={dynamicUrl} target="_blank" rel="noreferrer">{dynamicUrl}</a><button type="button" onClick={() => void copyLink(dynamicUrl)}>复制链接</button></div>}
+      </article>
+      <article data-site-entrance="static">
+        <div><span>STATIC SITE</span><h3>静态网站（Cloudflare Pages）</h3><p>扫码查看已上传的静态网站。上传、下载网站包请到“发布”栏操作；固定二维码无需随每次更新重新生成。</p></div>
+        {staticMarkup && <div className={styles.entranceQr} data-static-site-qr dangerouslySetInnerHTML={{ __html: staticMarkup }} />}
+        {staticUrl ? <div className={styles.entranceActions}><a href={staticUrl} target="_blank" rel="noreferrer">{staticUrl}</a><button type="button" onClick={() => void copyLink(staticUrl)}>复制链接</button></div> : <p>原 Pages 项目尚未配置或配置不一致，动态网站仍可使用。</p>}
+        <p style={{ gridColumn: "1 / -1" }}>这是固定访问入口，出现二维码不代表本次上传已成功。上传后请打开网站确认最新内容。</p>
+      </article>
+    </div>
+  </section>;
+}
+
+function Overview({ data, portfolio, storage, onLegacyMigrationChange, change, onNavigate, setMessage }: { data: AdminPayload; portfolio: PortfolioDocument; storage: StoragePayload; onLegacyMigrationChange: (summary: LegacyMediaMigrationSummary) => void; change: (mutator: (document: PortfolioDocument) => PortfolioDocument) => void; onNavigate: (view: AdminView) => void; setMessage: (message: string) => void }) {
   const [migrationBusy, setMigrationBusy] = useState(false);
   const [migrationError, setMigrationError] = useState("");
   const [migrationCompleted, setMigrationCompleted] = useState(false);
@@ -662,7 +711,7 @@ function Overview({ data, portfolio, access, storage, setAccess, onLegacyMigrati
         <SectionTitle index="SITE" title="网页名称" />
         <Field label="浏览器标签与站点名称" wide><input maxLength={80} value={portfolio.settings.siteTitle} onChange={(event) => change((document) => ({ ...document, settings: { ...document.settings, siteTitle: event.target.value } }))} /></Field>
       </div>
-      <AccessManager access={access} onChange={setAccess} setMessage={setMessage} />
+      <SiteEntrances />
       <div className={styles.metricGrid}>
         <Metric value={portfolio.projects.length} label="作品" />
         <Metric value={portfolio.categories.length} label="分类" />
@@ -1700,7 +1749,10 @@ function MediaUpload({ projectId, slot, title, asset, cropAspect = 16 / 9, freeC
   );
 }
 
-function PublishPanel({ portfolio, data, dirty, busy, publish }: { portfolio: PortfolioDocument; data: AdminPayload; dirty: boolean; busy: boolean; publish: () => Promise<void> }) {
+function PublishPanel({ portfolio, data, dirty, busy, publishDynamic, publishStatic }: {
+  portfolio: PortfolioDocument; data: AdminPayload; dirty: boolean; busy: boolean;
+  publishDynamic: () => Promise<void>; publishStatic: () => Promise<void>;
+}) {
   const missing = [
     ...portfolio.hero.slides.flatMap((slide, index) => !slide.media.key ? [`首图 ${index + 1}：图片`] : []),
     ...portfolio.categories.flatMap((category) => category.transition.mode === "image" && !category.transition.media.key ? [`${category.label}：过渡条图片`] : []),
@@ -1709,16 +1761,31 @@ function PublishPanel({ portfolio, data, dirty, busy, publish }: { portfolio: Po
   ];
   return (
     <>
-      <ViewHeader eyebrow="07 / PUBLISH" title="检查并发布作品集" detail="发布会生成独立快照；之后继续编辑草稿，不会改变访客正在看的版本。" />
+      <ViewHeader eyebrow="07 / PUBLISH" title="检查并发布作品网站" detail="推荐双站同步：等待媒体上传完成，保存草稿并发布动态前台；成功后下载 ZIP，再到 Cloudflare 发布静态网站。" />
       <section className={styles.publishCard}>
         <div><span>REVISION</span><strong>r{data.revision}</strong><small>{dirty ? "包含未保存修改" : "草稿已保存"}</small></div>
         <div><span>PROJECTS</span><strong>{portfolio.projects.length}</strong><small>{missing.length ? `${missing.length} 个必要媒体待补充` : "必要媒体完整"}</small></div>
         <div><span>LAST PUBLISHED</span><strong>{data.publishedAt ? formatDate(data.publishedAt) : "—"}</strong><small>公开快照</small></div>
       </section>
       {missing.length > 0 && <div className={styles.warning}><strong>发布前检查</strong><p>{missing.slice(0, 8).join("、")}</p></div>}
-      <div className={styles.publishActions}><a href={`/?revision=${data.revision}`} target="_blank" rel="noreferrer">打开已发布前台 ↗</a><button type="button" disabled={busy || missing.length > 0} onClick={() => void publish()}>{busy ? "处理中…" : dirty ? "保存并发布 →" : "发布当前草稿 →"}</button></div>
+      <DynamicSiteCard revision={data.revision} publishedAt={data.publishedAt} disabled={busy || missing.length > 0} publish={publishDynamic} />
+      <StaticSiteCard revision={data.revision} disabled={busy || missing.length > 0} publish={publishStatic} />
     </>
   );
+}
+
+function DynamicSiteCard({ revision, publishedAt, disabled, publish }: {
+  revision: number; publishedAt: string | null; disabled: boolean; publish: () => Promise<void>;
+}) {
+  return <section className={styles.dynamicSiteCard} aria-labelledby="dynamic-site-card-title">
+    <header><div><span>WORKER DYNAMIC FRONTEND</span><h2 id="dynamic-site-card-title">动态前台（Worker）</h2></div><strong>{publishedAt ? "已发布" : "待首次发布"}</strong></header>
+    <p>等待媒体上传完成并保存草稿后，先点击“发布动态前台 →”。看到“动态前台已更新”后，再按下方步骤下载 ZIP 并更新静态网站；本步骤只更新动态网站。</p>
+    <dl><div><dt>将发布草稿</dt><dd>r{revision}</dd></div><div><dt>最近动态发布</dt><dd>{publishedAt ? formatDate(publishedAt) : "—"}</dd></div></dl>
+    <div className={styles.publishActions}>
+      <a href="/?preview=dynamic" target="_blank" rel="noreferrer">打开动态前台 ↗</a>
+      <button type="button" disabled={disabled} onClick={() => void publish()}>发布动态前台 →</button>
+    </div>
+  </section>;
 }
 
 function RecordsPanel({ events, audits }: { events: EventItem[]; audits: AuditItem[] }) {
@@ -1901,8 +1968,9 @@ async function uploadChunkWithRetry(path: string, chunk: Blob) {
 async function api<T>(input: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(input, { ...init, credentials: "same-origin", cache: "no-store" });
-  } catch {
+    response = await fetchAdmin(input, init);
+  } catch (error) {
+    if (error instanceof UserFacingError) throw error;
     throw userFacingError("网络连接失败，请检查网络后重试");
   }
   let body: T & { error?: string; details?: string[] };

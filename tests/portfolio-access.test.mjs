@@ -408,6 +408,17 @@ test("uses a non-redeeming access page and a POST-only redeem endpoint", async (
   assert.match(accessActions, /navigator\.clipboard\.writeText\(url\.toString\(\)\)/u);
 });
 
+test("administrative access writes are paused server-side while GET remains read-only", async () => {
+  const route = await readFile(new URL("../app/api/admin/access/route.ts", import.meta.url), "utf8");
+  const manager = await readFile(new URL("../app/admin/access-manager.tsx", import.meta.url), "utf8");
+  assert.match(route, /featureStatus: "paused"/u);
+  assert.match(route, /ACCESS_FEATURE_PAUSED/u);
+  assert.match(route, /status: 409/u);
+  assert.doesNotMatch(route, /createAccessPass|updateAccessPass|deleteAccessPass|setAccessRestriction/u);
+  assert.match(manager, /<fieldset disabled/u);
+  assert.match(manager, /既有访问码、次数和到期设置均已保留/u);
+});
+
 test("redeem endpoint rejects cross-origin posts and redirects successful form posts", async () => {
   const database = await createAccessDatabase();
   env.DB = d1Adapter(database);
@@ -440,7 +451,7 @@ test("redeem endpoint rejects cross-origin posts and redirects successful form p
   }
 });
 
-test("explains the fixed visitor session without changing the administrator session", async () => {
+test("retains legacy visitor data while documentation clearly pauses access writes", async () => {
   const [accessManager, accessGate, adminClient, readme, guide] = await Promise.all([
     readFile(new URL("../app/admin/access-manager.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/portfolio/access-gate.tsx", import.meta.url), "utf8"),
@@ -459,9 +470,10 @@ test("explains the fixed visitor session without changing the administrator sess
   assert.match(accessGate, /二维码或访问链接/u);
   assert.match(adminClient, /placeholder="请输入你的姓名"/u);
   assert.match(adminClient, /label: "联系方式"/u);
-  assert.match(readme, /确认页不会扣除次数/u);
+  assert.match(readme, /暂停旧“限制访问”功能的所有写操作/u);
+  assert.match(readme, /原设置、访问码、次数、到期时间和历史记录完整保留/u);
   assert.match(readme, /管理员登录仍保持 12 小时/u);
-  assert.match(guide, /二维码访客会话固定为 24 小时/u);
+  assert.match(guide, /暂停旧限制访问功能的写入/u);
   assert.match(guide, /管理员登录仍为 12 小时/u);
 });
 

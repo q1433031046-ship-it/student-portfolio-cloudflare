@@ -2,9 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { PROGRAM_VERSION, UPGRADE_PROMPT_SYNC_EVENT, getUpgradePrompt } from "./admin-upgrade-content";
+import { PROGRAM_VERSION, UPGRADE_CONTENT_LABEL, UPGRADE_COPY_LABEL, IS_UPGRADE_PREPARATION, UPGRADE_PROMPT_SYNC_EVENT, getUpgradePrompt } from "./admin-upgrade-content";
 import { useScrollLock } from "../lib/use-scroll-lock";
 import { closeAdminMobileMore } from "./mobile-more-contract";
+import { useSiteEntrances } from "./use-site-entrances";
 
 const CENTRAL_GUIDE_URL = "https://github.com/q1433031046-ship-it/student-portfolio-cloudflare#readme";
 const DEPLOY_URL = "https://deploy.workers.cloudflare.com/?url=https://github.com/q1433031046-ship-it/student-portfolio-cloudflare";
@@ -111,11 +112,12 @@ function GuideHeader({ eyebrow, title }: { eyebrow: string; title: string }) {
 }
 
 export function AdminGuideCenter() {
+  const { staticUrl, uploadUrl, project } = useSiteEntrances();
   const [host, setHost] = useState<HTMLElement | null>(null);
   const [open, setOpen] = useState(false);
   const [targetSection, setTargetSection] = useState<string | null>(null);
   const [deployCopy, setDeployCopy] = useState("复制部署引导语");
-  const [upgradeCopy, setUpgradeCopy] = useState("复制升级指令");
+  const [upgradeCopy, setUpgradeCopy] = useState(UPGRADE_COPY_LABEL);
   const [upgradePrompt, setUpgradePrompt] = useState(getUpgradePrompt);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -197,10 +199,10 @@ export function AdminGuideCenter() {
     try {
       await navigator.clipboard.writeText(value);
       if (kind === "deploy") setDeployCopy("已复制部署引导语");
-      else setUpgradeCopy("已复制升级指令");
+      else setUpgradeCopy(`已复制${UPGRADE_CONTENT_LABEL}`);
       window.setTimeout(() => {
         if (kind === "deploy") setDeployCopy("复制部署引导语");
-        else setUpgradeCopy("复制升级指令");
+        else setUpgradeCopy(UPGRADE_COPY_LABEL);
       }, 1800);
     } catch {
       if (kind === "deploy") setDeployCopy("复制失败，请重试");
@@ -233,7 +235,7 @@ export function AdminGuideCenter() {
         <div className="quickGrid">
           <a href="#admin-guide-sections"><b>编辑现有网站</b><span>查看后台每一栏和媒体尺寸</span></a>
           <a href="#admin-guide-deploy"><b>部署新网站</b><span>从 GPT 核对账号到 Cloudflare 完成部署</span></a>
-          <button type="button" onClick={openUpgradeCenter}><b>升级当前网站</b><span>定位升级中心并复制升级指令</span></button>
+          <button type="button" onClick={openUpgradeCenter}><b>升级当前网站</b><span>定位升级中心并复制当前指令</span></button>
         </div>
       </section>
 
@@ -247,7 +249,7 @@ export function AdminGuideCenter() {
           <a href="#admin-guide-sections">后台栏目</a>
           <a href="#admin-guide-sizes">图片 / 视频尺寸</a>
           <a href="#admin-guide-crop">裁切与排版</a>
-          <a href="#admin-guide-publish">草稿与发布</a>
+          <a href="#admin-guide-publish">静态网站手动上传</a>
           <a href="#admin-guide-qr">二维码</a>
           <a href="#admin-guide-password">密码与恢复</a>
           <a href="#admin-guide-accounts">多账号 / 多网站</a>
@@ -392,30 +394,30 @@ export function AdminGuideCenter() {
           </section>
 
           <section className="guide" id="admin-guide-publish">
-            <GuideHeader eyebrow="08 / PUBLISH" title="保存草稿与正式发布" />
-            <div className="flow"><div><b>1</b>编辑</div><div><b>2</b>保存草稿</div><div><b>3</b>快速预览</div><div><b>4</b>正式发布</div></div>
-            <ul>
-              <li>保存草稿更新后台版本，公开前台保持当前内容。</li>
-              <li>点击“快速预览”时，快速预览会先自动保存当前修改，再打开管理员草稿版本。</li>
-              <li>正式发布生成公开快照，访客看到新内容。</li>
-              <li>新建作品先填名称和分类、新建分类先填名称，保存草稿后再上传媒体。</li>
-              <li>每次上传或替换图片后先保存草稿，再切换作品或后台栏目。</li>
-              <li>左下角显示“有未保存修改”时，保存后再离开。</li>
-              <li>“发布”栏有修改时显示“保存并发布 →”，草稿已保存时显示“发布当前草稿 →”。</li>
-              <li>第一次发布前的公开首页显示“网站尚未发布”。</li>
-            </ul>
+            <GuideHeader eyebrow="08 / PUBLISH" title="静态网站手动上传" />
+            <p>推荐按双站同步顺序操作：媒体完成、保存草稿、发布动态前台成功，再下载 ZIP 并在原 Cloudflare Pages 项目发布静态网站。两个网站分别判断成功。</p>
+            <div className="steps">
+              <div className="step"><strong>保存当前草稿</strong><p>在原 Worker 管理后台完成编辑，等待图片和视频上传全部完成后保存草稿，确认保存成功和草稿版本已更新。</p></div>
+              <div className="step"><strong>先发布动态前台</strong><p>点击“发布动态前台 →”，等待“动态前台已更新”。失败时先处理本步骤；动态成功尚未更新静态网站。</p></div>
+              <div className="step"><strong>下载可上传的网站包（ZIP）</strong><p>在“发布”栏点击同名按钮，等待完整 ZIP 下载完成。包内包含已保存页面、图片和视频。</p></div>
+              <div className="step"><strong>打开原项目上传页面</strong><p>点击“打开上传页面”，在 Cloudflare 登录原账号。{uploadUrl ? <a href={uploadUrl} target="_blank" rel="noreferrer">前往原 Cloudflare 上传页面 ↗</a> : "上传快捷入口未配置时，请在自己的 Cloudflare 账号打开原 Pages 项目。"}</p></div>
+              <div className="step"><strong>核对项目与环境</strong><p>确认项目为自己的原 Pages 项目{project ? `（${project}）` : ""}，发布环境选择 Production。</p></div>
+              <div className="step"><strong>选择整个 ZIP</strong><p>使用刚下载的网站包，无需解压，也无需创建新项目。</p></div>
+              <div className="step"><strong>完成文件上传并发布</strong><p>等待全部文件上传完成，再点击“Save and deploy”。</p></div>
+              <div className="step"><strong>看到 Success 后检查网站</strong><p>打开{staticUrl ? <a href={staticUrl} target="_blank" rel="noreferrer">固定静态网站 ↗</a> : "自己的固定静态网址（当前未配置快捷入口）"}，确认最新文字、图片和视频。以后更新时重复以上步骤。</p></div>
+            </div>
+            <div className="callout"><strong>下载完成不等于发布成功</strong><p>二维码只是固定访问入口，不能证明本次上传成功。失败或状态不明时先查看本次 Cloudflare 部署记录，避免连续重复提交。下载期间请勿编辑或清理媒体，单个静态文件最大 25 MiB。</p></div>
+            <p>ZIP 直接读取已保存草稿和管理员可读媒体，动态发布是双站同步的推荐顺序，不是下载的技术前置。快速预览仍会先保存修改并打开管理员草稿；自动静态发布保持暂停。</p>
           </section>
 
           <section className="guide" id="admin-guide-qr">
             <GuideHeader eyebrow="09 / QR" title="二维码访问" />
-            <p>普通前台开始为“公开访问”。先填写名称并点“生成二维码密钥”，至少有一张可用二维码后，再把开关切换为“限制访问已开启”。每张二维码用“停用”“启用”和“删除”管理。</p>
+            <p>当前版本暂停旧限制访问功能的写入，原设置、访问码、次数、到期时间和历史记录全部保留。静态网站二维码展示原项目的固定访问地址，不依赖旧自动发布记录。</p>
             <ul>
-              <li>扫码或打开访问链接后先进入确认页；确认页不会扣除次数。</li>
-              <li>点击“打开作品集”才计为 1 次成功使用。</li>
-              <li>二维码访客会话固定为 24 小时；重复打开不扣次数，也不会延长到期时间。</li>
-              <li>次数耗尽只阻止新浏览器进入，已经建立的会话继续到自身到期。</li>
-              <li>二维码暂停、删除或到期后，关联会话立即失效。</li>
-              <li>管理员登录仍为 12 小时，与二维码访客会话互不影响。</li>
+              <li>固定二维码只包含公开的 pages.dev URL，不含 token、Cookie 或后台权限；用于访问网站，不是上传入口或 ZIP 下载入口。</li>
+              <li>每次更新沿用同一固定二维码。二维码出现不代表本次上传已成功，实际内容以打开固定网址查看为准。</li>
+              <li>旧访问限制只读展示，所有写动作会明确拒绝，不删除任何旧数据。</li>
+              <li>管理员登录仍为 12 小时，与固定公开二维码互不影响。</li>
             </ul>
           </section>
 
@@ -428,10 +430,10 @@ export function AdminGuideCenter() {
               <li>同一 Cloudflare 客户网络连续输错 5 次管理员密码后，只锁定该网络的密码登录 15 分钟；其他网络不受影响。</li>
               <li>高熵系统恢复码使用独立校验流程，不受密码网络锁定影响；错误恢复码不会触发密码登录锁定。</li>
               <li>恢复码使用后自动轮换，新码需要重新保存。</li>
-              <li>每次正式升级后，使用升级前保存的当前最新恢复码确认一次；确认后下载并保存新码。</li>
+              <li>从 1.3.0 升级到 1.3.1，需要本人用当前恢复码确认、设置密码并保存新恢复码。同一 1.3.1 再部署不自动轮换。</li>
               <li>从 v1.2.0 起，确认完成后的管理员密码、恢复码和会话不再依赖一次性部署口令。</li>
-              <li>v1.3.0 正式确认会撤销旧管理员会话；当前浏览器随后获得新的 12 小时会话。</li>
-              <li>新文件名为“{'{hostname}'}-v1.3.0-系统恢复码-{'{YYYYMMDDTHHMMSSZ}'}.txt”；下载后实际打开，核对站点和版本。</li>
+              <li>完成恢复确认会替换旧恢复码并撤销旧管理员会话；当前浏览器随后获得新的 12 小时会话。</li>
+              <li>新文件名使用实际版本：“{'{hostname}'}-v{PROGRAM_VERSION}-系统恢复码-{'{YYYYMMDDTHHMMSSZ}'}.txt”；下载后实际打开，核对站点和版本。</li>
               <li>管理员密码和最新恢复码分开离线保存。</li>
             </ul>
           </section>
@@ -446,22 +448,17 @@ export function AdminGuideCenter() {
 
           <section className="guide" id="admin-guide-upgrade">
             <GuideHeader eyebrow="12 / UPGRADE" title="程序升级" />
-            <p>满足资源前置条件的升级会沿用当前 Worker、地址、D1、MEDIA_KV、Secrets、管理员身份和全部内容。版本清单可以从主模板发现更新；升级指令只从对应发布标签读取，并通过 SHA-256 后显示。</p>
-            <div className="callout safe"><strong>先打开当前恢复码文件</strong><p>确认文件属于当前 workers.dev 站点，只向 GPT 说明“已经保存”，不要发送内容。v1.3.0 确认会轮换恢复码、重设密码验证并撤销旧管理员会话。</p></div>
-            <div className="callout"><strong>先核对升级前置资源</strong><p>自动升级要求原站已有固定 D1 DB ID 和唯一 MEDIA_KV ID，当前 Worker 也使用相同绑定。纯 v1.0 R2-only 站点没有 MEDIA_KV，本版本未支持直接自动升级；GPT 必须在指纹和部署前停止，不得创建、复用或认领新的 MEDIA_KV，不得改动任何远端资源。</p></div>
-            <div className="callout"><strong>旧仓库使用已验证工具</strong><p>前置条件满足后，GPT 会在原站仓库外的隔离工作树验证 v1.3.0；指纹脚本把 Wrangler 的运行目录固定在已验证标签工作树根目录，再用原站 wrangler.jsonc 只读记录指纹。然后把已验证源码收敛进原站工作树，恢复原资源配置并再比对一次指纹。升级前基线用 0600 权限只捕获一次，跨失败续跑保留；隔离工作树不部署。</p></div>
-            <div className="callout"><strong>旧 R2 只走条件分支</strong><p>没有 R2 媒体行时继续使用 MEDIA_KV。有旧行时，“概览”会显示“R2 → MEDIA_KV”；保留同一 BUCKET，点击“开始逐块迁移并校验”。程序会固定原 R2 对象 ETag，逐块复制校验后进入可续跑的 final-verifying 最终 KV 复验；每次重读一块并核对字节数、SHA-256，全量复验通过才切换。旧 50–90 MiB 媒体保留，程序不会自动删除 R2 源对象。</p></div>
-            <div className="callout"><strong>新版本提醒</strong><p>登录后台后会检查版本；发现更新时右上角“程序升级”显示小红点。远程标签或摘要校验失败时继续使用当前版本内置的安全指令。</p></div>
-            <h3>学生要做的 8 步</h3>
+            <p>{IS_UPGRADE_PREPARATION ? "当前版本 仍为未正式分发的候选。下方提供完整升级准备指令；本站在线不表示其他网站已可直接升级。" : "先核对固定发布标签、准确提交与配套清单，再按已校验指令准备同站升级。"}</p>
+            <div className="callout"><strong>正式目标与原站适配先齐备</strong><p>先核对固定标签、提交、清单、prompt 摘要和正式审核。静态网址和上传入口读取原站配置，缺失或冲突时对应快捷入口不可用；ZIP 后台入口来自本次已鉴权的 HTTPS 请求。保留原站资源和内容。</p></div>
+            <div className="callout safe"><strong>恢复码由本人保管和输入</strong><p>从 1.3.0 升级到 1.3.1，需要本人用当前恢复码确认、设置密码并保存新恢复码。同一 1.3.1 再部署不自动轮换。不要将密码或恢复码发送给 GPT。</p></div>
+            <div className="callout"><strong>迁移与部署会真实写入</strong><p>先只读核对原 Worker、固定 DB、唯一 MEDIA_KV、必要旧 BUCKET 与资源指纹。1.3.1 的正常迁移涉及 0008–0011，只处理真实账本中缺少且结构与摘要匹配的增量；打开 /admin 不能代替这些迁移。cloudflare:deploy 会应用迁移并部署，不能当只读检查运行。</p></div>
+            <h3>准备与执行分步确认</h3>
             <div className="steps">
-              <div className="step"><strong>打开当前恢复码文件</strong><p>核对站点地址，并把恢复码继续留在本地。</p></div>
-              <div className="step"><strong>复制升级指令</strong><p>点击下方“复制升级指令”，完整发给 GPT。</p></div>
-              <div className="step"><strong>确认前置资源并等待部署</strong><p>先确认 GPT 报告固定 DB ID、唯一 MEDIA_KV ID 与当前 Worker 绑定一致；缺少时停止。满足后，确认它已记录原分支和 commit、检查未提交改动；有改动就先停止并做可恢复保存。再用隔离工作树和原站配置记录升级前指纹，在原站更新源码后复核指纹并运行严格升级。自动 Builds 的关闭失败不算升级结果。</p></div>
-              <div className="step"><strong>返回原来的 /admin</strong><p>使用升级前记录的同一个 workers.dev 地址。</p></div>
-              <div className="step"><strong>完成一次升级确认</strong><p>输入“当前最新系统恢复码”“管理员密码”“再次输入密码”，点击“确认升级并进入后台 →”。</p></div>
-              <div className="step"><strong>下载并打开新文件</strong><p>文件名为“{'{hostname}'}-v1.3.0-系统恢复码-{'{YYYYMMDDTHHMMSSZ}'}.txt”；核对站点与版本 v1.3.0。</p></div>
-              <div className="step"><strong>进入后台</strong><p>离线保存文件后，点击“我已妥善保存，进入后台 →”。</p></div>
-              <div className="step"><strong>完成旧媒体并对照基线</strong><p>若“概览”出现“R2 → MEDIA_KV”，点“开始逐块迁移并校验”直到完成并抽查；再核对 Worker、地址、D1、MEDIA_KV、可选 BUCKET、数据计数与迁移状态。无生产证据的项目记为“未验证”。</p></div>
+              <div className="step"><strong>打开原站恢复码文件</strong><p>核对自己的站点地址，将恢复码保留在本地。</p></div>
+              <div className="step"><strong>{UPGRADE_COPY_LABEL}</strong><p>把下方完整当前指令发给 GPT，先核对正式发布资格和原站适配。条件不齐只做只读盘点。</p></div>
+              <div className="step"><strong>核对准确升级对象</strong><p>保存原分支与未提交改动，核定必要迁移、原资源指纹、权限、一次尝试边界和恢复对象。准确审核与本次授权齐备后才执行。</p></div>
+              <div className="step"><strong>按实际版本完成确认</strong><p>回到原 /admin；仅在需要升级确认时亲自输入当前恢复码并设置密码。生成新恢复码后，打开实际版本的站点专属文件并离线保存。</p></div>
+              <div className="step"><strong>分别验收两个网站</strong><p>核对程序、原资源和内容；日常按先动态发布、再下载 ZIP 和 Cloudflare 静态发布的顺序。只做本次变化所需的有限检查，未知状态先读回。</p></div>
             </div>
             <div className="prompt"><pre>{upgradePrompt}</pre><button type="button" onClick={() => void copy(getUpgradePrompt(), "upgrade")}>{upgradeCopy}</button></div>
             <div className="inlineActions"><button className="primary" type="button" onClick={openUpgradeCenter}>定位后台升级中心</button></div>
@@ -479,14 +476,16 @@ export function AdminGuideCenter() {
               <article className="card"><h3>图片等待保存或预览读取失败</h3><p>先保存草稿，再点“重新检查”；不要重复上传同一张图。</p></article>
               <article className="card"><h3>视频上传没有完成</h3><p>视频可留空；已有视频要改为无视频时，到“作品 → 成稿视频（可选）”点“移除成稿视频”，再保存草稿并发布。需要上传时确认是 H.264 / AAC MP4 且小于 50 MiB。</p></article>
               <article className="card"><h3>快速预览没有打开</h3><p>允许当前站点打开弹出窗口。</p></article>
-              <article className="card"><h3>保存后前台仍是旧内容</h3><p>进入“发布”生成公开快照，再刷新前台。</p></article>
+              <article className="card"><h3>保存后前台仍是旧内容</h3><p>等待媒体完成并保存草稿后，先点击“发布动态前台 →”并等待成功，再下载可上传的网站包（ZIP），在原 Cloudflare 项目选择 Production 上传。看到 Success 后检查固定静态网址；动态成功不等于静态更新成功。</p></article>
+              <article className="card"><h3>打不开静态上传页面</h3><p>先在 Cloudflare 登录原账号，再打开本教程提供的原项目上传页面。确认项目名称和 Production 环境，无需在后台填写发布令牌。</p></article>
             </div>
           </section>
 
           <section className="guide" id="admin-guide-checks">
             <GuideHeader eyebrow="14 / CHECK" title="最终验收清单" />
+            <p>以下为完整产品检查参考，按本次变化选用并沿用已有证据。普通升级准备或文字更新不默认重跑手机、多会话、ZIP/视频检查。</p>
             <ul className="checks">
-              <li>仓库、Worker 属于当前学生。</li><li>D1 / KV 为本网站独立资源；有旧 R2 时 BUCKET 属于同站。</li><li>前台和后台可打开。</li><li>恢复码已离线保存。</li><li>正式升级后已保存并打开新的站点专属恢复码文件，旧恢复码和旧管理员会话失效。</li><li>安全退出后重新进入要密码。</li><li>首图、联系图、封面“调整裁切”正常。</li><li>封面桌面 16:9 的字号、位置与换行正常。</li><li>320、360 和 390 px 手机宽度下前台无整页水平滚动，首图、作品、联系、视频和封底正常。</li><li>手机后台只有一条底部操作栏，栏目导航、“更多”、保存状态和错误定位可用。</li><li>手机预览复用真实作品树并可定位内容；全屏裁切、取消恢复和确认写入正常。</li><li>上传进行中阻止切换、预览、保存和发布；失败后可重试、关闭或定位。</li><li>多张封底独立编辑并位于作品之后、页脚之前。</li><li>中文和空白可选字段保存正常，错误可精确定位。</li><li>上传后未保存并切换栏目仍能预览。</li><li>图片组与通栏图正常。</li><li>无视频可发布、显示 00:00 且无播放按钮；有视频时可播放和拖动。</li><li>有视频时，用独立浏览器配置文件或独立 Cookie jar 建立 10 个独立 Cookie 会话。</li><li>保存草稿不改变前台。</li><li>快速预览可打开并先自动保存修改。</li><li>“保存并发布 →”“发布当前草稿 →”状态正确。</li><li>先“生成二维码密钥”再开启限制访问，“停用”“启用”规则正常。</li><li>网站空间统计正常。</li><li>使用教程可打开。</li><li>程序升级可定位并复制已校验指令。</li><li>大陆手机流量和常用宽带由所有者人工验收。</li>
+              <li>仓库、Worker 属于当前学生。</li><li>D1 / KV 为本网站独立资源；有旧 R2 时 BUCKET 属于同站。</li><li>前台和后台可打开。</li><li>恢复码已离线保存。</li><li>需要恢复确认的升级已完成确认并保存新码；同 1.3.1 部署不要求自动轮换。</li><li>安全退出后重新进入要密码。</li><li>首图、联系图、封面“调整裁切”正常。</li><li>封面桌面 16:9 的字号、位置与换行正常。</li><li>320、360 和 390 px 手机宽度下前台无整页水平滚动，首图、作品、联系、视频和封底正常。</li><li>手机后台只有一条底部操作栏，栏目导航、“更多”、保存状态和错误定位可用。</li><li>手机预览复用真实作品树并可定位内容；全屏裁切、取消恢复和确认写入正常。</li><li>上传进行中阻止切换栏目、预览、保存和发布；失败后可重试、关闭或定位。</li><li>多张封底独立编辑并位于作品之后、页脚之前。</li><li>中文和空白可选字段保存正常，错误可精确定位。</li><li>上传后未保存并切换栏目仍能预览。</li><li>图片组与通栏图正常。</li><li>无视频可发布、显示 00:00 且无播放按钮；有视频时可播放和拖动。</li><li>有视频时，用独立浏览器配置文件或独立 Cookie jar 建立 10 个独立 Cookie 会话。</li><li>保存草稿不触发 Cloudflare Pages。</li><li>快速预览可打开并先自动保存修改。</li><li>下载的网站 ZIP 可整包上传，文件上传完成后再点击 Save and deploy。</li><li>部署状态不明时先查看本次 Cloudflare 部署记录，避免连续重复提交。</li><li>旧限制访问控件不可写且数据保留；两处静态访问二维码与固定网址一致，不表示本次上传成功。</li><li>网站空间统计正常。</li><li>使用教程可打开。</li><li>程序升级可定位；候选状态复制完整准备指令，正式状态使用已校验指令。</li><li>大陆手机流量和常用宽带由所有者人工验收。</li>
             </ul>
           </section>
         </div>

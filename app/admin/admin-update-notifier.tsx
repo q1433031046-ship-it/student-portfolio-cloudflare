@@ -1,10 +1,11 @@
 "use client";
 
-import localVersion from "@/deployment/template-version.json";
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import {
+  IS_UPGRADE_PREPARATION,
   LOCAL_UPGRADE_PROMPT_VERSION,
+  PROGRAM_VERSION,
   getUpgradePrompt,
   syncUpgradePrompt,
 } from "./admin-upgrade-content";
@@ -97,8 +98,8 @@ export function AdminUpdateNotifier() {
       setStatus(payload);
     } catch {
       setStatus({
-        currentVersion: localVersion.version,
-        latestVersion: localVersion.version,
+        currentVersion: PROGRAM_VERSION,
+        latestVersion: PROGRAM_VERSION,
         updateAvailable: false,
         checkSucceeded: false,
         latestUpgradePrompt: getUpgradePrompt(),
@@ -116,7 +117,7 @@ export function AdminUpdateNotifier() {
       setAdminReady(Boolean(toolbar));
 
       const versionText = document.querySelector<HTMLElement>("[data-native-upgrade-center] .version strong");
-      if (versionText && versionText.textContent !== `v${localVersion.version}`) versionText.textContent = `v${localVersion.version}`;
+      if (versionText && versionText.textContent !== `v${PROGRAM_VERSION}`) versionText.textContent = `v${PROGRAM_VERSION}`;
 
       const panel = document.getElementById("program-upgrade-center");
       if (!panel) {
@@ -191,7 +192,9 @@ export function AdminUpdateNotifier() {
       <div className="meta">
         {status?.upgradePromptCheckSucceeded
           ? `升级指令已同步至 v${status.latestUpgradePromptVersion}`
-          : `升级指令使用内置安全版本 v${LOCAL_UPGRADE_PROMPT_VERSION}`}
+          : IS_UPGRADE_PREPARATION
+            ? `当前提供 v${LOCAL_UPGRADE_PROMPT_VERSION} 升级准备指令，尚未核定正式分发`
+            : `升级指令使用内置安全版本 v${LOCAL_UPGRADE_PROMPT_VERSION}`}
       </div>
       <button type="button" onClick={() => void checkVersion()} disabled={checking}>{checking ? "正在检查…" : "重新检查版本"}</button>
     </div>,
