@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "requestRevision": 2,
+  "difference": {
+    "metadataOnlyDeleted": "assets.config.serve_directly",
+    "removedBytes": 30,
+    "multipartParts": 3,
+    "framingAndBoundaryUnchanged": true,
+    "moduleAndHeadersIdentical": true,
+    "parsedMetadataExactlyExpected": true,
+    "newScriptOnlyAllowedReplacements": true,
+    "oldAttemptMarkerExists": true,
+    "newAttemptMarkerExists": false,
+    "existingRollbackMarkerExists": false,
+    "noNetworkPerformed": true
+  },
+  "script": {
+    "syntaxErrors": 0,
+    "testedOnlyExtractedParamAndFirstGuard": true,
+    "fullScriptInvoked": false,
+    "rejectedCases": [
+      {
+        "ExecuteApproved": false,
+        "NewAttemptApproved": false,
+        "denied": true
+      },
+      {
+        "ExecuteApproved": true,
+        "NewAttemptApproved": false,
+        "denied": true
+      },
+      {
+        "ExecuteApproved": false,
+        "NewAttemptApproved": true,
+        "denied": true
+      }
+    ],
+    "bothSwitchesPassIsolatedGuard": true,
+    "oldAttemptMarkerExists": true,
+    "newAttemptMarkerExists": false,
+    "rollbackMarkerExists": false,
+    "networkOrCredentialAccess": false
+  },
+  "productTestsRerun": false,
+  "reason": "Product module and auxiliary headers are byte-identical to the previously verified artifact.",
+  "secondProviderWriteAuthorized": false
+}

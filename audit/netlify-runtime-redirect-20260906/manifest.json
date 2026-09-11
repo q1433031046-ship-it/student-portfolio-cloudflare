@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "kind": "runtime-artifact-hotfix-review",
+  "planId": "PLAN-20260906-NETLIFY-RUNTIME-REDIRECT-001",
+  "planVersion": "1.1",
+  "original": {
+    "bytes": 2485822,
+    "sha256": "8d0fc2b08777af56d43139412327c0a8702b469919bb7428d54cfeca7f3351d8"
+  },
+  "patched": {
+    "bytes": 2485824,
+    "sha256": "dc46ce87f68ef1c91411c8f8efc265f8ac931ca63882ecdcf534457b8eb97f97"
+  },
+  "headers": {
+    "bytes": 125,
+    "sha256": "9e55124bccd40b43dbc6e002daa777fa8f32a230420152910784ca65501d9e0f",
+    "unchanged": true
+  },
+  "edits": [
+    {
+      "name": "readJsonEvidence",
+      "offset": 1972529,
+      "before": "error",
+      "after": "manual",
+      "context": "redirect: \"error\","
+    },
+    {
+      "name": "triggerDraftBuild",
+      "offset": 2387044,
+      "before": "error",
+      "after": "manual",
+      "context": "redirect: \"error\"\n"
+    }
+  ],
+  "reverseIdentical": true,
+  "unaffectedSegmentsIdentical": true,
+  "compatibilityDate": "2026-08-28",
+  "compatibilityFlags": [
+    "nodejs_compat"
+  ],
+  "patchSha256": "fd6b67773dfa9b334e5f4a82f0b2aeca3b45fd8d5f33b245691adc367b9c5071",
+  "verification": {
+    "cases": 22,
+    "assertions": "PASS",
+    "wholeModuleLoaded": true,
+    "externalNetworkUsed": false
+  },
+  "deployed": false,
+  "gitCarrier": {
+    "base": "d59825a25bce70b090aa613ea708adaa1362d113",
+    "branch": "role3/netlify-runtime-redirect-fix-20260906",
+    "identityRecord": "Exact Head and Tree are recorded outside the commit to avoid self-reference."
+  },
+  "metadataCorrectionPlanVersion": "1.2",
+  "currentRequestRevision": 2
+}

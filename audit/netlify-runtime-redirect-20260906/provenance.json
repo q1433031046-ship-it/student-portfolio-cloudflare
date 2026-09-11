@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "source": "Official exact-version module GET; full runtime artifacts are retained in the private local review bundle.",
+  "runtimeSourceIsHistoricalGitTree": false,
+  "files": {
+    "patch-runtime.cjs": {
+      "bytes": 4433,
+      "sha256": "58677ef46ed9f794c42d6e18211fbb1cbf00c2f90566b6b2448448e260616c05"
+    },
+    "verify-runtime.cjs": {
+      "bytes": 8506,
+      "sha256": "357a0f303eea9c236fcc976995f96b32b505fb6e505a7bbce251dc3bd9893995"
+    },
+    "prepare-request.cjs": {
+      "bytes": 5131,
+      "sha256": "e1dc435183ead5a1362f178fc807e1c5f53ad58435e1e491ff615df6f9ce3d6a"
+    },
+    "runtime-verification.json": {
+      "bytes": 4344,
+      "sha256": "fe6b72126ca4633ecb4bfca9c8355cd346c94d2c1138e4e6589d10f0730f62b5"
+    },
+    "prepare-request-v2.cjs": {
+      "bytes": 8132,
+      "sha256": "19c6b9e81e3be49593b857b7476bcb1519e513b08533744ad6cd300e5e94f265"
+    },
+    "send-once-v2.ps1": {
+      "bytes": 5899,
+      "sha256": "45a4a9a1107e7e7e3cd7326e32efd031592172844b39814c303d1ca749cb800e"
+    },
+    "metadata-correction-plan.md": {
+      "bytes": 5996,
+      "sha256": "6326d6942a9574ca532cc072529d08e8d1fe59c25fc165317a3d2e2e8d3cf864"
+    }
+  },
+  "limits": [
+    "The existing sourceMappingURL reference has no retrieved map; the two replacements may shift diagnostic columns.",
+    "Production transport, current provider baseline and exact remote PR audit remain release gates."
+  ],
+  "currentRequestRevision": 2,
+  "requestPreparationSource": "prepare-request.cjs identifies the original rejected attempt; prepare-request-v2.cjs identifies the revised local preparation. The new request-digests.json binds the current body."
+}
