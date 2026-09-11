@@ -6,6 +6,7 @@ import { PROGRAM_VERSION, UPGRADE_CONTENT_LABEL, UPGRADE_COPY_LABEL, IS_UPGRADE_
 import { useScrollLock } from "../lib/use-scroll-lock";
 import { closeAdminMobileMore } from "./mobile-more-contract";
 import { useSiteEntrances } from "./use-site-entrances";
+import { STATIC_CLOUD_WORK_PROMPT } from './static-cloud-work-prompt';
 
 const CENTRAL_GUIDE_URL = "https://github.com/q1433031046-ship-it/student-portfolio-cloudflare#readme";
 const DEPLOY_URL = "https://deploy.workers.cloudflare.com/?url=https://github.com/q1433031046-ship-it/student-portfolio-cloudflare";
@@ -395,6 +396,10 @@ export function AdminGuideCenter() {
 
           <section className="guide" id="admin-guide-publish">
             <GuideHeader eyebrow="08 / PUBLISH" title="静态网站手动上传" />
+            <h3>让原云端 Work 项目准备配置和 ZIP</h3>
+            <p>将以下指令交给原项目，复用已有登录与授权。它核定本站配置、准备完整包和上传链接；实际缺少的工具权限、验证码或隐藏输入集中由本人完成。动态发布不是打包代码前置。</p>
+            <div className="prompt"><pre>{STATIC_CLOUD_WORK_PROMPT}</pre><button type="button" onClick={() => void navigator.clipboard.writeText(STATIC_CLOUD_WORK_PROMPT).catch(() => undefined)}>复制给 GPT：配置静态站并准备 ZIP</button></div>
+            <p>25–50 MiB MP4 自动原字节分块，每块最多 16 MiB；静态播放完整收齐后开始，不转码。网页最多 1000 文件、每文件 25 MiB，且必须为 Direct Upload 项目；Wrangler 使用最多 20000 文件的目录，不接受 ZIP。包完整、可上传和实际上线分别核定。</p>
             <p>推荐按双站同步顺序操作：媒体完成、保存草稿、发布动态前台成功，再下载 ZIP 并在原 Cloudflare Pages 项目发布静态网站。两个网站分别判断成功。</p>
             <div className="steps">
               <div className="step"><strong>保存当前草稿</strong><p>在原 Worker 管理后台完成编辑，等待图片和视频上传全部完成后保存草稿，确认保存成功和草稿版本已更新。</p></div>
@@ -430,7 +435,7 @@ export function AdminGuideCenter() {
               <li>同一 Cloudflare 客户网络连续输错 5 次管理员密码后，只锁定该网络的密码登录 15 分钟；其他网络不受影响。</li>
               <li>高熵系统恢复码使用独立校验流程，不受密码网络锁定影响；错误恢复码不会触发密码登录锁定。</li>
               <li>恢复码使用后自动轮换，新码需要重新保存。</li>
-              <li>从 1.3.0 升级到 1.3.1，需要本人用当前恢复码确认、设置密码并保存新恢复码。同一 1.3.1 再部署不自动轮换。</li>
+              <li>从 1.3.0 升级到 1.3.2，需要本人用当前恢复码确认、设置密码并保存新恢复码。同一 1.3.2 再部署不自动轮换。</li>
               <li>从 v1.2.0 起，确认完成后的管理员密码、恢复码和会话不再依赖一次性部署口令。</li>
               <li>完成恢复确认会替换旧恢复码并撤销旧管理员会话；当前浏览器随后获得新的 12 小时会话。</li>
               <li>新文件名使用实际版本：“{'{hostname}'}-v{PROGRAM_VERSION}-系统恢复码-{'{YYYYMMDDTHHMMSSZ}'}.txt”；下载后实际打开，核对站点和版本。</li>
@@ -450,8 +455,8 @@ export function AdminGuideCenter() {
             <GuideHeader eyebrow="12 / UPGRADE" title="程序升级" />
             <p>{IS_UPGRADE_PREPARATION ? "当前版本 仍为未正式分发的候选。下方提供完整升级准备指令；本站在线不表示其他网站已可直接升级。" : "先核对固定发布标签、准确提交与配套清单，再按已校验指令准备同站升级。"}</p>
             <div className="callout"><strong>正式目标与原站适配先齐备</strong><p>先核对固定标签、提交、清单、prompt 摘要和正式审核。静态网址和上传入口读取原站配置，缺失或冲突时对应快捷入口不可用；ZIP 后台入口来自本次已鉴权的 HTTPS 请求。保留原站资源和内容。</p></div>
-            <div className="callout safe"><strong>恢复码由本人保管和输入</strong><p>从 1.3.0 升级到 1.3.1，需要本人用当前恢复码确认、设置密码并保存新恢复码。同一 1.3.1 再部署不自动轮换。不要将密码或恢复码发送给 GPT。</p></div>
-            <div className="callout"><strong>迁移与部署会真实写入</strong><p>先只读核对原 Worker、固定 DB、唯一 MEDIA_KV、必要旧 BUCKET 与资源指纹。1.3.1 的正常迁移涉及 0008–0011，只处理真实账本中缺少且结构与摘要匹配的增量；打开 /admin 不能代替这些迁移。cloudflare:deploy 会应用迁移并部署，不能当只读检查运行。</p></div>
+            <div className="callout safe"><strong>恢复码由本人保管和输入</strong><p>从 1.3.0 升级到 1.3.2，需要本人用当前恢复码确认、设置密码并保存新恢复码。同一 1.3.2 再部署不自动轮换。不要将密码或恢复码发送给 GPT。</p></div>
+            <div className="callout"><strong>迁移与部署会真实写入</strong><p>先只读核对原 Worker、固定 DB、唯一 MEDIA_KV、必要旧 BUCKET 与资源指纹。1.3.2 的正常迁移涉及 0008–0011，只处理真实账本中缺少且结构与摘要匹配的增量；打开 /admin 不能代替这些迁移。cloudflare:deploy 会应用迁移并部署，不能当只读检查运行。</p></div>
             <h3>准备与执行分步确认</h3>
             <div className="steps">
               <div className="step"><strong>打开原站恢复码文件</strong><p>核对自己的站点地址，将恢复码保留在本地。</p></div>
@@ -485,7 +490,7 @@ export function AdminGuideCenter() {
             <GuideHeader eyebrow="14 / CHECK" title="最终验收清单" />
             <p>以下为完整产品检查参考，按本次变化选用并沿用已有证据。普通升级准备或文字更新不默认重跑手机、多会话、ZIP/视频检查。</p>
             <ul className="checks">
-              <li>仓库、Worker 属于当前学生。</li><li>D1 / KV 为本网站独立资源；有旧 R2 时 BUCKET 属于同站。</li><li>前台和后台可打开。</li><li>恢复码已离线保存。</li><li>需要恢复确认的升级已完成确认并保存新码；同 1.3.1 部署不要求自动轮换。</li><li>安全退出后重新进入要密码。</li><li>首图、联系图、封面“调整裁切”正常。</li><li>封面桌面 16:9 的字号、位置与换行正常。</li><li>320、360 和 390 px 手机宽度下前台无整页水平滚动，首图、作品、联系、视频和封底正常。</li><li>手机后台只有一条底部操作栏，栏目导航、“更多”、保存状态和错误定位可用。</li><li>手机预览复用真实作品树并可定位内容；全屏裁切、取消恢复和确认写入正常。</li><li>上传进行中阻止切换栏目、预览、保存和发布；失败后可重试、关闭或定位。</li><li>多张封底独立编辑并位于作品之后、页脚之前。</li><li>中文和空白可选字段保存正常，错误可精确定位。</li><li>上传后未保存并切换栏目仍能预览。</li><li>图片组与通栏图正常。</li><li>无视频可发布、显示 00:00 且无播放按钮；有视频时可播放和拖动。</li><li>有视频时，用独立浏览器配置文件或独立 Cookie jar 建立 10 个独立 Cookie 会话。</li><li>保存草稿不触发 Cloudflare Pages。</li><li>快速预览可打开并先自动保存修改。</li><li>下载的网站 ZIP 可整包上传，文件上传完成后再点击 Save and deploy。</li><li>部署状态不明时先查看本次 Cloudflare 部署记录，避免连续重复提交。</li><li>旧限制访问控件不可写且数据保留；两处静态访问二维码与固定网址一致，不表示本次上传成功。</li><li>网站空间统计正常。</li><li>使用教程可打开。</li><li>程序升级可定位；候选状态复制完整准备指令，正式状态使用已校验指令。</li><li>大陆手机流量和常用宽带由所有者人工验收。</li>
+              <li>仓库、Worker 属于当前学生。</li><li>D1 / KV 为本网站独立资源；有旧 R2 时 BUCKET 属于同站。</li><li>前台和后台可打开。</li><li>恢复码已离线保存。</li><li>需要恢复确认的升级已完成确认并保存新码；同 1.3.2 部署不要求自动轮换。</li><li>安全退出后重新进入要密码。</li><li>首图、联系图、封面“调整裁切”正常。</li><li>封面桌面 16:9 的字号、位置与换行正常。</li><li>320、360 和 390 px 手机宽度下前台无整页水平滚动，首图、作品、联系、视频和封底正常。</li><li>手机后台只有一条底部操作栏，栏目导航、“更多”、保存状态和错误定位可用。</li><li>手机预览复用真实作品树并可定位内容；全屏裁切、取消恢复和确认写入正常。</li><li>上传进行中阻止切换栏目、预览、保存和发布；失败后可重试、关闭或定位。</li><li>多张封底独立编辑并位于作品之后、页脚之前。</li><li>中文和空白可选字段保存正常，错误可精确定位。</li><li>上传后未保存并切换栏目仍能预览。</li><li>图片组与通栏图正常。</li><li>无视频可发布、显示 00:00 且无播放按钮；有视频时可播放和拖动。</li><li>有视频时，用独立浏览器配置文件或独立 Cookie jar 建立 10 个独立 Cookie 会话。</li><li>保存草稿不触发 Cloudflare Pages。</li><li>快速预览可打开并先自动保存修改。</li><li>下载的网站 ZIP 可整包上传，文件上传完成后再点击 Save and deploy。</li><li>部署状态不明时先查看本次 Cloudflare 部署记录，避免连续重复提交。</li><li>旧限制访问控件不可写且数据保留；两处静态访问二维码与固定网址一致，不表示本次上传成功。</li><li>网站空间统计正常。</li><li>使用教程可打开。</li><li>程序升级可定位；候选状态复制完整准备指令，正式状态使用已校验指令。</li><li>大陆手机流量和常用宽带由所有者人工验收。</li>
             </ul>
           </section>
         </div>

@@ -108,6 +108,7 @@ export type MediaAsset = {
   kind: "image" | "video" | "font";
   key?: string;
   src?: string;
+  chunks?: { version: number; mime: string; bytes: number; sha256: string; chunks: { index: number; path: string; bytes: number; sha256: string }[] };
   available?: boolean;
   visualKey: VisualKey;
   objectPosition?: MediaPosition;

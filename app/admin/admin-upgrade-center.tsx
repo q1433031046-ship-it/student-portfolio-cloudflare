@@ -135,7 +135,7 @@ export function AdminUpgradeCenter() {
         </div>
         <div>
           <strong>保留身份与内容</strong>
-          <small>内容保留；恢复码确认按实际版本条件处理，同 1.3.1 部署不自动轮换。</small>
+          <small>内容保留；恢复码确认按实际版本条件处理，同 1.3.2 部署不自动轮换。</small>
         </div>
       </div>
       <p className="note">
@@ -152,9 +152,9 @@ export function AdminUpgradeCenter() {
             <p><strong>升级前读取：</strong>README.md、AGENTS.md、deployment/agent-manifest.json、deployment/template-version.json、deployment/upgrade-prompt.json。</p>
             <p><strong>准备流程：</strong>打开原站恢复码文件 → 复制当前完整指令 → 核对正式目标及原站适配 → 核定迁移、资源指纹与恢复对象 → 准确审核和授权满足后执行 → 原 /admin 按实际版本条件确认 → 有限验收。</p>
             <p><strong>原站适配：</strong>Pages 和上传页读取原站配置，ZIP 后台入口来自本次已鉴权的 HTTPS 请求。缺失或冲突时对应静态快捷入口不可用；不要复制其他网站账号、资源 ID 或凭据。保留原 Worker、DB、MEDIA_KV、必要旧绑定、免费套餐与内容。</p>
-            <p><strong>必要迁移：</strong>1.3.1 涉及 0008–0011，按真实账本与摘要只处理缺失增量；不能沿用旧“止于 0007”说明或靠打开 /admin 补齐。cloudflare:deploy 会真实迁移和部署，不是只读工具。</p>
-            <p><strong>恢复码条件：</strong>从 1.3.0 升级到 1.3.1，需要本人用当前恢复码确认、设置密码并保存新恢复码。同一 1.3.1 再部署不自动轮换。新文件名按实际版本生成，下载后核对站点和版本；秘密不发到聊天。</p>
-            <p><strong>历史说明：</strong>历史 v1.3.0 标签保留原发布记录；当前两个复制入口共享已校验的正式 1.3.1 指令。</p>
+            <p><strong>必要迁移：</strong>1.3.2 补丁不新增迁移；原 1.3.0 若缺少既有 0008–0011，只按真实账本与摘要处理缺失增量。打开 /admin 不能补齐这些迁移。cloudflare:deploy 会真实迁移和部署，不是只读工具。</p>
+            <p><strong>恢复码条件：</strong>从 1.3.0 升级到 1.3.2，需要本人用当前恢复码确认、设置密码并保存新恢复码。同一 1.3.2 再部署不自动轮换。新文件名按实际版本生成，下载后核对站点和版本；秘密不发到聊天。</p>
+            <p><strong>历史说明：</strong>历史标签和审核保持；当前两个复制入口共享已校验的正式 1.3.0 → 1.3.2 完整指令。</p>
             <p><strong>有限验收：</strong>核对生产版本、原首页与后台、资源指纹、内容和必要迁移；沿用适用证据，不默认追加手机、多会话或重复 ZIP/视频检查。动态内容发布和静态发布分别判断结果，异常先读回。</p>
           </div>
         </details>

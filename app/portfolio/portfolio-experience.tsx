@@ -18,6 +18,7 @@ import { EndCoverSequence } from "./end-cover-sequence";
 import { CategoryTransition } from "./category-transition";
 import { ProjectCover } from "./project-cover";
 import { VideoWatermark } from "./video-watermark";
+import { createVideoLoader, StaticVideoError } from '../lib/static-video-chunks.mjs';
 import { resolveWatermarkText } from "./watermark";
 import { croppedImageStyle } from "./media-crop";
 import { createQrMatrix } from "../lib/qr-code";
@@ -329,6 +330,8 @@ function PlaybackModal({
   const videoRef = useRef<HTMLVideoElement>(null);
   const [watermarkStarted, setWatermarkStarted] = useState(false);
   const [videoPlaying, setVideoPlaying] = useState(false);
+  const [playableSource, setPlayableSource] = useState<string>();
+  const mediaWaiting = playableSource !== asset.src;
   useScrollLock(true);
 
   useEffect(() => {
@@ -376,9 +379,12 @@ function PlaybackModal({
               ref={videoRef}
               src={asset.src}
               controls
+              controlsList="nodownload"
+              onContextMenu={(event) => event.preventDefault()}
               autoPlay
               playsInline
               preload="metadata"
+              onCanPlay={() => setPlayableSource(asset.src)}
               onPlay={() => { onPlaybackStarted(); setWatermarkStarted(true); setVideoPlaying(true); }}
               onPause={() => setVideoPlaying(false)}
               onEnded={() => setVideoPlaying(false)}
@@ -402,10 +408,10 @@ function PlaybackModal({
           {status === "ready" && asset.src && autoplayRejected && (
             <button className={styles.manualPlay} type="button" onClick={tryManualPlayback}>手动播放</button>
           )}
-          {(status !== "ready" || !asset.src) && (
+          {(status !== "ready" || !asset.src || mediaWaiting) && (
             <div className={styles.playerReady}>
               <span><PlayIcon /></span>
-              <p>{status === "loading" ? "正在建立安全播放连接…" : error ?? "视频上传后在这里直接播放"}</p>
+              <p>{status === "loading" || (status === "ready" && mediaWaiting) ? (typeof location !== 'undefined' && location.protocol === 'https:' ? '视频加密传输中' : '视频加载中') : error ?? "视频上传后在这里直接播放"}</p>
               {status === "error" && <button type="button" onClick={onRetry}>重新连接</button>}
             </div>
           )}
@@ -429,6 +435,24 @@ export function PortfolioExperience({ initialPortfolio: portfolio, mode, embedde
   const [contactOpen, setContactOpen] = useState(initialPreviewTarget?.kind === "contact");
   const playbackRequestRef = useRef<{ id: number; controller: AbortController } | null>(null);
   const playbackRequestIdRef = useRef(0);
+  const chunkLoaderRef = useRef<ReturnType<typeof createVideoLoader> | null>(null);
+  if (chunkLoaderRef.current === null) chunkLoaderRef.current = createVideoLoader();
+  useEffect(() => {
+    if (mode !== 'static') return;
+    const first = portfolio.projects.find(project => project.finalVideo.chunks)?.finalVideo.chunks;
+    const loader = chunkLoaderRef.current!;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let idle: number | undefined;
+    const prefetch = () => {
+      if (first && document.visibilityState !== 'hidden') loader.prefetch(first, (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }).connection);
+    };
+    const schedule = () => { if ('requestIdleCallback' in window) idle = window.requestIdleCallback(prefetch); else timer = setTimeout(prefetch, 1000); };
+    const cancel = () => { clearTimeout(timer); if (idle !== undefined) window.cancelIdleCallback?.(idle); };
+    const hidden = () => { if (document.visibilityState === 'hidden') { cancel(); loader.hide(); } };
+    if (document.readyState === 'complete') schedule(); else window.addEventListener('load', schedule, { once: true });
+    document.addEventListener('visibilitychange', hidden);
+    return () => { cancel(); window.removeEventListener('load', schedule); document.removeEventListener('visibilitychange', hidden); loader.release(); };
+  }, [mode, portfolio]);
   const playbackTriggerRef = useRef<HTMLButtonElement | null>(null);
   const playbackTriggerKeyRef = useRef<string | null>(null);
   const restorePlaybackFocusRef = useRef(false);
@@ -453,6 +477,7 @@ export function PortfolioExperience({ initialPortfolio: portfolio, mode, embedde
   }, [initialPreviewTarget]);
 
   function closePlayback() {
+    chunkLoaderRef.current?.release();
     playbackRequestRef.current?.controller.abort();
     playbackRequestRef.current = null;
     playbackRequestIdRef.current += 1;
@@ -532,6 +557,20 @@ export function PortfolioExperience({ initialPortfolio: portfolio, mode, embedde
     }
     const asset = project.finalVideo;
     if (!hasPlayableVideo(asset)) return;
+    if (mode === 'static' && asset.chunks) {
+      const id = ++playbackRequestIdRef.current;
+      setPlayback({ project, asset, status: 'loading', recoveryCount: 0, autoplayRejected: false });
+      try {
+        const src = await chunkLoaderRef.current!.load(asset.chunks);
+        if (id !== playbackRequestIdRef.current) return;
+        setPlayback({ project, asset: { ...asset, src }, status: 'ready', recoveryCount: 0, autoplayRejected: false });
+      } catch (error) {
+        if (id !== playbackRequestIdRef.current || (error instanceof Error && error.name === 'AbortError')) return;
+        setPlayback({ project, asset, status: 'error', error: error instanceof StaticVideoError ? error.message : '视频加载失败（CHUNK_NETWORK），请检查网络后重试', recoveryCount: 0, autoplayRejected: false });
+      }
+      return;
+    }
+    chunkLoaderRef.current?.release();
     if (mode === "review") {
       const src = adminDraftVideoSource(asset);
       setPlayback(src
@@ -596,6 +635,11 @@ export function PortfolioExperience({ initialPortfolio: portfolio, mode, embedde
 
   function recoverPlayback(snapshot: { currentTime: number; shouldResume: boolean }) {
     if (!playback || playback.status !== "ready") return;
+    if (mode === 'static') {
+      chunkLoaderRef.current?.release();
+      setPlayback({ ...playback, asset: { ...playback.asset, src: undefined }, status: 'error', error: '视频无法解码（VIDEO_DECODE），请重试或联系管理员' });
+      return;
+    }
     if (playback.recoveryCount >= 1) {
       setPlayback({ ...playback, asset: { ...playback.asset, src: undefined }, status: "error", error: "播放连接已中断，请重新连接" });
       if (mode === "live") reportEvent("play_error", playback.project.id, "final", getPortfolioSessionId());

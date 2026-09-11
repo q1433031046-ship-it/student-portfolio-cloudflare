@@ -3,12 +3,17 @@ import { createRoot } from "react-dom/client";
 import { PortfolioExperience } from "../app/portfolio/portfolio-experience";
 import { mediaAssetsInDocument, type PortfolioDocument } from "../app/portfolio/model";
 import "../cloudflare-demo/reset.css";
+import { validateChunks } from '../app/lib/static-video-chunks.mjs';
 
 async function start() {
   const response = await fetch("/data/portfolio.json", { cache: "no-cache" });
   if (!response.ok) throw new Error("静态作品数据不可用");
   const portfolio = await response.json() as PortfolioDocument;
   for (const asset of mediaAssetsInDocument(portfolio)) {
+    if (asset.chunks) {
+      if (asset.kind !== 'video' || asset.src || asset.key) throw new Error('静态视频清单无效');
+      validateChunks(asset.chunks);
+    }
     if (asset.key || (asset.src && !/^\/media\/[A-Za-z0-9_.-]+$/u.test(asset.src))) {
       throw new Error("静态作品媒体引用无效，请联系管理员重新发布");
     }

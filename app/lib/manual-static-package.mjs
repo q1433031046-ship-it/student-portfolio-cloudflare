@@ -1,5 +1,6 @@
 // Shared by the browser download and the one-off local packager. No provider calls.
-export const TEMPLATE_ID = '6ea2ea1d684d335988db93d1d169700e5a7a94c5e40662fcfb50c866a94ff6b5';
+import { VIDEO_BYTES, splitVideo, validateChunks } from './static-video-chunks.mjs';
+export const TEMPLATE_ID = 'ce85b7752c56677df26941a13a83d438bd708e9b32ff2a88ead023b612183b9d';
 export const MAX_FILE = 25 * 1024 * 1024;
 export const MAX_TOTAL = 800 * 1024 * 1024;
 const encoder = new TextEncoder();
@@ -22,6 +23,15 @@ export function validatePublicDocument(document, mediaPaths) {
       if (key === 'src' && value != null && value !== '') {
         if (typeof value !== 'string' || !value.startsWith('/media/') || !mediaPaths.has(value.slice(1))) throw new Error('媒体引用未包含在静态包中');
         references.add(value.slice(1));
+      }
+      if (key === 'chunks') {
+        if (node.kind !== 'video' || node.src) throw new Error('分块媒体类型无效');
+        validateChunks(value);
+        for (const chunk of value.chunks) {
+          if (!mediaPaths.has(chunk.path.slice(1))) throw new Error('分块未包含在静态包中');
+          references.add(chunk.path.slice(1));
+        }
+        continue;
       }
       visit(value);
     }
@@ -52,19 +62,32 @@ export async function buildManualFiles({ template, document, media, adminOrigin,
   const paths = new Set(); let total = 0;
   for (const item of media) {
     safePath(item.path);
-    if (!item.path.startsWith('media/') || paths.has(item.path) || !Number.isSafeInteger(item.bytes) || item.bytes < 1 || item.bytes > MAX_FILE) throw new Error('媒体路径或大小无效');
+    if (!item.path.startsWith('media/') || paths.has(item.path) || !Number.isSafeInteger(item.bytes) || item.bytes < 1 || item.bytes > (item.contentType === 'video/mp4' ? VIDEO_BYTES : MAX_FILE)) throw new Error('媒体路径或大小无效');
     paths.add(item.path); total += item.bytes;
   }
   if (total > MAX_TOTAL) throw new Error('媒体总量超过限制');
   validatePublicDocument(document, paths);
   const files = await templateFiles(template, document.settings?.siteTitle ?? '作品集', adminOrigin);
-  files.push({ path: 'data/portfolio.json', data: encoder.encode(JSON.stringify(document)) }, { path: '_headers', data: encoder.encode(headers) });
+  const outputDocument = structuredClone(document), manifests = new Map();
   for (const item of media) {
     const data = await readMedia(item);
     if (!(data instanceof Uint8Array) || data.length !== item.bytes) throw new Error('媒体字节不完整，请重新下载');
     if (item.sha256 && await sha256(data) !== item.sha256) throw new Error('媒体摘要不符');
-    files.push({ path: item.path, data });
+    if (item.bytes > MAX_FILE) {
+      const split = await splitVideo(data);
+      manifests.set(`/${item.path}`, split.manifest);
+      for (const file of split.files) if (!files.some(existing => existing.path === file.path)) files.push(file);
+    } else files.push({ path: item.path, data });
   }
+  function replace(node) {
+    if (!node || typeof node !== 'object') return;
+    if (manifests.has(node.src)) { node.chunks = manifests.get(node.src); delete node.src; }
+    for (const [key, value] of Object.entries(node)) if (key !== 'chunks') replace(value);
+  }
+  replace(outputDocument);
+  validatePublicDocument(outputDocument, new Set(files.filter(f => f.path.startsWith('media/')).map(f => f.path)));
+  files.push({ path: 'data/portfolio.json', data: encoder.encode(JSON.stringify(outputDocument)) }, { path: '_headers', data: encoder.encode(headers) });
+  if (files.length > 20000 || files.some(f => f.data.length > MAX_FILE) || files.reduce((n, f) => n + f.data.length, 0) > MAX_TOTAL) throw new Error('完整静态包数量或大小超过限制');
   return files;
 }
 const crcTable = Array.from({ length: 256 }, (_, n) => {
