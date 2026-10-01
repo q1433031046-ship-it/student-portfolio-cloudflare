@@ -1,0 +1,344 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "超级中枢治理运行流程",
+    "animation": "trace",
+    "visual_preset": "signal-flow",
+    "quality_profile": "showcase",
+    "locale": "zh-CN",
+    "views": [
+      {
+        "id": "main-path",
+        "label": "标准发布路径",
+        "focus": [
+          "intake",
+          "plan",
+          "plan_audit",
+          "work",
+          "candidate",
+          "candidate_audit",
+          "release",
+          "acceptance",
+          "receipt"
+        ],
+        "note": "从需求进入到生产回执的最短主路径。"
+      },
+      {
+        "id": "blocked-path",
+        "label": "失败与恢复",
+        "focus": [
+          "readback",
+          "blocked",
+          "owner_action"
+        ],
+        "note": "先读取实际状态，分类阻断，再回到对应责任角色。"
+      },
+      {
+        "id": "evidence-path",
+        "label": "证据链",
+        "focus": [
+          "evidence",
+          "candidate",
+          "readback",
+          "receipt"
+        ],
+        "note": "所有阶段都绑定准确对象、摘要和回执。"
+      }
+    ],
+    "viewBox": [
+      1450,
+      810
+    ]
+  },
+  "lanes": [
+    {
+      "id": "owner",
+      "label": "用户与边界"
+    },
+    {
+      "id": "planning",
+      "label": "规划与审计"
+    },
+    {
+      "id": "delivery",
+      "label": "实现与发布"
+    },
+    {
+      "id": "evidence",
+      "label": "状态与证据"
+    },
+    {
+      "id": "exception",
+      "label": "阻断与恢复",
+      "variant": "exception"
+    }
+  ],
+  "phases": [
+    {
+      "id": "scope",
+      "label": "范围冻结",
+      "fromCol": 0,
+      "toCol": 2
+    },
+    {
+      "id": "candidate",
+      "label": "Candidate 形成",
+      "fromCol": 3,
+      "toCol": 4,
+      "variant": "emphasis"
+    },
+    {
+      "id": "production",
+      "label": "生产交付",
+      "fromCol": 5,
+      "toCol": 5,
+      "variant": "dashed"
+    }
+  ],
+  "groups": [
+    {
+      "id": "review_gates",
+      "label": "两次独立审核",
+      "lane": "planning",
+      "fromCol": 1,
+      "toCol": 5,
+      "variant": "emphasis"
+    },
+    {
+      "id": "write_boundary",
+      "label": "唯一生产写入边界",
+      "lane": "delivery",
+      "fromCol": 5,
+      "toCol": 5,
+      "variant": "security"
+    },
+    {
+      "id": "evidence_chain",
+      "label": "可恢复证据链",
+      "lane": "evidence",
+      "fromCol": 1,
+      "toCol": 5,
+      "variant": "dashed"
+    },
+    {
+      "id": "stop_path",
+      "label": "失败关闭与责任回退",
+      "lane": "exception",
+      "fromCol": 2,
+      "toCol": 5,
+      "variant": "security"
+    }
+  ],
+  "mainPath": [
+    "intake",
+    "plan",
+    "plan_audit",
+    "work",
+    "candidate",
+    "candidate_audit",
+    "release",
+    "acceptance",
+    "receipt"
+  ],
+  "nodes": [
+    {
+      "id": "intake",
+      "lane": "owner",
+      "col": 0,
+      "type": "external",
+      "label": "需求进入",
+      "width": 142
+    },
+    {
+      "id": "plan",
+      "lane": "planning",
+      "col": 1,
+      "type": "backend",
+      "label": "1 超级规划",
+      "tag": "只规划",
+      "width": 142
+    },
+    {
+      "id": "plan_audit",
+      "lane": "planning",
+      "col": 2,
+      "type": "security",
+      "label": "2 方案审计",
+      "tag": "独立否决",
+      "width": 142
+    },
+    {
+      "id": "work",
+      "lane": "delivery",
+      "col": 3,
+      "type": "backend",
+      "label": "3 超级工作",
+      "tag": "生成 Candidate",
+      "width": 142
+    },
+    {
+      "id": "candidate",
+      "lane": "evidence",
+      "col": 4,
+      "type": "database",
+      "label": "可发布版本",
+      "width": 142
+    },
+    {
+      "id": "candidate_audit",
+      "lane": "planning",
+      "col": 5,
+      "type": "security",
+      "label": "2 版本审计",
+      "tag": "批准或退回",
+      "width": 142
+    },
+    {
+      "id": "release",
+      "lane": "delivery",
+      "col": 5,
+      "type": "cloud",
+      "label": "4 超级发布",
+      "tag": "唯一生产写入",
+      "width": 142
+    },
+    {
+      "id": "acceptance",
+      "lane": "owner",
+      "col": 5,
+      "type": "frontend",
+      "label": "有限验收",
+      "width": 142
+    },
+    {
+      "id": "receipt",
+      "lane": "evidence",
+      "col": 5,
+      "type": "database",
+      "label": "发布回执",
+      "width": 142
+    },
+    {
+      "id": "evidence",
+      "lane": "evidence",
+      "col": 1,
+      "type": "database",
+      "label": "事实读取",
+      "width": 142
+    },
+    {
+      "id": "blocked",
+      "lane": "exception",
+      "col": 3,
+      "type": "security",
+      "label": "暂停处理",
+      "tag": "停止盲重试",
+      "width": 142
+    },
+    {
+      "id": "owner_action",
+      "lane": "owner",
+      "col": 4,
+      "type": "external",
+      "label": "集中人工动作",
+      "width": 142
+    },
+    {
+      "id": "readback",
+      "lane": "evidence",
+      "col": 3,
+      "type": "messagebus",
+      "label": "状态读回",
+      "width": 142
+    }
+  ],
+  "edges": [
+    {
+      "id": "intake-plan",
+      "from": "intake",
+      "to": "plan",
+      "label": "明确目标",
+      "variant": "emphasis"
+    },
+    {
+      "id": "plan-audit",
+      "from": "plan",
+      "to": "plan_audit",
+      "label": "方案待审",
+      "variant": "emphasis"
+    },
+    {
+      "id": "audit-work",
+      "from": "plan_audit",
+      "to": "work",
+      "label": "通过",
+      "variant": "emphasis"
+    },
+    {
+      "id": "work-candidate",
+      "from": "work",
+      "to": "candidate",
+      "label": "冻结对象",
+      "variant": "default"
+    },
+    {
+      "id": "candidate-audit",
+      "from": "candidate",
+      "to": "candidate_audit",
+      "label": "候选待审",
+      "variant": "emphasis"
+    },
+    {
+      "id": "audit-release",
+      "from": "candidate_audit",
+      "to": "release",
+      "label": "批准",
+      "variant": "security"
+    },
+    {
+      "id": "release-acceptance",
+      "from": "release",
+      "to": "acceptance",
+      "label": "发布后读回",
+      "variant": "emphasis"
+    },
+    {
+      "id": "acceptance-receipt",
+      "from": "acceptance",
+      "to": "receipt",
+      "label": "形成回执",
+      "variant": "default"
+    },
+    {
+      "id": "intake-evidence",
+      "from": "intake",
+      "to": "evidence",
+      "label": "先读现状",
+      "variant": "dashed"
+    },
+    {
+      "id": "evidence-plan",
+      "from": "evidence",
+      "to": "plan",
+      "label": "复用已验证成果",
+      "variant": "dashed"
+    },
+    {
+      "id": "audit-block",
+      "from": "plan_audit",
+      "to": "blocked",
+      "label": "不通过",
+      "variant": "security",
+      "role": "error"
+    },
+    {
+      "id": "blocked-readback",
+      "from": "blocked",
+      "to": "readback",
+      "label": "先核实际结果",
+      "variant": "dashed"
+    }
+  ],
+  "cards": []
+}

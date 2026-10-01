@@ -1,0 +1,442 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "超级中枢项目定位地图",
+    "visual_preset": "blueprint",
+    "animation": "trace",
+    "quality_profile": "showcase",
+    "locale": "zh-CN",
+    "engineering_profile": "deployment-ownership",
+    "viewBox": [
+      1650,
+      850
+    ]
+  },
+  "components": [
+    {
+      "id": "owner",
+      "type": "external",
+      "label": "项目所有者",
+      "pos": [
+        30,
+        350
+      ],
+      "size": [
+        170,
+        66
+      ],
+      "tag": "决定范围"
+    },
+    {
+      "id": "repo",
+      "type": "cloud",
+      "label": "项目总库",
+      "pos": [
+        245,
+        55
+      ],
+      "size": [
+        190,
+        70
+      ],
+      "tag": "GitHub / main / Release"
+    },
+    {
+      "id": "governance",
+      "type": "security",
+      "label": "治理规则",
+      "pos": [
+        500,
+        30
+      ],
+      "size": [
+        210,
+        70
+      ],
+      "tag": "governance/ 角色与门禁"
+    },
+    {
+      "id": "deployment",
+      "type": "backend",
+      "label": "部署与升级",
+      "pos": [
+        500,
+        145
+      ],
+      "size": [
+        210,
+        70
+      ],
+      "tag": "deployment/ 契约与迁移"
+    },
+    {
+      "id": "docs",
+      "type": "database",
+      "label": "规划与回执",
+      "pos": [
+        500,
+        260
+      ],
+      "size": [
+        210,
+        70
+      ],
+      "tag": "docs/ handoff/ 长期证据"
+    },
+    {
+      "id": "tests",
+      "type": "backend",
+      "label": "检查与验证",
+      "pos": [
+        500,
+        375
+      ],
+      "size": [
+        210,
+        70
+      ],
+      "tag": "tests/ scripts/ 验证入口"
+    },
+    {
+      "id": "public_site",
+      "type": "frontend",
+      "label": "访客展示",
+      "pos": [
+        780,
+        60
+      ],
+      "size": [
+        210,
+        70
+      ],
+      "tag": "app/portfolio/ page.tsx"
+    },
+    {
+      "id": "admin",
+      "type": "frontend",
+      "label": "管理后台",
+      "pos": [
+        780,
+        150
+      ],
+      "size": [
+        210,
+        70
+      ],
+      "tag": "app/admin/ 管理入口"
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "后台接口",
+      "pos": [
+        780,
+        250
+      ],
+      "size": [
+        210,
+        70
+      ],
+      "tag": "app/api/ 路由与权限"
+    },
+    {
+      "id": "data",
+      "type": "database",
+      "label": "数据与媒体",
+      "pos": [
+        780,
+        365
+      ],
+      "size": [
+        210,
+        70
+      ],
+      "tag": "db/ + app/api/_lib/"
+    },
+    {
+      "id": "static",
+      "type": "frontend",
+      "label": "静态导出",
+      "pos": [
+        780,
+        480
+      ],
+      "size": [
+        210,
+        70
+      ],
+      "tag": "static-site/ + manual-static"
+    },
+    {
+      "id": "shared",
+      "type": "backend",
+      "label": "共享与资源",
+      "pos": [
+        780,
+        595
+      ],
+      "size": [
+        210,
+        70
+      ],
+      "tag": "shared/ public/ examples/"
+    },
+    {
+      "id": "worker",
+      "type": "cloud",
+      "label": "动态运行",
+      "pos": [
+        1080,
+        135
+      ],
+      "size": [
+        210,
+        70
+      ],
+      "tag": "worker/index.ts"
+    },
+    {
+      "id": "cloud",
+      "type": "database",
+      "label": "云端资源",
+      "pos": [
+        1080,
+        350
+      ],
+      "size": [
+        210,
+        70
+      ],
+      "tag": "Worker D1 MEDIA_KV Pages"
+    },
+    {
+      "id": "browser",
+      "type": "external",
+      "label": "访问入口",
+      "pos": [
+        1360,
+        405
+      ],
+      "size": [
+        170,
+        66
+      ],
+      "tag": "动态与静态网址"
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "项目源代码与治理资料",
+      "wraps": [
+        "repo",
+        "governance",
+        "deployment",
+        "docs",
+        "tests"
+      ],
+      "pad": 24
+    },
+    {
+      "kind": "security-group",
+      "label": "方案与证据边界",
+      "wraps": [
+        "governance",
+        "deployment",
+        "docs",
+        "tests"
+      ],
+      "pad": 16
+    },
+    {
+      "kind": "region",
+      "label": "产品功能模块",
+      "wraps": [
+        "public_site",
+        "admin",
+        "api",
+        "data",
+        "static",
+        "shared"
+      ],
+      "pad": 24
+    },
+    {
+      "kind": "security-group",
+      "label": "数据与发布影响边界",
+      "wraps": [
+        "api",
+        "data"
+      ],
+      "pad": 16
+    },
+    {
+      "kind": "region",
+      "label": "线上运行环境",
+      "wraps": [
+        "worker",
+        "cloud"
+      ],
+      "pad": 24
+    },
+    {
+      "kind": "security-group",
+      "label": "云端资源边界",
+      "wraps": [
+        "worker",
+        "cloud"
+      ],
+      "pad": 16
+    }
+  ],
+  "connections": [
+    {
+      "from": "owner",
+      "to": "repo",
+      "variant": "security",
+      "route": "orthogonal-h",
+      "label": "授权",
+      "labelDy": -26
+    },
+    {
+      "from": "repo",
+      "to": "governance",
+      "variant": "emphasis",
+      "label": "GitHub",
+      "labelDx": -100,
+      "labelDy": -20
+    },
+    {
+      "from": "repo",
+      "to": "deployment",
+      "variant": "emphasis",
+      "label": "契约",
+      "labelDx": 100,
+      "labelDy": 0
+    },
+    {
+      "from": "repo",
+      "to": "docs",
+      "variant": "dashed",
+      "label": "回执",
+      "labelDx": -100,
+      "labelDy": 48
+    },
+    {
+      "from": "governance",
+      "to": "deployment",
+      "variant": "security"
+    },
+    {
+      "from": "tests",
+      "to": "docs",
+      "variant": "dashed"
+    },
+    {
+      "from": "deployment",
+      "to": "public_site",
+      "variant": "security",
+      "label": "发版",
+      "labelDy": -36
+    },
+    {
+      "from": "deployment",
+      "to": "admin",
+      "variant": "security",
+      "label": "提示",
+      "labelDy": 80,
+      "labelDx": -100
+    },
+    {
+      "from": "deployment",
+      "to": "static",
+      "variant": "security",
+      "label": "导出",
+      "labelDy": 44
+    },
+    {
+      "from": "admin",
+      "to": "api",
+      "variant": "emphasis",
+      "label": "请求",
+      "labelDx": 45,
+      "labelDy": 130
+    },
+    {
+      "from": "public_site",
+      "to": "worker",
+      "variant": "emphasis",
+      "label": "HTTPS",
+      "labelDy": -28
+    },
+    {
+      "from": "api",
+      "to": "data",
+      "variant": "emphasis"
+    },
+    {
+      "from": "api",
+      "to": "worker",
+      "variant": "security",
+      "label": "API",
+      "labelDy": 26
+    },
+    {
+      "from": "static",
+      "to": "cloud",
+      "variant": "emphasis",
+      "label": "Pages",
+      "labelDy": -24
+    },
+    {
+      "from": "worker",
+      "to": "cloud",
+      "variant": "emphasis"
+    },
+    {
+      "from": "worker",
+      "to": "browser",
+      "variant": "dashed",
+      "route": "auto",
+      "label": "动态",
+      "labelDx": -70,
+      "labelDy": -30
+    },
+    {
+      "from": "cloud",
+      "to": "browser",
+      "variant": "emphasis",
+      "route": "auto",
+      "label": "静态",
+      "labelDx": 70,
+      "labelDy": -34
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "定位方法",
+      "items": [
+        "先按模块和路径定位，再看它连接的外部资源",
+        "修改前记录输入、输出、依赖和影响范围"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "发布边界",
+      "items": [
+        "治理和部署资料先审，网站模块再改，准确版本最后发布",
+        "动态 Worker 与静态 Pages 分开验收"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "地图维护",
+      "items": [
+        "新增、删除或移动模块时同步更新本图和回执",
+        "地图未更新时，不把代码改动当作完整 Candidate"
+      ]
+    }
+  ]
+}

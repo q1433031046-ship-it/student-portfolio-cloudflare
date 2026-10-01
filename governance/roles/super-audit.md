@@ -70,3 +70,8 @@
 - 纯治理或文档 Candidate 审计：下一角色 3（超级工作），仅合入角色 2 批准的准确 Candidate，不再修改 Candidate 内容；不进入角色 4。
 
 结论不通过时，按问题来源进入 `PLANNING_REQUIRED`、`IMPLEMENTATION_REQUIRED` 或 `BLOCKED`，明确下一角色是 1 还是 3。
+
+
+## 本轮治理文档任务边界
+
+本轮治理文档任务使用默认人工审核模式；角色职责、编号和允许转换不变。所有交接必须绑定准确 main/Base/Head/Tree、文件清单和回执。产品、生产、秘密和动态治理状态属于本 Candidate 的排除范围。
