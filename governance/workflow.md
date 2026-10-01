@@ -172,3 +172,8 @@ BLOCKED 且解除后的真实路径无法可靠判断时，必须显示：`待�
 结构与 Schema 使用 npm run governance:validate。
 
 正式转换必须执行 validate-transition，并同时提供 previous、完整 records-root 和 role-contract。previous 不能省略，同阶段写入不允许。
+
+
+## 治理文档 Candidate 的最短路径
+
+对于不需要生产发布的治理或文档任务，角色 3 只从准确 main 基线建立隔离 Candidate，修改冻结清单内的治理文件；角色 2 方案审计通过后，角色 3 记录每个源 JSON、派生 HTML、生成命令和摘要，再交角色 2 做 Candidate 审计。审计通过后由角色 3 仅合入已批准 Candidate。任何网站、数据库、Migration、Cloudflare、账号、密钥、域名、媒体、生产或 `governance/runtime/**` 事实变化都使本路径停止并回到范围审计。

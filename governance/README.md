@@ -89,3 +89,8 @@
 - 2 → 4：“审计通过了，发布。”
 
 这些短句只作为兼容状态提示，不能替代 `governance/workflow.md` 规定的自包含一键复制交接词。确实需要用户把任务发送给下一角色时，必须同时生成完整交接词。动态治理状态明确启用时，只有受保护写入成功后才能宣布动态交接完成；默认人工审核模式则必须完成准确 GitHub 与审计证据复读。
+
+
+## v1.1 治理附件与实施入口
+
+本轮治理 Candidate 的长期规划入口是共享根《超级中枢1.1长期规划与治理规则.md》；仓库内对应合同仍以本 README、workflow.md、role-contract.json、state-schema.json 和角色/交接模板为准。两张图的唯一源位于 `governance/diagrams/治理运行流程图.json` 与 `治理项目结构图.json`，同名 HTML 是由固定 Archify 命令生成的派生物。修改治理文档或图时，先核对源 JSON，再核对派生 HTML 的 `governance-source-sha256`、生成器版本和一致性回执。网站产品规划只通过固定索引引用，不带入治理 Candidate。
